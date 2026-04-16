@@ -45,16 +45,18 @@
 28. [Configuration System](#28-configuration-system)
 29. [Cost & Token Tracking](#29-cost--token-tracking)
 30. [Conflict Detection Engine](#30-conflict-detection-engine)
+31. [Claude Code Integration](#31-claude-code-integration)
+32. [Agent Permission System](#32-agent-permission-system)
 
 ### Part VI: Security, Notifications & Theme
-31. [Security & Trust Model](#31-security--trust-model)
-32. [Notification System](#32-notification-system)
-33. [Theme System](#33-theme-system)
+33. [Security & Trust Model](#33-security--trust-model)
+34. [Notification System](#34-notification-system)
+35. [Theme System](#35-theme-system)
 
 ### Part VII: Roadmap & Future
-34. [MVP Build Phases](#34-mvp-build-phases)
-35. [Future Features](#35-future-features)
-36. [Open Questions](#36-open-questions)
+36. [MVP Build Phases](#36-mvp-build-phases)
+37. [Future Features](#37-future-features)
+38. [Open Questions](#38-open-questions)
 
 ### Appendices
 - [A. Brand & Distribution](#appendix-a-brand--distribution)
@@ -262,9 +264,10 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 | Build | Vite | Frontend bundling and dev server |
 | Terminal UI | xterm.js | Terminal emulation in the browser |
 | Styling | TailwindCSS | Utility-first CSS |
-| State | Zustand | Lightweight state management |
+| State | Zustand | Lightweight state management (sliced architecture) |
 | Command Palette | cmdk | Fuzzy search command palette |
 | Icons | lucide-react | Icon set |
+| Scratchpad | CodeMirror 6 | Per-session notepad with markdown support |
 | Notifications | react-hot-toast | In-app toast notifications |
 | Backend | Node.js + TypeScript | Daemon runtime |
 | HTTP | Express | REST API server |
@@ -362,7 +365,12 @@ multitable/
 │   │       │   ├── useKeyboardShortcuts.ts
 │   │       │   └── useTheme.ts
 │   │       ├── stores/
-│   │       │   └── appStore.ts
+│   │       │   ├── appStore.ts         # Composed store from slices
+│   │       │   ├── projectSlice.ts     # Project CRUD state
+│   │       │   ├── processSlice.ts     # Sessions + commands + terminals
+│   │       │   ├── uiSlice.ts          # Active selection, theme, sidebar
+│   │       │   ├── permissionSlice.ts  # Pending permission prompts
+│   │       │   └── optionSlice.ts      # Current option prompt
 │   │       ├── lib/
 │   │       │   ├── terminalManager.ts
 │   │       │   ├── ws.ts       # WebSocket client helpers
@@ -391,6 +399,9 @@ The daemon stores all persistent state in a SQLite database at `~/.config/multit
 
 - `projects` — registered project directories
 - `sessions` — agent sessions with cost/token data, status, timestamps
+  - Includes `claude_session_id TEXT` for Claude Code resume capability (Section 31)
+  - Includes `scrollback_data BLOB` for persistent scrollback (flushed from 512KB ring buffer every 3s)
+  - Includes `scratchpad TEXT` for per-session notepad content (debounced save, 500ms)
 - `session_events` — structured activity log per session (files read, files written, tools called)
 - `commands` — configured commands per project
 - `cost_records` — per-session token/cost snapshots over time
@@ -879,6 +890,16 @@ Not just terminal output — the agent's activity trail parsed from output.
 - Model used (if detectable)
 - Per-operation cost breakdown (when available)
 
+### Scratchpad
+
+A per-session notepad for jotting down constraints, TODOs, context, and notes while working with an agent.
+
+- **Editor**: CodeMirror 6 with markdown syntax highlighting
+- **Persistence**: Content saved to SQLite (`scratchpad` column on sessions table) with 500ms debounce
+- **Layout**: Appears as a tab alongside File Explorer, Diff Viewer, Timeline, and Cost Summary
+- **Default content**: Empty (no template)
+- **Markdown preview**: Toggle button switches between edit mode and rendered markdown preview
+
 ---
 
 ## 19. Status Bar
@@ -1097,14 +1118,17 @@ Note: These are browser-compatible shortcuts, not native app shortcuts. Conflict
    - Compare `mt.yml` hash against `trust.json`
    - If changed: notify frontend to show TrustDialog
 4. Open SQLite database (create if first run)
-5. Set active project (last active, or first)
-6. For active project: start all autostart processes
+5. **Initialize HookManager** — check `~/.claude/settings.json` for MultiTable hooks; install if missing (see Section 31)
+6. **Initialize PermissionManager** — create pending request map and auto-defer tool list (see Section 32)
+7. **Register HookReceiver routes** — Express routes at `/api/hooks/:eventName` for Claude Code callbacks
+8. Set active project (last active, or first)
+9. For active project: start all autostart processes
    - For each: spawn PTY via node-pty, start monitor, update PID tracker
-7. Start file watcher on `mt.yml` + configured watch patterns
-8. Start metrics polling (every 2 seconds)
-9. Serve React frontend as static files
-10. Begin listening on configured host:port
-11. Ready.
+10. Start file watcher on `mt.yml` + configured watch patterns
+11. Start metrics polling (every 2 seconds)
+12. Serve React frontend as static files
+13. Begin listening on configured host:port
+14. Ready.
 
 ### Process State Machine
 
@@ -1156,6 +1180,7 @@ interface ProcessConfig {
     autorestartMax: number;        // default 5
     autorestartDelayMs: number;    // default 2000
     autorestartWindowSecs: number; // reset restartCount after this (default 60)
+    autorespawn: boolean;          // respawn PTY on subscribe if dead (default true for sessions, false for commands)
     terminalAlerts: boolean;
     fileWatchPatterns: string[];
     storage: "yml" | "local";
@@ -1286,17 +1311,55 @@ On shutdown, all child processes receive SIGTERM, then SIGKILL after a 5-second 
 | `POST` | `/api/projects/:id/trust/approve` | Approve mt.yml changes |
 | `POST` | `/api/projects/:id/trust/reject` | Reject mt.yml changes |
 
+### Claude Code Hooks
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/api/hooks/pre-tool-use` | PreToolUse hook callback. **Holds response open** until user permission decision or 110s timeout. See Section 32. |
+| `POST` | `/api/hooks/post-tool-use` | PostToolUse hook callback. Updates session state (tool, tokens). |
+| `POST` | `/api/hooks/stop` | Stop hook callback. Triggers option detection. See Section 31. |
+| `POST` | `/api/hooks/session-start` | SessionStart hook callback. Captures Claude session ID. |
+| `POST` | `/api/hooks/session-end` | SessionEnd hook callback. Clears session state. |
+| `POST` | `/api/hooks/subagent-start` | SubagentStart hook callback. Tracks subagent count. |
+| `POST` | `/api/hooks/subagent-stop` | SubagentStop hook callback. Decrements subagent count. |
+
+### Claude Session Management
+
+| Method | Path | Description | Request Body |
+|---|---|---|---|
+| `POST` | `/api/sessions/:id/spawn-claude` | Spawn Claude in an existing PTY | — |
+| `POST` | `/api/sessions/:id/resume-claude` | Resume Claude with stored session ID | — |
+
 ---
 
 ## 26. API Contract: WebSocket Protocol
 
-The WebSocket connection is established at `ws://host:port/ws`. All messages use a JSON envelope:
+A **single multiplexed WebSocket** connection per browser tab is established at `ws://host:port/ws`. All session I/O is multiplexed over this one connection via subscribe/unsubscribe messages. All messages use a JSON envelope:
 
 ```typescript
 interface WsMessage {
     type: string;
     processId?: string;
     payload: any;
+}
+```
+
+### Connection Management
+
+**Heartbeat:** The server sends a WebSocket `ping` frame every 30 seconds. Clients must respond with `pong` within 10 seconds. Failure to respond terminates the connection.
+
+**Reconnection:** The client implements exponential backoff reconnection: starting at 1 second, doubling on each failure, capping at 30 seconds. On successful reconnect, the backoff resets to 1 second. After reconnecting, the client automatically:
+1. Re-subscribes to the currently active process
+2. Fetches current session state via REST
+3. Fetches any pending permission prompts
+
+**Server-Side Client State:**
+
+```typescript
+interface WsClientState {
+    subscribedProcess: string | null;  // processId currently subscribed to
+    cleanups: Array<() => void>;       // listener unsubscribe functions
+    alive: boolean;                     // heartbeat tracking
 }
 ```
 
@@ -1308,17 +1371,56 @@ interface WsMessage {
 | `pty-resize` | `{ processId: string, cols: number, rows: number }` | Resize a process's PTY |
 | `subscribe` | `{ processId: string }` | Subscribe to a process's output stream |
 | `unsubscribe` | `{ processId: string }` | Unsubscribe from a process's output |
+| `permission:respond` | `{ id: string, decision: "allow" \| "deny" \| "always-allow" }` | Respond to a permission prompt (Section 32) |
+| `option:dismiss` | `{ id: string }` | Dismiss an option prompt |
 
 ### Server -> Client Messages
 
 | Type | Payload | Description |
 |---|---|---|
 | `pty-output` | `{ processId: string, data: string }` | Terminal output from a process (base64 or UTF-8) |
+| `scrollback` | `{ processId: string, data: string }` | Full scrollback buffer replay on subscribe (see below) |
 | `process-state-changed` | `{ processId: string, state: ProcessState, exitCode?: number }` | Process state transition |
 | `process-metrics` | `{ processId: string, cpu: number, memory: number, port?: number }` | Metrics update (every 2s) |
+| `session:updated` | `{ session: Session }` | Session metadata/state changed (tool, tokens, status) |
+| `session:created` | `{ session: Session }` | New session created |
+| `session:deleted` | `{ sessionId: string }` | Session removed |
 | `agent-subtitle` | `{ processId: string, subtitle: string }` | Live activity text for sessions |
 | `notification` | `{ type: "crash" \| "restart" \| "bell" \| "info", processId: string, message: string }` | Notification event |
 | `trust-changed` | `{ projectId: string, changes: ConfigDiff }` | mt.yml changed on disk |
+| `permission:prompt` | `{ prompt: PermissionPrompt }` | Tool permission request from Claude (Section 32) |
+| `permission:resolved` | `{ id: string }` | Permission request resolved |
+| `permission:expired` | `{ id: string }` | Permission request timed out |
+| `option:prompt` | `{ sessionId: string, question: string, options: string[] }` | Claude presented numbered options (Section 31) |
+
+### Subscribe Flow
+
+1. Client sends `{ type: "subscribe", processId }`
+2. Server unsubscribes from any previously subscribed process (cleanup listeners)
+3. If PTY is dead and `autorespawn` is enabled → respawn (see Section 31)
+4. Server sends `scrollback` message with full buffer content
+5. Server registers `onData` listener → forwards `pty-output` to this client
+6. Server registers `onExit` listener → forwards `process-state-changed` to this client
+
+### Scrollback Replay
+
+The server stores scrollback in a 512KB ring buffer per process, flushed to SQLite every 3 seconds. On subscribe, the full buffer is sent as a `scrollback` message.
+
+**Client-side chunked writing** prevents main thread blocking during large buffer replay:
+- If data ≤ 16KB: write to xterm.js in a single call
+- If data > 16KB: split into 16KB chunks, write each with `setTimeout(0)` yield between chunks
+- Call `terminal.scrollToBottom()` after each chunk
+
+### WS-Broadcast-First State Updates
+
+Create, delete, and update operations follow the **broadcast-first** pattern for multi-client consistency:
+1. Client sends REST request (e.g., `POST /api/sessions`)
+2. Server performs the operation
+3. Server broadcasts the result via WebSocket (e.g., `session:created`)
+4. **All** connected clients (including the originator) update their local state from the broadcast
+5. Clients do **not** optimistically update state from REST responses — they wait for the WS broadcast
+
+This ensures all connected browsers see the same state, which is critical since MultiTable supports multiple browsers connecting to the same daemon.
 
 ---
 
@@ -1470,11 +1572,15 @@ Auto-detected commands are marked with the "AUTO" badge in the UI.
 
 ### Strategy
 
-MultiTable tracks per-session cost by parsing agent CLI output for token/cost information. Claude Code prints cost summaries that can be extracted via regex patterns.
+MultiTable tracks per-session cost using two complementary approaches:
+
+1. **Hook-based (Claude Code primary):** The `PostToolUse` hook provides structured token/cost data directly. No regex parsing needed. This is the preferred approach for Claude Code sessions (see Section 31).
+
+2. **Regex-based (fallback for other agents):** Parse agent CLI output for token count and cost lines. Used for agents that don't support hooks (Codex, Aider, Gemini CLI, etc.). Each agent type registers output patterns for extracting cost data. Manual cost entry via UI as a last resort.
 
 ### Agent-Specific Parsers
 
-**Claude Code (primary):** Parse output for token count and cost lines. Claude Code reports cost at session end and periodically during long sessions.
+**Claude Code (primary):** Uses `PostToolUse` hook data. Token counts and cost are updated in real-time as each tool completes. No regex maintenance burden.
 
 **Other agents:** Extensible parser system. Each agent type registers output patterns for extracting cost data. Fallback: manual cost entry via the UI.
 
@@ -1533,9 +1639,251 @@ More sophisticated approaches (git worktrees per session, etc.) are deferred to 
 
 ---
 
+## 31. Claude Code Integration
+
+MultiTable is agent-agnostic, but Claude Code is the primary agent. This section specifies deep integration via Claude Code's hook system, providing structured event data instead of fragile regex parsing.
+
+### Agent Adapter Architecture
+
+```typescript
+interface AgentAdapter {
+    type: string;                           // "claude-code", "codex", "aider", etc.
+    install(sessionId: string): Promise<void>;    // setup hooks/watchers for this agent
+    uninstall(sessionId: string): Promise<void>;  // teardown
+    getSessionId(): string | null;          // agent-native session ID (for resume)
+    canResume(): boolean;                   // does this agent support session resume?
+    getResumeCommand(sessionId: string): string;  // e.g., "claude --resume {id}"
+}
+```
+
+`ClaudeCodeAdapter` is the first (and MVP-only) implementation. Other agents fall back to regex-based output parsing for cost/token tracking.
+
+### Hook System
+
+Claude Code supports hooks — HTTP callbacks fired at key lifecycle events. MultiTable registers these hooks in `~/.claude/settings.json` at daemon startup.
+
+#### Hook Installation
+
+The `HookManager` checks `~/.claude/settings.json` on startup. If MultiTable's hooks are not present, it adds them:
+
+```jsonc
+// ~/.claude/settings.json (managed entries)
+{
+  "hooks": {
+    "PreToolUse": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/pre-tool-use -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "PostToolUse": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/post-tool-use -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "Stop": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/stop -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "SessionStart": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/session-start -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "SessionEnd": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/session-end -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "SubagentStart": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/subagent-start -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "SubagentStop": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/subagent-stop -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ]
+  }
+}
+```
+
+The `HookManager` preserves any existing user hooks — it only adds MultiTable's entries, never removes others. On daemon shutdown, hooks are left in place (they fail silently when the daemon is not running).
+
+#### Hook Receiver
+
+Express routes at `/api/hooks/:eventName` receive callbacks from Claude Code. Each hook maps to enriched session state:
+
+| Hook | Payload (from Claude) | MultiTable Action |
+|---|---|---|
+| `PreToolUse` | `{ tool_name, tool_input, session_id }` | Route to Permission System (Section 32). **Holds HTTP response open** until user decision. |
+| `PostToolUse` | `{ tool_name, tool_input, tool_result, session_id }` | Update `currentTool`, increment `toolCount`, update `tokenCount`, set status `active`. Emit `session:updated` WS. |
+| `Stop` | `{ session_id, stop_reason }` | Clear `currentTool`, set status `idle`. Trigger Option Detection (see below). Emit `session:updated` WS. |
+| `SessionStart` | `{ session_id }` | Capture and store `claude_session_id` in SQLite. |
+| `SessionEnd` | `{ session_id }` | Clear `currentTool`, set status `idle`. |
+| `SubagentStart` | `{ session_id, subagent_id }` | Track active subagent count. Set status `active`. |
+| `SubagentStop` | `{ session_id, subagent_id }` | Decrement subagent count. |
+
+### Enriched Session State
+
+Claude Code sessions carry additional volatile state beyond the generic `ProcessState`:
+
+```typescript
+interface ClaudeSessionState {
+    claudeSessionId: string | null;  // Claude's native session ID (for resume)
+    currentTool: string | null;      // tool currently being executed
+    toolCount: number;               // total tools used in this session
+    tokenCount: number;              // total tokens consumed
+    lastActivity: number;            // Unix timestamp of latest hook event
+    activeSubagents: number;         // count of running subagents
+}
+```
+
+This state is stored in-memory (volatile) and updated by hook callbacks. It supplements the generic `ManagedProcess` state. The `claudeSessionId` is also persisted to SQLite for resume capability.
+
+### Session ID Tracking
+
+When a Claude Code session starts, the `SessionStart` hook provides the Claude session ID. This is stored in the `sessions` table (`claude_session_id` column) and enables resume.
+
+**Fallback (for sessions started before hooks were installed):** Poll `~/.claude/projects/{encoded-cwd}/` for new `.jsonl` session files. Snapshot existing files before spawning Claude, then poll every 500ms for up to 15 seconds to detect the new file. Path encoding follows Claude Code's convention (e.g., `/home/user/project` → directory name under `~/.claude/projects/`).
+
+### Session Resume
+
+When a session's PTY is alive but Claude is not running, the user can resume the previous Claude conversation:
+
+1. User clicks "Resume" button in session header (visible when `claude_session_id` is set and Claude is not active)
+2. Frontend calls `POST /api/sessions/:id/resume-claude`
+3. Daemon writes `claude --resume {claudeSessionId}\r` to the session's PTY
+4. Claude Code reconnects to the existing conversation
+
+### Session Respawn on Subscribe
+
+When a client subscribes to a session whose PTY has exited:
+
+1. Server detects PTY is dead
+2. If session config has `autorespawn: true` (default for sessions, `false` for commands):
+   - Spawn a new PTY with the session's stored shell and cwd
+   - Send scrollback from DB to the client
+   - If `claude_session_id` is set: write `claude --resume {id}\r` to auto-resume
+   - Emit `process-state-changed` with new status
+3. If `autorespawn: false`: send scrollback only (for reviewing completed sessions)
+
+### Option Detection
+
+When Claude presents numbered options (e.g., "Which approach do you prefer? 1. Option A, 2. Option B"), MultiTable detects this and shows clickable buttons.
+
+**Detection flow:**
+
+1. `Stop` hook fires → daemon receives `session_id`
+2. Read last assistant message from Claude's JSONL transcript file at `~/.claude/projects/{encoded-cwd}/{session_id}.jsonl`
+3. Parse for consecutive numbered items (1 through N, where 2 ≤ N ≤ 8)
+4. Each option must be ≤ 150 characters
+5. Check surrounding text for question signal words: "which", "what", "choose", "select", "prefer", "option", "pick"
+6. If match: broadcast `option:prompt` WS message
+
+**UI:**
+
+- `OptionSelector` component appears below the terminal when `option:prompt` received
+- Shows the question text and numbered buttons for each option
+- **Keyboard**: digit keys (1-9) select an option
+- **Click**: button click sends `pty-input` with `{number}\r`
+- **Auto-clear**: dismissed when new PTY output detected (user already answered via terminal)
+- **Manual dismiss**: Escape key or close button
+
+---
+
+## 32. Agent Permission System
+
+MultiTable intercepts Claude Code's tool permission requests, allowing the user to approve or deny tools from the browser UI instead of requiring direct terminal interaction. This is critical for managing multiple concurrent sessions — the user can approve permissions across all sessions from one place.
+
+### Architecture
+
+Claude Code's `PreToolUse` hook fires an HTTP request **before** executing any tool. MultiTable's daemon receives this request and **holds the HTTP response open** until the user makes a decision or a timeout expires. This is the held-response pattern: Claude Code blocks waiting for the HTTP response, and MultiTable controls the flow.
+
+### PermissionManager
+
+```typescript
+class PermissionManager {
+    pending: Map<string, {
+        prompt: PermissionPrompt;
+        res: express.Response;       // held-open Express response
+        timer: ReturnType<typeof setTimeout>;
+        claudeSessionId: string;
+        sessionId: string;           // MultiTable session ID
+    }>;
+    alwaysAllowed: Set<string>;      // "${claudeSessionId}:${toolName}"
+}
+
+interface PermissionPrompt {
+    id: string;                      // unique request ID
+    sessionId: string;               // MultiTable session ID
+    claudeSessionId: string;
+    toolName: string;
+    toolInput: Record<string, any>;
+    createdAt: number;               // Unix timestamp
+    timeoutMs: number;               // 110000 (110s)
+}
+```
+
+### Decision Flow
+
+```
+1. Claude Code: POST /api/hooks/pre-tool-use { tool_name, tool_input, session_id }
+2. PermissionManager.createRequest(payload, res):
+   a. If tool is in auto-defer list → respond immediately with empty body (defer to Claude's native system)
+   b. If "${claudeSessionId}:${toolName}" in alwaysAllowed → respond with { permissionDecision: "allow" }
+   c. Otherwise → hold response, start 110s timer, broadcast permission:prompt via WS
+3. UI shows PermissionCard with tool details and countdown
+4. User clicks Allow / Deny / Always Allow
+5. Client sends WS: { type: "permission:respond", id, decision }
+6. PermissionManager.resolveRequest(id, decision):
+   a. If "always-allow" → add to alwaysAllowed set, respond with allow
+   b. If "allow" → respond: 200 { hookSpecificOutput: { permissionDecision: "allow" } }
+   c. If "deny" → respond: 200 { hookSpecificOutput: { permissionDecision: "deny" } }
+   d. Clear timer
+7. Claude Code proceeds (or skips tool if denied)
+```
+
+### Auto-Defer List
+
+Safe, read-only tools are deferred to Claude's native permission system (no UI prompt needed):
+
+```typescript
+const DEFAULT_AUTO_DEFER_TOOLS = [
+    "Read", "Grep", "Glob", "LS",
+    "TodoRead", "TodoGet", "WebSearch"
+];
+```
+
+This list is configurable per-project in `mt.yml`:
+
+```yaml
+# mt.yml
+permissions:
+  auto_defer:
+    - Read
+    - Grep
+    - Glob
+    - LS
+    - TodoRead
+    - TodoGet
+```
+
+### Timeout Behavior
+
+- **Server timeout**: 110 seconds (10s buffer before Claude's 120s timeout)
+- On timeout: auto-deny the request, respond with `{ hookSpecificOutput: { permissionDecision: "deny" } }`
+- Broadcast `permission:expired` WS message to clear UI
+
+### Always Allow Scope
+
+- Scoped to `${claudeSessionId}:${toolName}` — a new Claude session resets all "Always Allow" decisions
+- Stored in-memory only (not persisted to DB), so daemon restart also resets
+- This is intentional: permissions should not be permanently auto-granted
+
+### UI: PermissionBar
+
+The `PermissionBar` component shows stacked permission cards above the status bar (or inline in the terminal view for the active session):
+
+- **Tool name** in bold
+- **Tool input** as formatted JSON (collapsible for large inputs)
+- **Session name** (which session is asking)
+- **Countdown bar** — animated from 100% to 0% width over the timeout period, using `requestAnimationFrame` and CSS `transform: scaleX()`
+- **Three buttons**: Allow (green), Deny (red), Always Allow (blue)
+- Cards stack vertically when multiple permissions are pending across sessions
+
+---
+
 # Part VI: Security, Notifications & Theme
 
-## 31. Security & Trust Model
+## 33. Security & Trust Model
 
 ### Principles
 
@@ -1544,6 +1892,7 @@ More sophisticated approaches (git worktrees per session, etc.) are deferred to 
 3. **No API key access.** MultiTable never reads, stores, or transmits agent API keys. Agents use whatever credentials are configured on the user's machine.
 4. **Local-first.** All data stays on the user's machine. No telemetry.
 5. **Localhost by default.** The daemon binds to `127.0.0.1` by default. Binding to `0.0.0.0` for LAN/Tailscale access requires explicit opt-in via config or CLI flag.
+6. **Agent tool permissions.** Claude Code tool executions are gated through the Permission System (Section 32). Users approve or deny tool use from the browser UI, with configurable auto-defer for safe read-only tools.
 
 ### Trust Flow
 
@@ -1570,7 +1919,7 @@ git pull → mt.yml modified
 
 ---
 
-## 32. Notification System
+## 34. Notification System
 
 ### Notification Triggers
 
@@ -1582,6 +1931,10 @@ git pull → mt.yml modified
 | Terminal bell character (`\x07`) | Browser notification (if `terminal_alerts` enabled) | "{name} needs attention" |
 | `mt.yml` changed | In-app dialog | Trust confirmation dialog |
 | Orphaned processes found | In-app dialog | Orphan recovery dialog |
+| Permission prompt pending | In-app overlay (PermissionBar) | Tool name, input, countdown timer |
+| Permission expired | In-app toast | "{session}: {tool} permission timed out" |
+| Option prompt detected | In-app overlay (OptionSelector) | Clickable numbered option buttons |
+| Session respawned | In-app toast | "{session} respawned automatically" |
 
 ### In-App Toasts
 
@@ -1593,7 +1946,7 @@ Uses the Browser Notification API for OS-level alerts. Requires user permission 
 
 ---
 
-## 33. Theme System
+## 35. Theme System
 
 ### Modes
 
@@ -1639,7 +1992,7 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 
 # Part VII: Roadmap & Future
 
-## 34. MVP Build Phases
+## 36. MVP Build Phases
 
 ### v0.1 — Foundation
 
@@ -1660,30 +2013,37 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 9. Rollback to pre-session git state
 10. File explorer panel
 
-### v0.4 — Intelligence
+### v0.4 — Claude Code Integration
 
-11. Token / cost tracking per session (Claude Code parser first)
-12. Session timeline (structured agent activity log)
-13. Session archive with full-text search
+11. Claude Code hook system (Section 31) — structured state tracking, session ID capture
+12. Permission system (Section 32) — approve/deny tool use from browser UI
+13. Option detection — clickable numbered option buttons
+14. Session resume — `claude --resume` for session continuity
+15. Session respawn on subscribe — auto-respawn dead PTYs
 
-### v0.5 — Polish
+### v0.5 — Intelligence
 
-14. Conflict detection (cross-session file overlap)
-15. CLI (`mt` commands)
-16. Notification system (browser notifications + in-app toasts)
-17. Trust model for mt.yml changes
+16. Token / cost tracking per session (hook-based for Claude, regex fallback for others)
+17. Session timeline (structured agent activity log)
+18. Session archive with full-text search
+19. Scratchpad per session (CodeMirror 6)
+
+### v0.6 — Polish
+
+20. Conflict detection (cross-session file overlap)
+21. CLI (`mt` commands)
+22. Notification system (browser notifications + in-app toasts)
+23. Trust model for mt.yml changes
 
 ---
 
-## 35. Future Features
+## 37. Future Features
 
 **Multi-User / Tailscale Access** — Multiple browsers connecting to the same daemon, with presence indicators and role-based access (operator vs spectator).
 
 **Session Templates** — Pre-loaded contexts: "debugging session", "feature session", "refactor session" — each with tailored instructions and constraints.
 
 **Plugin System** — Community-contributed custom panels (Jira integration, test runner view, monitoring dashboard).
-
-**Approval Queue** — All "may I do X?" prompts from agents across sessions collected in one place. Approve or deny in rapid fire.
 
 **Session Fork & Handoff** — Duplicate a session's context and branch in a different direction. Transfer context from one session to seed another.
 
@@ -1701,16 +2061,22 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 
 **Remote Projects** — SSH into a remote machine and manage processes there.
 
+**Mobile Support** — Responsive layout for iPad/phone access over Tailscale: bottom sheet sidebar, ComposeBar textarea for terminal input, touch toolbar for special keys (Ctrl+C, arrows, Tab, Esc), pinch-to-zoom for font scaling, touch-to-mouse translation for xterm selection, wide scrollbars for touch targets.
+
+**Conversation Browser** — Browse past Claude Code session transcripts. List `.jsonl` files from `~/.claude/projects/`, read/search their contents, view structured conversation history alongside the terminal.
+
 ---
 
-## 36. Open Questions
+## 38. Open Questions
 
 - **Default layout**: Sidebar + single main pane, or support grid/split views from the start?
-- **State management**: Zustand vs Jotai vs other lightweight store?
+- **State management**: ~~Zustand vs Jotai vs other lightweight store?~~ **Resolved: Zustand with sliced architecture** (projectSlice, processSlice, uiSlice, permissionSlice, optionSlice). WS-broadcast-first pattern for multi-client consistency.
 - **Monorepo tooling**: npm workspaces (current) vs Turborepo for build caching?
 - **Conflict detection strategy**: Git worktrees per session vs timestamp-based file attribution?
 - **Auth model**: For multi-user/Tailscale access — Tailscale identity, token-based, or open by default?
 - **Licensing model**: Fully open source (MIT) vs open core with paid team features?
+- **Hook installation UX**: Should the daemon auto-install Claude Code hooks silently, or show a confirmation dialog first? Current design: auto-install silently, hooks fail gracefully when daemon is offline.
+- **Permission auto-defer scope**: Per-project (via `mt.yml`) vs global config. Current design: per-project with global defaults.
 
 ---
 
