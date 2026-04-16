@@ -1118,7 +1118,7 @@ Note: These are browser-compatible shortcuts, not native app shortcuts. Conflict
    - Compare `mt.yml` hash against `trust.json`
    - If changed: notify frontend to show TrustDialog
 4. Open SQLite database (create if first run)
-5. **Initialize HookManager** — check `~/.claude/settings.json` for MultiTable hooks; install if missing (see Section 31)
+5. **Initialize HookManager** — for each project, check `{project_path}/.claude/settings.json` for MultiTable hooks; install if missing (see Section 31)
 6. **Initialize PermissionManager** — create pending request map and auto-defer tool list (see Section 32)
 7. **Register HookReceiver routes** — Express routes at `/api/hooks/:eventName` for Claude Code callbacks
 8. Set active project (last active, or first)
@@ -1660,14 +1660,14 @@ interface AgentAdapter {
 
 ### Hook System
 
-Claude Code supports hooks — HTTP callbacks fired at key lifecycle events. MultiTable registers these hooks in `~/.claude/settings.json` at daemon startup.
+Claude Code supports hooks — HTTP callbacks fired at key lifecycle events. MultiTable registers these hooks in the **project-level** `.claude/settings.json` (inside the project directory), not the user-level `~/.claude/settings.json`. This keeps hooks scoped to projects managed by MultiTable and avoids polluting the user's global Claude Code configuration.
 
 #### Hook Installation
 
-The `HookManager` checks `~/.claude/settings.json` on startup. If MultiTable's hooks are not present, it adds them:
+The `HookManager` checks `{project_path}/.claude/settings.json` on startup for each registered project. If MultiTable's hooks are not present, it adds them:
 
 ```jsonc
-// ~/.claude/settings.json (managed entries)
+// {project_path}/.claude/settings.json (managed entries)
 {
   "hooks": {
     "PreToolUse": [
@@ -1695,7 +1695,7 @@ The `HookManager` checks `~/.claude/settings.json` on startup. If MultiTable's h
 }
 ```
 
-The `HookManager` preserves any existing user hooks — it only adds MultiTable's entries, never removes others. On daemon shutdown, hooks are left in place (they fail silently when the daemon is not running).
+The `HookManager` preserves any existing project hooks — it only adds MultiTable's entries, never removes others. On daemon shutdown, hooks are left in place (they fail silently when the daemon is not running). The `.claude/settings.json` file should be added to `.gitignore` (or the hooks section should be in `.claude/settings.local.json` if Claude Code supports local-only project settings) to avoid committing daemon-specific URLs to version control.
 
 #### Hook Receiver
 
@@ -2075,7 +2075,8 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 - **Conflict detection strategy**: Git worktrees per session vs timestamp-based file attribution?
 - **Auth model**: For multi-user/Tailscale access — Tailscale identity, token-based, or open by default?
 - **Licensing model**: Fully open source (MIT) vs open core with paid team features?
-- **Hook installation UX**: Should the daemon auto-install Claude Code hooks silently, or show a confirmation dialog first? Current design: auto-install silently, hooks fail gracefully when daemon is offline.
+- **Hook installation UX**: Should the daemon auto-install Claude Code hooks silently, or show a confirmation dialog first? Current design: auto-install silently into project-level `.claude/settings.json`, hooks fail gracefully when daemon is offline.
+- **Hook file gitignore**: Should `.claude/settings.json` be gitignored entirely, or should MultiTable use `.claude/settings.local.json` (if Claude Code supports it) to keep hooks out of version control while preserving other project settings?
 - **Permission auto-defer scope**: Per-project (via `mt.yml`) vs global config. Current design: per-project with global defaults.
 
 ---
