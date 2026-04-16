@@ -1,0 +1,16 @@
+{
+  "name": "multitable",
+  "version": "0.0.1",
+  "description": "A terminal multiplexer for the agentic coding age",
+  "keywords": ["terminal", "multiplexer", "agent", "claude", "coding", "cli"],
+  "homepage": "https://multitable.dev",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/multitable-dev/multitable.git"
+  },
+  "license": "MIT",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}
