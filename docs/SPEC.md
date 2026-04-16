@@ -93,9 +93,8 @@ Define all your processes in a single YAML file. Start the daemon, and everythin
 
 - **Access from anywhere** — browser-based UI reachable from any device on your network or via Tailscale
 - **Claude Code first** — optimized for Claude Code workflows, with agent-agnostic architecture for other tools
-- **Team-shareable config** — `mt.yml` commits to version control
+- **Config-file driven** — define your entire project setup in `mt.yml`, load it instantly, tweak it in any editor
 - **All TypeScript** — single language, single ecosystem, low contributor barrier
-- **Multi-user for free** — multiple browsers can connect to the same daemon simultaneously
 - **Process supervisor, not a platform** — deliberately narrow scope
 
 ---
@@ -109,7 +108,7 @@ Define all your processes in a single YAML file. Start the daemon, and everythin
 | **Access-anywhere** | Browser-based UI accessible from localhost, LAN, or Tailscale. Not locked to a single screen. |
 | **All-TypeScript** | One language for daemon, frontend, and CLI. Any JS/TS developer can contribute immediately. |
 | **Session-aware** | Every interaction is tracked and searchable. Cost, diffs, timelines — all per-session. |
-| **Config-as-code** | Project configuration lives in `mt.yml`, committed to the repo and shared with the team. |
+| **Config-as-code** | Project configuration lives in `mt.yml` — a single file that defines your entire project setup. Edit it directly or configure via the UI. |
 
 ---
 
@@ -134,15 +133,6 @@ A non-agent process: dev servers, queue workers, build watchers, log tailers, da
 ### Dashboard
 
 The overview of all registered projects and their active sessions. Shows project cards with status indicators, session counts, and aggregate cost data. Provides global search across all session histories.
-
-### Storage Modes
-
-Each process (session, command, or terminal) is stored in one of two places:
-
-- **`mt.yml`** — committed to the repo, shared with the team
-- **Local only** — stored in the daemon's local data directory, personal to this machine
-
-A process can be moved between these modes at any time.
 
 ---
 
@@ -169,8 +159,7 @@ App
     │   ├── memory_bytes: number
     │   ├── tokens_in: number
     │   ├── tokens_out: number
-    │   ├── cost_usd: number
-    │   └── storage: "yml" | "local"
+    │   └── cost_usd: number
     │
     ├── Terminals[]
     │   ├── name: string (e.g., "Terminal 1")
@@ -193,8 +182,7 @@ App
         ├── port: number | null (auto-detected from output)
         ├── cpu_percent: float
         ├── memory_bytes: number
-        ├── uptime_seconds: number
-        └── storage: "yml" | "local"
+        └── uptime_seconds: number
 ```
 
 ---
@@ -244,7 +232,6 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 ### Why Web + Daemon (Not a Desktop App)
 
 - **Access from any device.** Open your dashboard from your iPad over Tailscale, your phone, a second laptop. A native app only works on the machine it's installed on.
-- **Multi-user for free.** Multiple people can connect to the same daemon. Pair programming on agents — you watch session 1, your teammate watches session 3, same machine.
 - **Zero install friction for the UI.** The daemon serves the frontend. No app store, no download, no updates to the client.
 - **Simpler stack.** One language (TypeScript), one ecosystem (npm), one contributor pool.
 - **Tailscale-native.** Join your tailnet, and your dev machine's MultiTable is reachable at `your-machine.tail1234.ts.net:3000` from anywhere in the world.
@@ -355,7 +342,6 @@ multitable/
 │   │       │   ├── modals/
 │   │       │   │   ├── AddProcessModal.tsx
 │   │       │   │   ├── AddAgentModal.tsx
-│   │       │   │   ├── TrustDialog.tsx
 │   │       │   │   └── OrphanDialog.tsx
 │   │       │   └── command-palette/
 │   │       │       └── CommandPalette.tsx
@@ -412,22 +398,15 @@ The daemon stores all persistent state in a SQLite database at `~/.config/multit
 ~/.config/multitable/                # App configuration root
 ├── config.yml                       # Global app settings
 ├── multitable.db                    # SQLite database
-├── pids.json                        # PID tracking for orphan recovery
-└── projects/
-    ├── {project_hash_1}/
-    │   ├── local.yml                # Local-only processes
-    │   └── trust.json               # Last approved mt.yml hash
-    └── {project_hash_2}/
-        ├── local.yml
-        └── trust.json
+└── pids.json                        # PID tracking for orphan recovery
 ```
 
 ### `mt.yml` Project Config
 
-The project-level configuration file committed to version control:
+The project-level configuration file. Defines your entire project setup — sessions, commands, and their options. Edit directly in any text editor or configure via the UI. Can optionally be committed to version control for portability:
 
 ```yaml
-# mt.yml — committed to the repository
+# mt.yml — project configuration
 name: "my-project"
 
 sessions:
@@ -603,7 +582,7 @@ A 10px circle indicating process state.
 
 ### Badge / Tag
 
-Pill-shaped label with 1px border, 11px uppercase text, `--text-secondary` color. Used for "AUTO", "YML", "LOCAL" indicators on processes.
+Pill-shaped label with 1px border, 11px uppercase text, `--text-secondary` color. Used for "AUTO" indicators on processes.
 
 ### Toggle Switch
 
@@ -816,7 +795,7 @@ Displayed when clicking the project name/header itself (not a specific item).
 │──────────────────────────────────────────────────│
 │                                                  │
 │  ┌──────────────────────────────────────────┐    │
-│  │  v [icon] npm:dev  [AUTO] [YML]          │    │
+│  │  v [icon] npm:dev  [AUTO]                 │    │
 │  │    npm run dev                           │    │
 │  │                                          │    │
 │  │  Name:           npm:dev                 │    │
@@ -825,7 +804,6 @@ Displayed when clicking the project name/header itself (not a specific item).
 │  │  Auto-restart:   [toggle off]            │    │
 │  │  Terminal alerts: [toggle on]            │    │
 │  │  File watching:  src/**/*.ts  [x]        │    │
-│  │  Storage:        mt.yml [Make local]     │    │
 │  └──────────────────────────────────────────┘    │
 │                                                  │
 │  (repeat for each process)                       │
@@ -836,7 +814,7 @@ Displayed when clicking the project name/header itself (not a specific item).
 
 - Header: project name + edit icon + vertical divider + green dot + "4/5 Running" badge
 - Each process is an expandable card:
-  - Collapsed: icon, name, badges (AUTO/YML), command text, status
+  - Collapsed: icon, name, badges (AUTO), command text, status
   - Expanded: full settings form with toggle switches
 
 ### Settings Fields
@@ -849,7 +827,6 @@ Displayed when clicking the project name/header itself (not a specific item).
 | Auto-restart | Toggle switch | "Restart if process exits" |
 | Terminal alerts | Toggle switch | "Notify on bell character" |
 | File watching | Text input + "Add" button | Glob patterns as removable chips |
-| Storage | Label + action link | "mt.yml" or "local". Link: "Make local" / "Save to mt.yml" |
 
 ---
 
@@ -892,7 +869,7 @@ Not just terminal output — the agent's activity trail parsed from output.
 
 ### Scratchpad
 
-A per-session notepad for jotting down constraints, TODOs, context, and notes while working with an agent.
+A quick-capture notepad for jotting down ideas, future prompts, and next steps while an agent is busy working. The key use case: while vibe-coding and waiting for an agent to finish, you can quickly dump your next set of ideas so you don't lose them.
 
 - **Editor**: CodeMirror 6 with markdown syntax highlighting
 - **Persistence**: Content saved to SQLite (`scratchpad` column on sessions table) with 500ms debounce
@@ -949,9 +926,7 @@ Triggered by "Add command...", "Add terminal", or via command palette.
 | Working directory | Text input | Pre-filled with project root. Placeholder: "Leave empty for project root" |
 | Auto-start when project starts | Checkbox | Default: checked |
 | Auto-restart if process exits | Checkbox | Default: unchecked |
-| Where to save | Radio group | |
-| → Save to mt.yml | Radio (default) | "Share with your team via version control" |
-| → Store locally only | Radio | "Keep this just for yourself on this machine" |
+| Save to mt.yml | Checkbox | Default: checked. "Persist in project config file" |
 
 **Footer:** "Cancel" (text-only button) + "Add process" (filled blue button)
 
@@ -959,16 +934,7 @@ Triggered by "Add command...", "Add terminal", or via command palette.
 
 Variant of Add Process modal. Shows a selector for known agent types (Claude Code, Codex, Gemini CLI, Amp, Aider, Goose) that pre-fills the command, plus a "Custom" option. Claude Code is listed first and highlighted as recommended.
 
-### 20.3 Confirm Trust Dialog
-
-Triggered when `mt.yml` changes since last approved hash (e.g., after `git pull`).
-
-- Warning icon + "mt.yml has changed"
-- Diff view showing added/modified commands
-- "The following commands were added or modified:" + list
-- Buttons: "Cancel" / "Accept and Run"
-
-### 20.4 Orphaned Processes Dialog
+### 20.3 Orphaned Processes Dialog
 
 Triggered on daemon startup when PIDs from a previous run are still alive.
 
@@ -1114,9 +1080,7 @@ Note: These are browser-compatible shortcuts, not native app shortcuts. Conflict
 1. Read `~/.config/multitable/config.yml` — load project list, theme, port
 2. Check `pids.json` for orphaned processes
    - If found: hold startup, notify frontend to show OrphanDialog
-3. For each project: read `mt.yml` + `local.yml`
-   - Compare `mt.yml` hash against `trust.json`
-   - If changed: notify frontend to show TrustDialog
+3. For each project: read `mt.yml`
 4. Open SQLite database (create if first run)
 5. **Initialize HookManager** — for each project, check `{project_path}/.claude/settings.json` for MultiTable hooks; install if missing (see Section 31)
 6. **Initialize PermissionManager** — create pending request map and auto-defer tool list (see Section 32)
@@ -1183,7 +1147,6 @@ interface ProcessConfig {
     autorespawn: boolean;          // respawn PTY on subscribe if dead (default true for sessions, false for commands)
     terminalAlerts: boolean;
     fileWatchPatterns: string[];
-    storage: "yml" | "local";
 }
 
 interface ProcessMetrics {
@@ -1304,13 +1267,6 @@ On shutdown, all child processes receive SIGTERM, then SIGKILL after a 5-second 
 |---|---|---|
 | `GET` | `/api/search?q={query}` | Full-text search across session histories |
 
-### Trust
-
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/projects/:id/trust/approve` | Approve mt.yml changes |
-| `POST` | `/api/projects/:id/trust/reject` | Reject mt.yml changes |
-
 ### Claude Code Hooks
 
 | Method | Path | Description |
@@ -1387,7 +1343,6 @@ interface WsClientState {
 | `session:deleted` | `{ sessionId: string }` | Session removed |
 | `agent-subtitle` | `{ processId: string, subtitle: string }` | Live activity text for sessions |
 | `notification` | `{ type: "crash" \| "restart" \| "bell" \| "info", processId: string, message: string }` | Notification event |
-| `trust-changed` | `{ projectId: string, changes: ConfigDiff }` | mt.yml changed on disk |
 | `permission:prompt` | `{ prompt: PermissionPrompt }` | Tool permission request from Claude (Section 32) |
 | `permission:resolved` | `{ id: string }` | Permission request resolved |
 | `permission:expired` | `{ id: string }` | Permission request timed out |
@@ -1411,16 +1366,13 @@ The server stores scrollback in a 512KB ring buffer per process, flushed to SQLi
 - If data > 16KB: split into 16KB chunks, write each with `setTimeout(0)` yield between chunks
 - Call `terminal.scrollToBottom()` after each chunk
 
-### WS-Broadcast-First State Updates
+### State Update Flow
 
-Create, delete, and update operations follow the **broadcast-first** pattern for multi-client consistency:
+Create, delete, and update operations follow a simple pattern:
 1. Client sends REST request (e.g., `POST /api/sessions`)
 2. Server performs the operation
-3. Server broadcasts the result via WebSocket (e.g., `session:created`)
-4. **All** connected clients (including the originator) update their local state from the broadcast
-5. Clients do **not** optimistically update state from REST responses — they wait for the WS broadcast
-
-This ensures all connected browsers see the same state, which is critical since MultiTable supports multiple browsers connecting to the same daemon.
+3. Server sends a WebSocket event (e.g., `session:created`) to confirm
+4. Client updates local state from the WebSocket event
 
 ---
 
@@ -1518,16 +1470,6 @@ commands:
     command: "php artisan schedule:work"
     autostart: true
 ```
-
-### Local Configuration
-
-Processes stored locally are saved per-project:
-
-```
-~/.config/multitable/projects/{project_hash}/local.yml
-```
-
-Same format as `mt.yml` but never committed to version control.
 
 ### App-Level Configuration
 
@@ -1887,35 +1829,14 @@ The `PermissionBar` component shows stacked permission cards above the status ba
 
 ### Principles
 
-1. **Never auto-run untrusted commands.** MultiTable only runs commands the user explicitly added or previously approved.
-2. **Detect config changes.** If `mt.yml` changes (e.g., after `git pull`), MultiTable shows a diff and asks for confirmation before running new or modified commands.
-3. **No API key access.** MultiTable never reads, stores, or transmits agent API keys. Agents use whatever credentials are configured on the user's machine.
-4. **Local-first.** All data stays on the user's machine. No telemetry.
-5. **Localhost by default.** The daemon binds to `127.0.0.1` by default. Binding to `0.0.0.0` for LAN/Tailscale access requires explicit opt-in via config or CLI flag.
-6. **Agent tool permissions.** Claude Code tool executions are gated through the Permission System (Section 32). Users approve or deny tool use from the browser UI, with configurable auto-defer for safe read-only tools.
+1. **No API key access.** MultiTable never reads, stores, or transmits agent API keys. Agents use whatever credentials are configured on the user's machine.
+2. **Local-first.** All data stays on the user's machine. No telemetry.
+3. **Localhost by default.** The daemon binds to `127.0.0.1` by default. Binding to `0.0.0.0` for LAN/Tailscale access requires explicit opt-in via config or CLI flag.
+4. **Agent tool permissions.** Claude Code tool executions are gated through the Permission System (Section 32). Users approve or deny tool use from the browser UI, with configurable auto-defer for safe read-only tools.
 
-### Trust Flow
+### Config Reloading
 
-```
-git pull → mt.yml modified
-    → daemon detects file change (chokidar watching mt.yml)
-    → computes diff against last known good version
-    → emits trust-changed WebSocket event
-    → frontend shows Trust Dialog with changes
-    → user approves or rejects
-    → if approved: new config loaded, SHA-256 hash updated in trust.json
-    → if rejected: old config persists
-```
-
-### Hash Tracking
-
-```json
-// ~/.config/multitable/projects/{hash}/trust.json
-{
-  "last_approved_hash": "a1b2c3d4...",
-  "approved_at": "2026-04-15T10:30:00Z"
-}
-```
+When `mt.yml` is modified on disk (detected via chokidar), the daemon reloads the configuration and applies changes (starting new processes, updating settings) automatically.
 
 ---
 
@@ -1929,7 +1850,6 @@ git pull → mt.yml modified
 | Process auto-restarted | In-app toast | "{name} restarted automatically" |
 | Auto-restart limit reached | Browser notification | "{name} crashed {n} times, stopped trying" |
 | Terminal bell character (`\x07`) | Browser notification (if `terminal_alerts` enabled) | "{name} needs attention" |
-| `mt.yml` changed | In-app dialog | Trust confirmation dialog |
 | Orphaned processes found | In-app dialog | Orphan recovery dialog |
 | Permission prompt pending | In-app overlay (PermissionBar) | Tool name, input, countdown timer |
 | Permission expired | In-app toast | "{session}: {tool} permission timed out" |
@@ -2033,13 +1953,10 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 20. Conflict detection (cross-session file overlap)
 21. CLI (`mt` commands)
 22. Notification system (browser notifications + in-app toasts)
-23. Trust model for mt.yml changes
 
 ---
 
 ## 37. Future Features
-
-**Multi-User / Tailscale Access** — Multiple browsers connecting to the same daemon, with presence indicators and role-based access (operator vs spectator).
 
 **Session Templates** — Pre-loaded contexts: "debugging session", "feature session", "refactor session" — each with tailored instructions and constraints.
 
@@ -2050,8 +1967,6 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 **Agent Memory** — Persistent project notes that carry forward across sessions: "this project uses pnpm", "don't touch the legacy auth module." Auto-injected into new sessions.
 
 **Dependency Graph Overlay** — Visualize how the code Session A is building connects to what Session B is modifying.
-
-**Merge Queue** — When concurrent sessions finish, determine the cleanest order to land their changes.
 
 **MCP Server** — Expose process state to AI agents via Model Context Protocol. Agents can list processes, read logs, restart services, and see project info.
 
@@ -2070,11 +1985,8 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 ## 38. Open Questions
 
 - **Default layout**: Sidebar + single main pane, or support grid/split views from the start?
-- **State management**: ~~Zustand vs Jotai vs other lightweight store?~~ **Resolved: Zustand with sliced architecture** (projectSlice, processSlice, uiSlice, permissionSlice, optionSlice). WS-broadcast-first pattern for multi-client consistency.
+- **State management**: ~~Zustand vs Jotai vs other lightweight store?~~ **Resolved: Zustand with sliced architecture** (projectSlice, processSlice, uiSlice, permissionSlice, optionSlice).
 - **Monorepo tooling**: npm workspaces (current) vs Turborepo for build caching?
-- **Conflict detection strategy**: Git worktrees per session vs timestamp-based file attribution?
-- **Auth model**: For multi-user/Tailscale access — Tailscale identity, token-based, or open by default?
-- **Licensing model**: Fully open source (MIT) vs open core with paid team features?
 - **Hook installation UX**: Should the daemon auto-install Claude Code hooks silently, or show a confirmation dialog first? Current design: auto-install silently into project-level `.claude/settings.json`, hooks fail gracefully when daemon is offline.
 - **Hook file gitignore**: Should `.claude/settings.json` be gitignored entirely, or should MultiTable use `.claude/settings.local.json` (if Claude Code supports it) to keep hooks out of version control while preserving other project settings?
 - **Permission auto-defer scope**: Per-project (via `mt.yml`) vs global config. Current design: per-project with global defaults.
@@ -2106,9 +2018,7 @@ Note: The "MultiTable" name is retained as a brand. User-facing terminology uses
 2. Read ~/.config/multitable/config.yml → load projects, theme, port
 3. Check pids.json for orphaned processes
    → If found: notify frontend to show OrphanDialog
-4. For each project: read mt.yml + local.yml
-   → Compare mt.yml hash against trust.json
-   → If changed: notify frontend to show TrustDialog
+4. For each project: read mt.yml
 5. Open SQLite database
 6. Set active project (last active, or first)
 7. For active project: start all autostart processes
