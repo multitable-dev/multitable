@@ -45,7 +45,7 @@
 28. [Configuration System](#28-configuration-system)
 29. [Cost & Token Tracking](#29-cost--token-tracking)
 30. [Conflict Detection Engine](#30-conflict-detection-engine)
-31. [Claude Code Integration](#31-claude-code-integration)
+31. [Claude Code Integration](#31-claude-code-integration) · [Session Label Auto-Summary](#session-label-auto-summary)
 32. [Agent Permission System](#32-agent-permission-system)
 
 ### Part VI: Security, Notifications & Theme
@@ -1671,6 +1671,9 @@ The `HookManager` checks `{project_path}/.claude/settings.json` on startup for e
     ],
     "SubagentStop": [
       { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/subagent-stop -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
+    ],
+    "UserPromptSubmit": [
+      { "type": "command", "command": "curl -s -X POST http://localhost:{port}/api/hooks/user-prompt-submit -H 'Content-Type: application/json' -d \"$HOOK_DATA\"" }
     ]
   }
 }
@@ -1691,6 +1694,7 @@ Express routes at `/api/hooks/:eventName` receive callbacks from Claude Code. Ea
 | `SessionEnd` | `{ session_id }` | Clear `currentTool`, set status `idle`. |
 | `SubagentStart` | `{ session_id, subagent_id }` | Track active subagent count. Set status `active`. |
 | `SubagentStop` | `{ session_id, subagent_id }` | Decrement subagent count. |
+| `UserPromptSubmit` | `{ session_id, prompt }` | Append prompt to `userMessages`. If this is the first message, trigger auto-summary (see Session Label Auto-Summary). |
 
 ### Enriched Session State
 
@@ -1704,6 +1708,8 @@ interface ClaudeSessionState {
     tokenCount: number;              // total tokens consumed
     lastActivity: number;            // Unix timestamp of latest hook event
     activeSubagents: number;         // count of running subagents
+    userMessages: string[];          // user prompt texts captured via UserPromptSubmit hook
+    label: string | null;            // AI-generated one-sentence session label
 }
 ```
 
@@ -1735,6 +1741,43 @@ When a client subscribes to a session whose PTY has exited:
    - If `claude_session_id` is set: write `claude --resume {id}\r` to auto-resume
    - Emit `process-state-changed` with new status
 3. If `autorespawn: false`: send scrollback only (for reviewing completed sessions)
+
+### Session Label Auto-Summary
+
+Each Claude Code session displays a one-sentence label in the sidebar, generated from the user's own messages — not from terminal output or agent responses. This keeps the label semantically clean and reflects the user's intent rather than the agent's activity.
+
+#### Data Source
+
+Only `userMessages` (captured via the `UserPromptSubmit` hook) are sent to the summarizer. Agent output, tool results, and terminal scrollback are never included.
+
+#### Trigger Rules
+
+| Event | Behavior |
+|---|---|
+| **First `UserPromptSubmit`** | Auto-trigger summarization. The first message alone usually defines the session's purpose. |
+| **Subsequent `UserPromptSubmit`** | Append to `userMessages`. No auto-trigger. |
+| **User clicks "Re-summarize" button** | Trigger summarization using all accumulated `userMessages`. |
+
+#### Summarization
+
+The daemon spawns `claude --model claude-haiku-4-5 --print` with the following prompt:
+
+```
+Summarize what this user is working on in one sentence (max 12 words):
+
+{userMessages.join('\n---\n')}
+```
+
+The result is stored in `ClaudeSessionState.label` (in-memory) and broadcast via a `session:label-updated` WebSocket message to all subscribed clients.
+
+#### UI
+
+- The label appears below the session name in the sidebar and in the session header.
+- While summarization is in-flight, the label shows a subtle loading indicator.
+- The **"Re-summarize" button** (icon button, visible in the session header) is available at all times once `userMessages.length > 0`, regardless of session status.
+- If summarization fails or times out (10s), the label retains its previous value (or stays empty if no label has been set yet). No error is surfaced to the user.
+
+---
 
 ### Option Detection
 
