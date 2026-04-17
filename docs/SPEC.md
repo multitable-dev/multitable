@@ -252,7 +252,6 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 | Frontend | React + TypeScript | UI framework |
 | Build | Vite | Frontend bundling and dev server |
 | Terminal UI | xterm.js | Terminal emulation in the browser |
-| Terminal UI | xterm-addon-webgl | GPU-accelerated rendering (smooth scrolling) |
 | Terminal UI | xterm-addon-fit | Resize terminal to container + SIGWINCH signaling |
 | Terminal UI | xterm-addon-web-links | Clickable URLs in terminal output |
 | Terminal UI | xterm-addon-search | In-terminal search (⌘F / Ctrl+F) |
@@ -261,7 +260,6 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 | State | Zustand | Lightweight state management (sliced architecture) |
 | Command Palette | cmdk | Fuzzy search command palette |
 | Icons | lucide-react | Icon set |
-| Scratchpad | CodeMirror 6 | Per-session notepad with markdown support |
 | Notifications | react-hot-toast | In-app toast notifications |
 | Backend | Node.js + TypeScript | Daemon runtime |
 | HTTP | Express | REST API server |
@@ -270,7 +268,8 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 | Database | better-sqlite3 | Session state, history, cost tracking |
 | File Watching | chokidar | File system change detection |
 | Git | simple-git | Git operations (diff, status, log) |
-| CLI | commander | CLI argument parsing |
+
+> **Deferred from initial build:** `xterm-addon-webgl` (GPU rendering — adds complexity, has Safari/mobile issues; start with canvas renderer and add WebGL later). `CodeMirror 6` (scratchpad — start with a plain `<textarea>`; upgrade to CodeMirror when markdown preview is prioritized). `commander` CLI package (deferred until after web UI is stable).
 
 **The entire stack is TypeScript.** No Rust, no Go, no second language. Any JavaScript/TypeScript developer can contribute immediately.
 
@@ -504,8 +503,36 @@ projects:
 - **Main Pane**: Fills remaining width, displays terminal or content views
 - **Status Bar**: Fixed ~36px at the bottom, always visible
 - **Minimum viewport**: 800px wide, 500px tall (desktop)
-- **Mobile layout**: Sidebar collapses to a bottom sheet or slide-in drawer on narrow viewports. Terminal fills the full screen. Touch-friendly tap targets (44px minimum). See Section 37 for full mobile spec.
 - **Browser tab title**: Updates to reflect `"MultiTable - {project} - {selected item}"`
+
+### Mobile Layout (`< 768px`)
+
+Target quality: Azure Cloud Shell on mobile. The terminal is the primary surface; the sidebar becomes a drawer; special keys are surfaced via a persistent touch toolbar.
+
+```
+┌────────────────────────────────┐
+│  [☰]  my-project    [⚡ 4/5]   │  ← 48px top bar / status bar
+│  ● npm:dev  CPU 0.1%  :5174   │
+├────────────────────────────────┤
+│                                │
+│                                │
+│   xterm.js (full screen)       │
+│                                │
+│                                │
+├────────────────────────────────┤
+│  [⌃C][Tab][Esc][↑][↓][←][→]  │  ← 48px touch toolbar
+│  [Copy][Paste][⌃Z][PgUp][PgDn]│
+└────────────────────────────────┘
+```
+
+- **Top bar**: Combines the hamburger, project name, running count badge, and the condensed status bar — all in one 48px strip at the top. No bottom status bar on mobile.
+- **Hamburger (☰)**: Opens a full-screen slide-in drawer from the left with the full sidebar tree (Sessions, Terminals, Commands). Tap any item → drawer closes → terminal switches.
+- **Status badge (⚡ 4/5)**: Running process count. Tap to open Project Overview.
+- **Status info (top bar, right of badge)**: Shows selected process name, status dot, and key metric (port or CPU). Action buttons (Focus, Stop, Restart) hidden behind a "..." overflow menu in the top bar.
+- **Touch toolbar**: Persistent bar at the bottom of the screen — special keys unavailable on mobile keyboards: Ctrl+C, Tab, Esc, ↑, ↓, ←, →, Copy, Paste, Ctrl+Z, Page Up, Page Down. Each button sends the corresponding PTY input directly.
+- **Touch targets**: 44px minimum for all interactive elements.
+
+**What is NOT in the initial mobile build:** pinch-to-zoom font scaling, touch selection in xterm (fights xterm.js internals), bottom sheet sidebar, swipe gestures between sessions.
 
 ---
 
@@ -866,15 +893,10 @@ Per-session side panels accessible from the session view. These are toggled via 
 
 ### Session Timeline
 
-Structured log of agent actions with timestamps:
+> **Deferred** — requires parsing agent output into structured events. Not in initial build. The raw terminal output is sufficient for v0.1.
 
-- Files read
-- Files written / modified
-- Tools called
-- Commands executed
-- Backtracking points
-
-Not just terminal output — the agent's activity trail parsed from output.
+Structured log of agent actions with timestamps (planned for a later version):
+- Files read, files written / modified, tools called, commands executed, backtracking points
 
 ### Cost Summary
 
@@ -887,11 +909,10 @@ Not just terminal output — the agent's activity trail parsed from output.
 
 A quick-capture notepad for jotting down ideas, future prompts, and next steps while an agent is busy working. The key use case: while vibe-coding and waiting for an agent to finish, you can quickly dump your next set of ideas so you don't lose them.
 
-- **Editor**: CodeMirror 6 with markdown syntax highlighting
+- **Editor**: Plain `<textarea>` in initial build. Upgrade to CodeMirror 6 with markdown highlighting in a later version.
 - **Persistence**: Content saved to SQLite (`scratchpad` column on sessions table) with 500ms debounce
 - **Layout**: Appears as a tab alongside File Explorer, Diff Viewer, Timeline, and Cost Summary
 - **Default content**: Empty (no template)
-- **Markdown preview**: Toggle button switches between edit mode and rendered markdown preview
 
 ---
 
@@ -1932,45 +1953,50 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 
 ## 36. MVP Build Phases
 
-### v0.1 — Foundation
+### v0.1 — Full Foundation
 
 1. Daemon boots and serves the React app
-2. Single embedded terminal using xterm.js + node-pty + WebSocket
-3. Create / switch between projects
-4. Multiple terminals per project
+2. Multiple terminals, sessions, and commands per project via node-pty + WebSocket
+3. Full sidebar: project header, Sessions / Terminals / Commands sections, other projects collapsed
+4. Dashboard view — grid overview of all registered projects
+5. Project Overview — settings cards for all processes (autostart/autorestart toggles)
+6. Status bar with process metrics (CPU, memory, port)
+7. Command Palette (Ctrl+K)
+8. Context menus (right-click sidebar items)
+9. SQLite persistence — process config and session state survive daemon restart
+10. Mobile layout: slide-in drawer sidebar, touch toolbar for special keys (Ctrl+C, Tab, Esc, arrows, Copy, Paste)
 
-### v0.2 — Persistence & Dashboard
-
-5. Session/process persistence (survive daemon restart via SQLite)
-6. Dashboard view — grid overview of all projects
-7. Status indicators (idle, running, errored, completed)
-
-### v0.3 — Git Integration
-
-8. Diff viewer per session (via simple-git)
-9. Rollback to pre-session git state
-10. File explorer panel
-
-### v0.4 — Claude Code Integration
+### v0.2 — Claude Code Integration
 
 11. Claude Code hook system (Section 31) — structured state tracking, session ID capture
 12. Permission system (Section 32) — approve/deny tool use from browser UI
-13. Option detection — clickable numbered option buttons
-14. Session resume — `claude --resume` for session continuity
-15. Session respawn on subscribe — auto-respawn dead PTYs
+13. Session resume — `claude --resume` for session continuity
+14. Session respawn on subscribe — auto-respawn dead PTYs
+15. Token / cost tracking per session (hook-based)
 
-### v0.5 — Intelligence
+### v0.3 — Git & Session Detail
 
-16. Token / cost tracking per session (hook-based for Claude, regex fallback for others)
-17. Session timeline (structured agent activity log)
-18. Session archive with full-text search
-19. Scratchpad per session (CodeMirror 6)
+16. Diff viewer per session (via simple-git)
+17. File explorer panel
+18. Scratchpad per session (plain textarea; CodeMirror upgrade later)
+19. Session archive with full-text search
+20. In-app toast notification system
 
-### v0.6 — Polish
+### v0.4 — Advanced Features
 
-20. Conflict detection (cross-session file overlap)
-21. CLI (`mt` commands)
-22. Notification system (browser notifications + in-app toasts)
+21. Option detection — clickable numbered option buttons (JSONL parsing)
+22. Session timeline (structured agent activity log)
+23. CLI (`mt` commands)
+24. Browser notifications (OS-level, requires user permission grant)
+
+### Explicitly deferred (post-v0.4)
+
+- Conflict detection engine (cross-session file overlap) — heuristic, high complexity
+- Framework auto-detection on project add
+- Regex cost parsing for non-Claude agents
+- xterm-addon-webgl GPU rendering
+- CodeMirror 6 scratchpad upgrade
+- Advanced mobile: pinch-to-zoom, swipe gestures, touch xterm selection
 
 ---
 
@@ -1994,7 +2020,7 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 
 **Remote Projects** — SSH into a remote machine and manage processes there.
 
-**Mobile Support** — Responsive layout for iPad/phone access over Tailscale: bottom sheet sidebar, ComposeBar textarea for terminal input, touch toolbar for special keys (Ctrl+C, arrows, Tab, Esc), pinch-to-zoom for font scaling, touch-to-mouse translation for xterm selection, wide scrollbars for touch targets.
+**Advanced Mobile** — Enhancements beyond the initial mobile build: pinch-to-zoom for font scaling, touch-to-mouse translation for xterm selection (touch selection currently fights xterm.js internals), swipe gestures between sessions, bottom sheet sidebar variant, wide scrollbars for touch targets.
 
 **Conversation Browser** — Browse past Claude Code session transcripts. List `.jsonl` files from `~/.claude/projects/`, read/search their contents, view structured conversation history alongside the terminal.
 
@@ -2002,12 +2028,19 @@ TailwindCSS dark mode uses the `class` strategy, toggled by the `data-theme` att
 
 ## 38. Open Questions
 
-- **Default layout**: Sidebar + single main pane, or support grid/split views from the start?
-- **State management**: ~~Zustand vs Jotai vs other lightweight store?~~ **Resolved: Zustand with sliced architecture** (projectSlice, processSlice, uiSlice, permissionSlice, optionSlice).
-- **Monorepo tooling**: npm workspaces (current) vs Turborepo for build caching?
-- **Hook installation UX**: Should the daemon auto-install Claude Code hooks silently, or show a confirmation dialog first? Current design: auto-install silently into project-level `.claude/settings.json`, hooks fail gracefully when daemon is offline.
-- **Hook file gitignore**: Should `.claude/settings.json` be gitignored entirely, or should MultiTable use `.claude/settings.local.json` (if Claude Code supports it) to keep hooks out of version control while preserving other project settings?
-- **Permission auto-defer scope**: Per-project (via `mt.yml`) vs global config. Current design: per-project with global defaults.
+All major open questions have been resolved:
+
+| Question | Resolution |
+|---|---|
+| Default layout | ~~Grid/split?~~ **Resolved: Sidebar + single main pane.** Split-pane is a future feature. |
+| State management | ~~Zustand vs Jotai?~~ **Resolved: Zustand** with sliced architecture (projectSlice, processSlice, uiSlice, permissionSlice, optionSlice). |
+| Monorepo tooling | ~~npm workspaces vs Turborepo?~~ **Resolved: npm workspaces** to start. Add Turborepo when build times become a problem. |
+| Mobile scope | ~~Core or post-MVP?~~ **Resolved: In v0.1** — slide-in drawer sidebar + touch toolbar (Ctrl+C, Tab, Esc, arrows, Copy, Paste). Advanced mobile (pinch-zoom, swipe, touch xterm selection) is deferred. |
+| Dashboard | ~~Skip for single-project?~~ **Resolved: Include in v0.1.** |
+| CLI package | ~~Include from start?~~ **Resolved: Defer.** Run daemon directly; add `mt` CLI in v0.4. |
+| Hook installation UX | **Resolved: Auto-install silently** into project-level `.claude/settings.json`. Hooks fail gracefully when daemon is offline. No confirmation dialog. |
+| Hook file gitignore | **Resolved: Add `.claude/settings.json` to `.gitignore`** at the project level. Claude Code does not currently support `settings.local.json`, so this is the only viable approach. |
+| Permission auto-defer scope | **Resolved: Per-project** (via `mt.yml`) with global defaults in `~/.config/multitable/config.yml`. |
 
 ---
 
