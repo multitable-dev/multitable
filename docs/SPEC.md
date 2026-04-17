@@ -91,7 +91,8 @@ Define all your processes in a single YAML file. Start the daemon, and everythin
 
 ### Key Differentiators
 
-- **Access from anywhere** — browser-based UI reachable from any device on your network or via Tailscale
+- **Access from anywhere** — browser-based UI reachable from any device on your network or via Tailscale, including phones
+- **Mobile-compatible** — responsive layout designed for phone and tablet access; primary use case is running the daemon on a server and connecting over Tailscale from a phone
 - **Claude Code first** — optimized for Claude Code workflows, with agent-agnostic architecture for other tools
 - **Config-file driven** — define your entire project setup in `mt.yml`, load it instantly, tweak it in any editor
 - **All TypeScript** — single language, single ecosystem, low contributor barrier
@@ -105,7 +106,7 @@ Define all your processes in a single YAML file. Start the daemon, and everythin
 |---|---|
 | **Agent-agnostic** | Runs any CLI tool — Claude Code, Codex, Gemini CLI, or a custom script. No vendor lock-in. |
 | **Local-first** | All data stays on the user's machine. No telemetry. No cloud dependency. |
-| **Access-anywhere** | Browser-based UI accessible from localhost, LAN, or Tailscale. Not locked to a single screen. |
+| **Access-anywhere** | Browser-based UI accessible from localhost, LAN, or Tailscale. Works on phones and tablets — the daemon runs on your server, you connect from wherever you are. |
 | **Cross-platform** | Runs on Linux, macOS, and Windows. Shell and path handling adapt to the host OS. |
 | **All-TypeScript** | One language for daemon, frontend, and CLI. Any JS/TS developer can contribute immediately. |
 | **Session-aware** | Every interaction is tracked and searchable. Cost, diffs, timelines — all per-session. |
@@ -251,6 +252,11 @@ MultiTable is a **web app + local daemon**. The daemon runs on your dev machine 
 | Frontend | React + TypeScript | UI framework |
 | Build | Vite | Frontend bundling and dev server |
 | Terminal UI | xterm.js | Terminal emulation in the browser |
+| Terminal UI | xterm-addon-webgl | GPU-accelerated rendering (smooth scrolling) |
+| Terminal UI | xterm-addon-fit | Resize terminal to container + SIGWINCH signaling |
+| Terminal UI | xterm-addon-web-links | Clickable URLs in terminal output |
+| Terminal UI | xterm-addon-search | In-terminal search (⌘F / Ctrl+F) |
+| Terminal UI | xterm-addon-unicode11 | Unicode 11 support (emoji, CJK) |
 | Styling | TailwindCSS | Utility-first CSS |
 | State | Zustand | Lightweight state management (sliced architecture) |
 | Command Palette | cmdk | Fuzzy search command palette |
@@ -497,7 +503,8 @@ projects:
 - **Sidebar**: Fixed ~300px, left side, vertically scrollable when content overflows
 - **Main Pane**: Fills remaining width, displays terminal or content views
 - **Status Bar**: Fixed ~36px at the bottom, always visible
-- **Minimum viewport**: 800px wide, 500px tall
+- **Minimum viewport**: 800px wide, 500px tall (desktop)
+- **Mobile layout**: Sidebar collapses to a bottom sheet or slide-in drawer on narrow viewports. Terminal fills the full screen. Touch-friendly tap targets (44px minimum). See Section 37 for full mobile spec.
 - **Browser tab title**: Updates to reflect `"MultiTable - {project} - {selected item}"`
 
 ---
