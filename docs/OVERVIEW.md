@@ -2,6 +2,7 @@
 
 > A browser-based dashboard + process manager for AI coding agents and dev tools.
 > Local Node.js daemon serves a React UI. Define processes in `mt.yml`, see everything in one window.
+> Runs on Linux, macOS, and Windows.
 
 ---
 
@@ -26,7 +27,8 @@ Instead of this:                      You get this:
 
 ```
 ┌─ Project ────────────────────────────────────────────────────┐
-│  A directory with code + optional mt.yml config              │
+│  A directory path + optional mt.yml config                    │
+│  All sessions/commands/terminals run from this path           │
 │                                                              │
 │  ┌─ Sessions ───────┐  ┌─ Commands ────────┐  ┌─ Terminals ┐│
 │  │ AI agent runs     │  │ Dev servers,      │  │ Ad-hoc     ││
@@ -216,8 +218,9 @@ User                          CLI / Daemon                  Browser
  │                                │                            │
  │  Sees empty dashboard          │                            │
  │  Clicks [+ Add Project]        │                            │
+ │  Picks a directory path         │                            │
  │ ──────────────────────────────►│                            │
- │                                │ POST /api/projects         │
+ │                                │ POST /api/projects {path}  │
  │                                │ scans for mt.yml           │
  │                                │ auto-detects framework     │
  │                                │ suggests commands           │

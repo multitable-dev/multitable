@@ -10,3 +10,4 @@ coverage/
 .turbo/
 .claude/settings.local.json
 .local/
+*.skill

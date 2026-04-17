@@ -106,6 +106,7 @@ Define all your processes in a single YAML file. Start the daemon, and everythin
 | **Agent-agnostic** | Runs any CLI tool — Claude Code, Codex, Gemini CLI, or a custom script. No vendor lock-in. |
 | **Local-first** | All data stays on the user's machine. No telemetry. No cloud dependency. |
 | **Access-anywhere** | Browser-based UI accessible from localhost, LAN, or Tailscale. Not locked to a single screen. |
+| **Cross-platform** | Runs on Linux, macOS, and Windows. Shell and path handling adapt to the host OS. |
 | **All-TypeScript** | One language for daemon, frontend, and CLI. Any JS/TS developer can contribute immediately. |
 | **Session-aware** | Every interaction is tracked and searchable. Cost, diffs, timelines — all per-session. |
 | **Config-as-code** | Project configuration lives in `mt.yml` — a single file that defines your entire project setup. Edit it directly or configure via the UI. |
@@ -394,8 +395,16 @@ The daemon stores all persistent state in a SQLite database at `~/.config/multit
 
 ### File System Paths
 
+Config root is platform-dependent (resolved via [`env-paths`](https://github.com/sindresorhus/env-paths)):
+
+| Platform | Config Root |
+|---|---|
+| Linux | `~/.config/multitable/` |
+| macOS | `~/Library/Application Support/multitable/` |
+| Windows | `%APPDATA%\multitable\` |
+
 ```
-~/.config/multitable/                # App configuration root
+{config_root}/
 ├── config.yml                       # Global app settings
 ├── multitable.db                    # SQLite database
 └── pids.json                        # PID tracking for orphan recovery
@@ -435,7 +444,7 @@ commands:
 # ~/.config/multitable/config.yml
 theme: "system"              # "light" | "dark" | "system"
 default_editor: "code"       # "code" | "zed" | "cursor" | custom path
-default_shell: "/bin/bash"
+default_shell: ""                # auto-detect: bash/zsh on macOS/Linux, PowerShell on Windows
 terminal_font_size: 13
 terminal_scrollback: 10000
 notifications: true
@@ -1122,6 +1131,8 @@ Note: These are browser-compatible shortcuts, not native app shortcuts. Conflict
 
 Each process is spawned in its own PTY via `node-pty`. This gives full terminal emulation including ANSI colors, cursor movement, and interactive input (required for agents like Claude Code that use TUI frameworks).
 
+**Shell detection** (cross-platform): If `default_shell` is empty (the default), the daemon auto-detects: `$SHELL` on macOS/Linux (typically bash or zsh), `powershell.exe` on Windows. On Windows, `node-pty` uses `conpty`; on macOS/Linux it uses the native PTY layer. Path separators and environment variable expansion are handled by the host shell.
+
 ```typescript
 interface ManagedProcess {
     id: string;
@@ -1477,7 +1488,7 @@ commands:
 # ~/.config/multitable/config.yml
 theme: "system"              # "light" | "dark" | "system"
 default_editor: "code"       # "code" | "zed" | "cursor" | custom path
-default_shell: "/bin/bash"
+default_shell: ""                # auto-detect: bash/zsh on macOS/Linux, PowerShell on Windows
 terminal_font_size: 13
 terminal_scrollback: 10000
 notifications: true
