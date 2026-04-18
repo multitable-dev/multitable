@@ -21,11 +21,7 @@ export function ProcessBanner({ process }: Props) {
   let button: { label: string; onClick: () => void } | null = null;
 
   if (isErrored && session) {
-    message = 'Prior session could not be found. You must start a new session.';
-    button = {
-      label: 'Start New Session',
-      onClick: () => api.processes.start(process.id),
-    };
+    message = 'Prior session could not be found. Right-click this session in the sidebar to delete it.';
   } else if (session) {
     message = `${process.name} is stopped.`;
   } else if (isStopped) {

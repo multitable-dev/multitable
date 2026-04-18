@@ -23,9 +23,13 @@ interface PendingPermission {
   sessionId: string;
 }
 
+export type PermissionDecision = 'allow' | 'deny' | 'always-allow';
+
 export class PermissionManager extends EventEmitter {
   private pending = new Map<string, PendingPermission>();
   private autoDeferTools: Set<string>;
+  // Per-session "always allow" rules: sessionId -> set of tool names
+  private sessionAllowList = new Map<string, Set<string>>();
 
   constructor(extraAutoDeferTools: string[] = []) {
     super();
@@ -56,6 +60,12 @@ export class PermissionManager extends EventEmitter {
       return;
     }
 
+    // Honor prior "always allow" decisions for this session + tool
+    if (this.sessionAllowList.get(sessionId)?.has(tool_name)) {
+      res.json({ approved: true });
+      return;
+    }
+
     const id = uuidv4();
     const prompt: PermissionPrompt = {
       id,
@@ -78,13 +88,23 @@ export class PermissionManager extends EventEmitter {
   /**
    * Respond to a pending permission prompt.
    */
-  respond(id: string, approved: boolean, updatedInput?: Record<string, any>): void {
+  respond(id: string, decision: PermissionDecision, updatedInput?: Record<string, any>): void {
     const entry = this.pending.get(id);
     if (!entry) return;
 
     clearTimeout(entry.timer);
     this.pending.delete(id);
 
+    if (decision === 'always-allow') {
+      let set = this.sessionAllowList.get(entry.sessionId);
+      if (!set) {
+        set = new Set<string>();
+        this.sessionAllowList.set(entry.sessionId, set);
+      }
+      set.add(entry.prompt.toolName);
+    }
+
+    const approved = decision === 'allow' || decision === 'always-allow';
     if (approved) {
       entry.res.json({ approved: true, ...(updatedInput ? { tool_input: updatedInput } : {}) });
     } else {
@@ -131,5 +151,6 @@ export class PermissionManager extends EventEmitter {
         this.emit('permission:resolved', id);
       }
     }
+    this.sessionAllowList.delete(sessionId);
   }
 }

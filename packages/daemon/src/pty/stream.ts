@@ -212,7 +212,11 @@ function handlePtyResize(msg: WsMessage, manager: PtyManager): void {
 }
 
 function handlePermissionRespond(msg: WsMessage, permManager: PermissionManager): void {
-  const { id, approved, updatedInput } = msg.payload || {};
+  const { id, decision, updatedInput } = msg.payload || {};
   if (!id) return;
-  permManager.respond(id, approved === true, updatedInput);
+  const normalized: 'allow' | 'deny' | 'always-allow' =
+    decision === 'allow' || decision === 'deny' || decision === 'always-allow'
+      ? decision
+      : 'deny';
+  permManager.respond(id, normalized, updatedInput);
 }

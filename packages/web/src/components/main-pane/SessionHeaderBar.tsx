@@ -1,7 +1,6 @@
 import React from 'react';
-import { PanelBottom, Play } from 'lucide-react';
+import { PanelBottom } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
-import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
 
 interface Props {
@@ -11,9 +10,6 @@ interface Props {
 
 export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
   const claudeState = session.claudeState;
-  // Only surface "Start New" when a resume attempt already failed (errored).
-  // Stopped sessions auto-resume on click from the sidebar.
-  const showStartNew = session.state === 'errored';
 
   const handleCopySessionId = () => {
     if (claudeState?.claudeSessionId) {
@@ -72,26 +68,6 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {showStartNew && (
-            <button
-              onClick={() => api.processes.start(session.id)}
-              title="Start new session"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--accent)',
-                cursor: 'pointer',
-                padding: 4,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                fontSize: 12,
-              }}
-            >
-              <Play size={14} />
-              <span>Start New</span>
-            </button>
-          )}
           <button
             onClick={onToggleDetailPanel}
             title="Toggle detail panel"
