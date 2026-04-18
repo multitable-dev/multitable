@@ -3,7 +3,7 @@ import * as nodePty from 'node-pty';
 import fs from 'fs';
 import { exec } from 'child_process';
 import { RingBuffer } from './ringBuffer.js';
-import { saveScrollback, getSessionById } from '../db/store.js';
+import { saveScrollback, getSessionById, updateSession } from '../db/store.js';
 import { addPid, removePid } from '../pids.js';
 import type { ManagedProcess, ProcessConfig, ProcessMetrics, ProcessState, SpawnConfig } from '../types.js';
 
@@ -112,6 +112,37 @@ export class PtyManager extends EventEmitter {
     return proc;
   }
 
+  // Register a process in the manager without spawning the PTY.
+  // Used for sessions with a stale claudeSessionId — the user must explicitly
+  // choose Resume or Start New before any process starts.
+  register(cfg: SpawnConfig): ManagedProcess {
+    if (this.processes.has(cfg.id)) {
+      throw new Error(`Process ${cfg.id} already exists`);
+    }
+
+    const proc: ManagedProcess = {
+      id: cfg.id,
+      name: cfg.name,
+      command: cfg.command,
+      workingDir: cfg.workingDir,
+      type: cfg.type,
+      projectId: cfg.projectId,
+      config: cfg.config,
+      state: 'stopped',
+      pty: null,
+      pid: null,
+      startedAt: null,
+      restartCount: 0,
+      lastRestartAt: 0,
+      outputBuffer: new RingBuffer(),
+      metrics: { cpuPercent: 0, memoryBytes: 0, detectedPort: null },
+    };
+
+    this.processes.set(cfg.id, proc);
+    this.emit('state-changed', { processId: proc.id, state: proc.state });
+    return proc;
+  }
+
   get(id: string): ManagedProcess | undefined {
     return this.processes.get(id);
   }
@@ -174,13 +205,35 @@ export class PtyManager extends EventEmitter {
     }
   }
 
-  // Respawn PTY for a process if it is dead (for autorespawn on subscribe)
+  // Force-spawn a stopped/errored process. Used by the explicit "Start New"
+  // action — the caller is responsible for clearing claudeSessionId from the DB
+  // before calling this so spawnPty() won't try --resume.
+  forceSpawn(id: string, cols = 80, rows = 24): void {
+    const proc = this.processes.get(id);
+    if (!proc) return;
+    if (proc.state === 'running') return;
+    this.spawnPty(proc, cols, rows);
+  }
+
+  // Respawn PTY for a process if it is dead (for autorespawn on subscribe).
+  // Never auto-respawn errored processes or sessions that have a prior Claude
+  // conversation ID — the user must explicitly start/resume.
   respawnIfDead(id: string, cols = 80, rows = 24): ManagedProcess | undefined {
     const proc = this.processes.get(id);
     if (!proc) return undefined;
-    if (proc.state !== 'running' && proc.config.autorespawn) {
-      this.spawnPty(proc, cols, rows);
+    if (proc.state === 'running' || proc.state === 'errored') return proc;
+    if (!proc.config.autorespawn) return proc;
+
+    // Don't auto-respawn sessions with a prior Claude session — the user
+    // must click Resume or Start New to avoid confusion.
+    if (proc.type === 'session') {
+      try {
+        const session = getSessionById(id);
+        if (session?.claudeSessionId) return proc;
+      } catch { /* proceed with respawn if DB lookup fails */ }
     }
+
+    this.spawnPty(proc, cols, rows);
     return proc;
   }
 
@@ -192,23 +245,27 @@ export class PtyManager extends EventEmitter {
     // session history is preserved by resuming with `--resume`.
     proc.outputBuffer.clear();
 
-    // For sessions, use --resume if a Claude session ID is known
+    // For sessions, use --resume if a Claude session ID is known.
+    // If resume fails ("No conversation found"), we stop and surface the error
+    // rather than silently starting a new session — the user must explicitly
+    // choose to start fresh so there's no confusion about which session is active.
     let command = proc.command;
+    let resumeClaudeSessionId: string | null = null;
     if (proc.type === 'session') {
       try {
         const session = getSessionById(proc.id);
         if (session?.claudeSessionId) {
+          resumeClaudeSessionId = session.claudeSessionId;
           command = `claude --resume ${session.claudeSessionId}`;
         }
       } catch { /* fall back to original command */ }
     }
 
-    const shell = detectShell();
-    const [cmd, ...args] = this.buildCommand(command);
+    const [spawnCmd, ...spawnArgs] = this.buildCommand(command);
 
     let ptyProcess: nodePty.IPty;
     try {
-      ptyProcess = nodePty.spawn(cmd, args, {
+      ptyProcess = nodePty.spawn(spawnCmd, spawnArgs, {
         name: 'xterm-256color',
         cols,
         rows,
@@ -228,8 +285,39 @@ export class PtyManager extends EventEmitter {
 
     addPid(proc.id, ptyProcess.pid);
 
+    // Track whether the resume failed so we can clear the stale claudeSessionId
+    let resumeFailed = false;
+
     ptyProcess.onData((data: string) => {
       proc.outputBuffer.write(data);
+
+      // Detect if claude --resume failed (conversation not found).
+      // Kill the process and surface an error — do NOT silently start a new session.
+      // IMPORTANT: Do NOT clear claudeSessionId from DB here. Keeping it ensures
+      // that on daemon restart the session is registered as stopped (not auto-spawned).
+      // The claudeSessionId is only cleared when the user explicitly clicks "Start New".
+      if (resumeClaudeSessionId && !resumeFailed && data.includes('No conversation found')) {
+        resumeFailed = true;
+        const staleId = resumeClaudeSessionId;
+        console.log(`[PtyManager] claude --resume failed for ${proc.id}, conversation ${staleId} not found — stopping session`);
+
+        // Kill the process so it doesn't sit at a fresh prompt pretending to be the old session
+        setTimeout(() => {
+          if (proc.pty) {
+            try { proc.pty.kill(); } catch {}
+            proc.pty = null;
+          }
+          proc.pid = null;
+          removePid(proc.id);
+          this.setState(proc, 'errored');
+          this.emit('resume-failed', {
+            processId: proc.id,
+            staleClaudeSessionId: staleId,
+            message: `Could not resume session: conversation ${staleId} was not found. Start a new session instead.`,
+          });
+        }, 100);
+        return; // don't emit this data to the terminal
+      }
 
       // Detect port if not yet found
       if (!proc.metrics.detectedPort) {
@@ -254,6 +342,13 @@ export class PtyManager extends EventEmitter {
           const data = Buffer.from(proc.outputBuffer.read(), 'utf8');
           saveScrollback(proc.id, data);
         } catch { /* best effort */ }
+      }
+
+      // If state is already 'stopped' or 'errored', it was set by kill() or
+      // the resume-failed handler — don't override it based on exit code.
+      if (proc.state === 'stopped' || proc.state === 'errored') {
+        this.emit('exit', { processId: proc.id, exitCode, signal });
+        return;
       }
 
       const shouldRestart = this.shouldAutorestart(proc, exitCode ?? 0);

@@ -38,6 +38,7 @@ export interface ClaudeSessionState {
   currentTool: string | null;
   toolCount: number;
   tokenCount: number;
+  costUsd: number;
   lastActivity: number;
   activeSubagents: number;
   userMessages: string[];
@@ -46,7 +47,8 @@ export interface ClaudeSessionState {
 
 export interface Session extends ManagedProcess {
   type: 'session';
-  claudeState?: ClaudeSessionState;
+  claudeSessionId?: string | null; // from DB — persists across daemon restarts
+  claudeState?: ClaudeSessionState; // in-memory — lost on daemon restart
   scratchpad?: string;
 }
 

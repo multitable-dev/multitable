@@ -151,6 +151,10 @@ export function createServer(
     broadcast('process-exited', { processId, exitCode, signal });
   });
 
+  manager.on('resume-failed', ({ processId, staleClaudeSessionId, message }: { processId: string; staleClaudeSessionId: string; message: string }) => {
+    broadcast('session:resume-failed', { processId, staleClaudeSessionId, message });
+  });
+
   // ─── Wire permission events ─────────────────────────────────────────────────
 
   permManager.on('permission:prompt', (prompt: any) => {

@@ -77,14 +77,10 @@ function handleSubscribe(
   if (!proc) {
     const session = getSessionById(processId);
     if (session) {
-      // Use --resume if this session has a known Claude session ID
-      const command = session.claudeSessionId
-        ? `claude --resume ${session.claudeSessionId}`
-        : session.command;
       const spawnCfg: SpawnConfig = {
         id: session.id,
         name: session.name,
-        command,
+        command: session.command,
         workingDir: session.workingDirectory || '',
         type: 'session',
         projectId: session.projectId,
@@ -93,7 +89,14 @@ function handleSubscribe(
         rows,
       };
       try {
-        proc = manager.spawn(spawnCfg);
+        if (session.claudeSessionId) {
+          // Session has a prior Claude conversation ID. Don't auto-spawn —
+          // we can't know if the conversation still exists. Register it as
+          // stopped and let the user click Resume or Start New.
+          proc = manager.register(spawnCfg);
+        } else {
+          proc = manager.spawn(spawnCfg);
+        }
       } catch { /* spawn failed */ }
     }
     if (!proc) {

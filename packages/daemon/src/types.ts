@@ -63,6 +63,7 @@ export interface ClaudeSessionState {
   currentTool: string | null;
   toolCount: number;
   tokenCount: number;
+  costUsd: number;
   lastActivity: number;
   activeSubagents: number;
   userMessages: string[];

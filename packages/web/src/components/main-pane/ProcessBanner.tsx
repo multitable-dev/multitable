@@ -13,24 +13,38 @@ export function ProcessBanner({ process }: Props) {
 
   if (!isStopped && !isErrored) return null;
 
-  const message = isStopped
-    ? `${process.name} is not running.`
-    : `${process.name} exited unexpectedly.`;
+  const session = process.type === 'session' ? (process as Session) : null;
+  const hasPriorConversation = !!(
+    session?.claudeSessionId || session?.claudeState?.claudeSessionId
+  );
 
-  // For sessions with a known Claude session ID, use resume so Claude Code
-  // restores the prior conversation via --resume.
-  const claudeSessionId =
-    process.type === 'session'
-      ? (process as Session).claudeState?.claudeSessionId
-      : null;
+  // ── Determine message and action ────────────────────────────────────────────
 
-  const canResume = !!claudeSessionId;
-  const buttonLabel = canResume ? 'Resume' : isStopped ? 'Start' : 'Restart';
-  const handleClick = canResume
-    ? () => api.sessions.resumeClaude(process.id)
-    : isStopped
-      ? () => api.processes.start(process.id)
-      : () => api.processes.restart(process.id);
+  let message: string;
+  let buttonLabel: string;
+  let handleClick: () => void;
+
+  if (isErrored && session) {
+    // Resume was attempted and failed, or session crashed
+    message = 'Prior session could not be found. You must start a new session.';
+    buttonLabel = 'Start New Session';
+    handleClick = () => api.processes.start(process.id);
+  } else if (isStopped && hasPriorConversation) {
+    // User stopped a valid session that has a resumable conversation
+    message = `${process.name} is stopped.`;
+    buttonLabel = 'Resume';
+    handleClick = () => api.sessions.resumeClaude(process.id);
+  } else if (isStopped) {
+    // Stopped with no prior conversation — fresh start
+    message = `${process.name} is not running.`;
+    buttonLabel = 'Start';
+    handleClick = () => api.processes.start(process.id);
+  } else {
+    // Non-session errored process
+    message = `${process.name} exited unexpectedly.`;
+    buttonLabel = 'Restart';
+    handleClick = () => api.processes.restart(process.id);
+  }
 
   return (
     <div

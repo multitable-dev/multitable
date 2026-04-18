@@ -10,6 +10,7 @@ import {
 } from '../db/store.js';
 import { generateSessionLabel } from './labeler.js';
 import { detectOptions } from './optionDetector.js';
+import { parseSessionCost } from './costParser.js';
 import type { ClaudeSessionState } from '../types.js';
 
 // In-memory claude session states, keyed by multitable session ID
@@ -26,6 +27,7 @@ export function ensureClaudeState(sessionId: string): ClaudeSessionState {
       currentTool: null,
       toolCount: 0,
       tokenCount: 0,
+      costUsd: 0,
       lastActivity: Date.now(),
       activeSubagents: 0,
       userMessages: [],
@@ -114,10 +116,25 @@ export function createHooksRouter(
       state.currentTool = null;
       state.lastActivity = Date.now();
 
+      // Parse JSONL to get real cost data
+      const session = getSessionByClaudeId(session_id);
+      if (session && session.claudeSessionId) {
+        try {
+          const costData = parseSessionCost(
+            session.workingDirectory || '',
+            session.claudeSessionId
+          );
+          if (costData) {
+            state.tokenCount = costData.tokensIn + costData.tokensOut +
+              costData.cacheCreationTokens + costData.cacheReadTokens;
+            state.costUsd = costData.costUsd;
+          }
+        } catch {}
+      }
+
       broadcast('session:state-updated', { sessionId, state: { ...state } });
 
       // Detect options in last assistant message
-      const session = getSessionByClaudeId(session_id);
       if (session && session.claudeSessionId) {
         detectOptions(session.workingDirectory || '', session.claudeSessionId)
           .then((result) => {
@@ -150,23 +167,53 @@ export function createHooksRouter(
     const { session_id } = req.body || {};
     let sessionId = findSessionByClaudeId(session_id) || '';
 
-    // If no match by claudeSessionId (first time), find the running session
-    // process that hasn't been linked to a Claude session yet.
+    // If no match by claudeSessionId (first time or after resume with new ID),
+    // find a running session process to link this Claude session to.
+    // Priority: 1) unlinked sessions (no claudeSessionId), 2) most recently started
     if (!sessionId && session_id) {
+      let bestCandidate: string | null = null;
+      let bestStartedAt: Date | null = null;
+
       for (const proc of manager.getAll()) {
-        if (proc.type === 'session' && proc.state === 'running') {
-          const existingState = claudeStates.get(proc.id);
-          if (!existingState || !existingState.claudeSessionId) {
-            sessionId = proc.id;
-            break;
+        if (proc.type !== 'session' || proc.state !== 'running') continue;
+
+        const existingState = claudeStates.get(proc.id);
+
+        // Best case: no state at all or no claudeSessionId linked yet
+        if (!existingState || !existingState.claudeSessionId) {
+          // Prefer the most recently started unlinked session
+          if (!bestCandidate || (proc.startedAt && (!bestStartedAt || proc.startedAt > bestStartedAt))) {
+            bestCandidate = proc.id;
+            bestStartedAt = proc.startedAt;
           }
         }
+      }
+
+      // If no unlinked session found, look for sessions whose stale
+      // claudeSessionId no longer matches any running Claude process
+      // (i.e. they were respawned and got a new Claude session ID)
+      if (!bestCandidate) {
+        for (const proc of manager.getAll()) {
+          if (proc.type !== 'session' || proc.state !== 'running') continue;
+          const existingState = claudeStates.get(proc.id);
+          if (existingState?.claudeSessionId) {
+            // This session has a stale link — check if it was recently restarted
+            if (proc.startedAt && (!bestStartedAt || proc.startedAt > bestStartedAt)) {
+              bestCandidate = proc.id;
+              bestStartedAt = proc.startedAt;
+            }
+          }
+        }
+      }
+
+      if (bestCandidate) {
+        sessionId = bestCandidate;
       }
     }
 
     if (sessionId && session_id) {
-      // Link claude session ID to our session
-      updateSession(sessionId, { claudeSessionId: session_id });
+      // Link claude session ID to our session (update DB and in-memory state)
+      updateSession(sessionId, { claudeSessionId: session_id, lastActiveAt: Date.now() });
       const state = ensureClaudeState(sessionId);
       state.claudeSessionId = session_id;
       state.lastActivity = Date.now();

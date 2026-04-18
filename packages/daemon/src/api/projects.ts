@@ -250,10 +250,12 @@ export function createProjectsRouter(manager: PtyManager): Router {
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
     const relPath = (req.query.path as string) || '';
-    const resolved = path.resolve(project.path, relPath);
+    // Normalize project.path to remove any trailing slashes for consistent comparison
+    const normalizedProjectPath = path.resolve(project.path);
+    const resolved = path.resolve(normalizedProjectPath, relPath);
 
     // Prevent directory traversal
-    if (!resolved.startsWith(project.path)) {
+    if (!resolved.startsWith(normalizedProjectPath)) {
       return res.status(403).json({ error: 'Path is outside project directory' });
     }
 

@@ -56,7 +56,15 @@ export const api = {
     spawnClaude: (id: string) => post<void>(`/api/sessions/${id}/spawn-claude`),
     resumeClaude: (id: string) => post<void>(`/api/sessions/${id}/resume-claude`),
     diff: (id: string) => get<{ diff: string }>(`/api/sessions/${id}/diff`),
-    cost: (id: string) => get<{ tokensIn: number; tokensOut: number; costUsd: number }>(`/api/sessions/${id}/cost`),
+    cost: (id: string) => get<{
+      tokensIn: number;
+      tokensOut: number;
+      cacheCreationTokens: number;
+      cacheReadTokens: number;
+      costUsd: number;
+      model: string;
+      messageCount: number;
+    }>(`/api/sessions/${id}/cost`),
   },
   commands: {
     list: (projectId: string) => get<Command[]>(`/api/projects/${projectId}/commands`),

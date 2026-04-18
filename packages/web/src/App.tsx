@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { MainPane } from './components/main-pane/MainPane';
 import { StatusBar } from './components/status-bar/StatusBar';
@@ -115,6 +115,15 @@ function App() {
       }),
       wsClient.on('option:prompt', (msg: any) => {
         store.setOption(msg.payload);
+      }),
+      wsClient.on('session:resume-failed', (msg: any) => {
+        const { processId, message } = msg.payload;
+        toast.error(message || 'Failed to resume session. Start a new session instead.', {
+          duration: 8000,
+          style: { maxWidth: 480 },
+        });
+        // Update session state to errored in the store
+        if (processId) store.updateProcessState(processId, 'errored');
       }),
       wsClient.on('session:label-updated', (msg: any) => {
         const { sessionId, label } = msg.payload;

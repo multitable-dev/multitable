@@ -11,6 +11,7 @@ import {
   getSessionCostAggregate,
   insertSessionEvent,
 } from '../db/store.js';
+import { parseSessionCost } from '../hooks/costParser.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -125,8 +126,28 @@ export function createSessionsRouter(manager: PtyManager): Router {
   router.get('/:id/cost', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // Try to read cost from JSONL first (real-time, accurate)
+    if (session.claudeSessionId && session.workingDirectory) {
+      try {
+        const jsonlCost = parseSessionCost(session.workingDirectory, session.claudeSessionId);
+        if (jsonlCost) {
+          return res.json({
+            tokensIn: jsonlCost.tokensIn,
+            tokensOut: jsonlCost.tokensOut,
+            cacheCreationTokens: jsonlCost.cacheCreationTokens,
+            cacheReadTokens: jsonlCost.cacheReadTokens,
+            costUsd: jsonlCost.costUsd,
+            model: jsonlCost.model,
+            messageCount: jsonlCost.messageCount,
+          });
+        }
+      } catch {}
+    }
+
+    // Fallback to DB aggregate
     const cost = getSessionCostAggregate(req.params.id);
-    res.json(cost);
+    res.json({ ...cost, cacheCreationTokens: 0, cacheReadTokens: 0, model: '', messageCount: 0 });
   });
 
   // POST /api/sessions/:id/start
@@ -256,16 +277,19 @@ export function createSessionsRouter(manager: PtyManager): Router {
       return res.status(400).json({ error: 'No claudeSessionId to resume' });
     }
 
-    const claudeCmd = buildClaudeCommand(session.workingDirectory || '', resumeId);
+    // Persist the claudeSessionId to DB so spawnPty can pick it up for --resume
+    updateSession(session.id, { claudeSessionId: resumeId });
 
     try {
       const existing = manager.get(session.id);
       if (existing) manager.remove(session.id);
 
+      // Use the base command (e.g. 'claude'); spawnPty will read the
+      // claudeSessionId from the DB and construct --resume with fallback.
       const spawnCfg: SpawnConfig = {
         id: session.id,
         name: session.name,
-        command: claudeCmd,
+        command: session.command,
         workingDir: session.workingDirectory || '',
         type: 'session',
         projectId: session.projectId,

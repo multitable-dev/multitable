@@ -2,11 +2,11 @@ import { useEffect, useRef } from 'react';
 import { terminalManager } from '../lib/terminalManager';
 import { wsClient } from '../lib/ws';
 
-export function useTerminal(processId: string | null) {
+export function useTerminal(processId: string | null, disabled = false) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!processId || !containerRef.current) return;
+    if (!processId || !containerRef.current || disabled) return;
 
     const container = containerRef.current;
 
@@ -78,7 +78,7 @@ export function useTerminal(processId: string | null) {
       terminalManager.detach(processId);
       wsClient.unsubscribe(processId);
     };
-  }, [processId]);
+  }, [processId, disabled]);
 
   return containerRef;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCw, PanelBottom } from 'lucide-react';
+import { RotateCw, PanelBottom, Play } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
@@ -11,7 +11,12 @@ interface Props {
 
 export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
   const claudeState = session.claudeState;
-  const showResume = claudeState?.claudeSessionId && session.state !== 'running';
+  const hasPriorConversation = !!(session.claudeSessionId || claudeState?.claudeSessionId);
+  const notRunning = session.state === 'stopped' || session.state === 'errored';
+  // Resume: stopped with a prior conversation to resume
+  const showResume = notRunning && hasPriorConversation && session.state !== 'errored';
+  // Start New: errored (resume failed) or stopped without any prior conversation
+  const showStartNew = (session.state === 'errored') || (session.state === 'stopped' && !hasPriorConversation);
 
   const handleCopySessionId = () => {
     if (claudeState?.claudeSessionId) {
@@ -19,13 +24,21 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
     }
   };
 
-  const formatNumber = (n: number): string => {
+  const formatTokens = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
     return n.toLocaleString();
   };
 
-  const cost = claudeState?.tokenCount
-    ? (claudeState.tokenCount * 0.000003).toFixed(4)
-    : '0.00';
+  const formatCost = (n: number): string => {
+    if (n >= 1) return `$${n.toFixed(2)}`;
+    if (n >= 0.01) return `$${n.toFixed(3)}`;
+    if (n > 0) return `$${n.toFixed(4)}`;
+    return '$0.00';
+  };
+
+  const costUsd = claudeState?.costUsd ?? 0;
+  const tokenCount = claudeState?.tokenCount ?? 0;
 
   return (
     <div
@@ -79,6 +92,26 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
               <RotateCw size={14} />
             </button>
           )}
+          {showStartNew && (
+            <button
+              onClick={() => api.processes.start(session.id)}
+              title="Start new session"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--accent)',
+                cursor: 'pointer',
+                padding: 4,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 12,
+              }}
+            >
+              <Play size={14} />
+              <span>Start New</span>
+            </button>
+          )}
           <button
             onClick={onToggleDetailPanel}
             title="Toggle detail panel"
@@ -117,12 +150,14 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
             {claudeState.claudeSessionId}
           </span>
         )}
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          ${cost}
-        </span>
-        {claudeState?.tokenCount != null && (
+        {(costUsd > 0 || tokenCount > 0) && (
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+            {formatCost(costUsd)}
+          </span>
+        )}
+        {tokenCount > 0 && (
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {formatNumber(claudeState.tokenCount)} tokens
+            {formatTokens(tokenCount)} tokens
           </span>
         )}
       </div>

@@ -111,8 +111,16 @@ async function main() {
               fileWatchPatterns: session.fileWatchPatterns,
             }),
           };
-          manager.spawn(spawnCfg);
-          console.log(`Autostarted session: ${session.name} (${session.id})`);
+          if (session.claudeSessionId) {
+            // Session has a prior Claude conversation — we can't know if it's
+            // still valid. Register as stopped so the user can choose Resume
+            // or Start New. Never auto-spawn stale Claude sessions.
+            manager.register(spawnCfg);
+            console.log(`Registered session (has prior Claude ID, needs user action): ${session.name} (${session.id})`);
+          } else {
+            manager.spawn(spawnCfg);
+            console.log(`Autostarted session: ${session.name} (${session.id})`);
+          }
         } catch (err) {
           console.error(`Failed to autostart session ${session.name}:`, err);
         }

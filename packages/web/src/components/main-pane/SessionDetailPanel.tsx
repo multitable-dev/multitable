@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Folder, File } from 'lucide-react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { X, Folder, File, ChevronDown, ChevronRight, FileText, Plus, Minus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
@@ -28,9 +28,28 @@ function FilesTab({ projectId }: { projectId: string }) {
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [expanded, setExpanded] = useState<Record<string, FileEntry[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.projects.files(projectId).then(setFiles).catch(() => {});
+    if (!projectId) {
+      setLoading(false);
+      setError('No project ID available');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    api.projects
+      .files(projectId)
+      .then((result) => {
+        setFiles(result);
+        setLoading(false);
+      })
+      .catch((err) => {
+        console.error('[FilesTab] Failed to load root files:', err);
+        setError(err?.message || 'Failed to load files');
+        setLoading(false);
+      });
   }, [projectId]);
 
   const toggleFolder = async (path: string) => {
@@ -45,14 +64,16 @@ function FilesTab({ projectId }: { projectId: string }) {
         const children = await api.projects.files(projectId, path);
         setExpanded((prev) => ({ ...prev, [path]: children }));
         setExpandedPaths((prev) => new Set(prev).add(path));
-      } catch {
-        // ignore
+      } catch (err) {
+        console.error('[FilesTab] Failed to expand folder:', path, err);
       }
     }
   };
 
   const openFile = (path: string) => {
-    api.projects.openFile(projectId, path).catch(() => {});
+    api.projects.openFile(projectId, path).catch((err) => {
+      console.error('[FilesTab] Failed to open file:', path, err);
+    });
   };
 
   const renderEntries = (entries: FileEntry[], depth: number) => (
@@ -104,44 +125,582 @@ function FilesTab({ projectId }: { projectId: string }) {
     </>
   );
 
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>
+        Loading files...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: 'var(--text-muted)', padding: 24 }}>
+        <Folder size={32} style={{ opacity: 0.4 }} />
+        <span style={{ fontSize: 13, color: 'var(--status-error)' }}>{error}</span>
+      </div>
+    );
+  }
+
+  if (files.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: 'var(--text-muted)', padding: 24 }}>
+        <Folder size={32} style={{ opacity: 0.4 }} />
+        <span style={{ fontSize: 13 }}>No files found</span>
+      </div>
+    );
+  }
+
   return <div style={{ padding: 8 }}>{renderEntries(files, 0)}</div>;
+}
+
+// --- Diff parsing and rendering utilities ---
+
+interface DiffHunk {
+  header: string;
+  oldStart: number;
+  oldCount: number;
+  newStart: number;
+  newCount: number;
+  lines: DiffLine[];
+}
+
+interface DiffLine {
+  type: 'add' | 'del' | 'context' | 'header';
+  content: string;
+  oldLine?: number;
+  newLine?: number;
+}
+
+interface DiffFile {
+  oldPath: string;
+  newPath: string;
+  hunks: DiffHunk[];
+  additions: number;
+  deletions: number;
+}
+
+interface DiffStats {
+  filesChanged: number;
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
+function parseDiff(raw: string): { files: DiffFile[]; stats: DiffStats } {
+  if (!raw || !raw.trim()) return { files: [], stats: { filesChanged: 0, totalAdditions: 0, totalDeletions: 0 } };
+
+  const files: DiffFile[] = [];
+  const lines = raw.split('\n');
+  let i = 0;
+
+  while (i < lines.length) {
+    // Look for diff --git header
+    if (!lines[i].startsWith('diff --git')) {
+      i++;
+      continue;
+    }
+
+    let oldPath = '';
+    let newPath = '';
+    // Extract paths from "diff --git a/path b/path"
+    const gitMatch = lines[i].match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (gitMatch) {
+      oldPath = gitMatch[1];
+      newPath = gitMatch[2];
+    }
+    i++;
+
+    // Skip index, mode, and other header lines until we hit --- or a new diff
+    while (i < lines.length && !lines[i].startsWith('---') && !lines[i].startsWith('diff --git') && !lines[i].startsWith('@@')) {
+      // Check for new file / deleted file hints
+      if (lines[i].startsWith('new file mode')) {
+        oldPath = '/dev/null';
+      } else if (lines[i].startsWith('deleted file mode')) {
+        newPath = '/dev/null';
+      }
+      i++;
+    }
+
+    // Parse --- and +++ lines
+    if (i < lines.length && lines[i].startsWith('---')) {
+      const m = lines[i].match(/^--- (?:a\/)?(.+)$/);
+      if (m && m[1] !== '/dev/null') oldPath = m[1];
+      else if (m && m[1] === '/dev/null') oldPath = '/dev/null';
+      i++;
+    }
+    if (i < lines.length && lines[i].startsWith('+++')) {
+      const m = lines[i].match(/^\+\+\+ (?:b\/)?(.+)$/);
+      if (m && m[1] !== '/dev/null') newPath = m[1];
+      else if (m && m[1] === '/dev/null') newPath = '/dev/null';
+      i++;
+    }
+
+    const hunks: DiffHunk[] = [];
+    let fileAdditions = 0;
+    let fileDeletions = 0;
+
+    // Parse hunks
+    while (i < lines.length && !lines[i].startsWith('diff --git')) {
+      if (lines[i].startsWith('@@')) {
+        const hunkMatch = lines[i].match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/);
+        if (hunkMatch) {
+          const oldStart = parseInt(hunkMatch[1]);
+          const oldCount = hunkMatch[2] !== undefined ? parseInt(hunkMatch[2]) : 1;
+          const newStart = parseInt(hunkMatch[3]);
+          const newCount = hunkMatch[4] !== undefined ? parseInt(hunkMatch[4]) : 1;
+          const hunkContext = hunkMatch[5] || '';
+
+          const hunk: DiffHunk = {
+            header: lines[i],
+            oldStart,
+            oldCount,
+            newStart,
+            newCount,
+            lines: [{ type: 'header', content: `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@${hunkContext}` }],
+          };
+
+          let oldLine = oldStart;
+          let newLine = newStart;
+          i++;
+
+          while (i < lines.length && !lines[i].startsWith('@@') && !lines[i].startsWith('diff --git')) {
+            const line = lines[i];
+            if (line.startsWith('+')) {
+              hunk.lines.push({ type: 'add', content: line.substring(1), newLine: newLine++ });
+              fileAdditions++;
+            } else if (line.startsWith('-')) {
+              hunk.lines.push({ type: 'del', content: line.substring(1), oldLine: oldLine++ });
+              fileDeletions++;
+            } else if (line.startsWith(' ') || line === '') {
+              hunk.lines.push({ type: 'context', content: line.startsWith(' ') ? line.substring(1) : line, oldLine: oldLine++, newLine: newLine++ });
+            } else {
+              // No-newline-at-end-of-file or other special lines
+              if (line.startsWith('\\')) {
+                // skip "\ No newline at end of file"
+              } else {
+                hunk.lines.push({ type: 'context', content: line, oldLine: oldLine++, newLine: newLine++ });
+              }
+            }
+            i++;
+          }
+
+          hunks.push(hunk);
+        } else {
+          i++;
+        }
+      } else {
+        i++;
+      }
+    }
+
+    files.push({ oldPath, newPath, hunks, additions: fileAdditions, deletions: fileDeletions });
+  }
+
+  const stats: DiffStats = {
+    filesChanged: files.length,
+    totalAdditions: files.reduce((s, f) => s + f.additions, 0),
+    totalDeletions: files.reduce((s, f) => s + f.deletions, 0),
+  };
+
+  return { files, stats };
+}
+
+/** Compute word-level diff between two strings, returns segments with highlight flags */
+function computeWordDiff(oldStr: string, newStr: string): { old: { text: string; highlight: boolean }[]; new: { text: string; highlight: boolean }[] } {
+  // Simple character-level LCS-based diff for highlighting changed portions
+  const oldChars = oldStr.split('');
+  const newChars = newStr.split('');
+
+  // For very long lines, skip word diff to avoid perf issues
+  if (oldChars.length > 500 || newChars.length > 500) {
+    return {
+      old: [{ text: oldStr, highlight: true }],
+      new: [{ text: newStr, highlight: true }],
+    };
+  }
+
+  // Find common prefix and suffix to narrow the diff region
+  let prefixLen = 0;
+  const minLen = Math.min(oldChars.length, newChars.length);
+  while (prefixLen < minLen && oldChars[prefixLen] === newChars[prefixLen]) prefixLen++;
+
+  let suffixLen = 0;
+  while (
+    suffixLen < minLen - prefixLen &&
+    oldChars[oldChars.length - 1 - suffixLen] === newChars[newChars.length - 1 - suffixLen]
+  ) suffixLen++;
+
+  const commonPrefix = oldStr.substring(0, prefixLen);
+  const commonSuffix = oldStr.substring(oldStr.length - suffixLen);
+  const oldMiddle = oldStr.substring(prefixLen, oldStr.length - suffixLen);
+  const newMiddle = newStr.substring(prefixLen, newStr.length - suffixLen);
+
+  const oldSegments: { text: string; highlight: boolean }[] = [];
+  const newSegments: { text: string; highlight: boolean }[] = [];
+
+  if (commonPrefix) {
+    oldSegments.push({ text: commonPrefix, highlight: false });
+    newSegments.push({ text: commonPrefix, highlight: false });
+  }
+  if (oldMiddle) oldSegments.push({ text: oldMiddle, highlight: true });
+  if (newMiddle) newSegments.push({ text: newMiddle, highlight: true });
+  if (commonSuffix) {
+    oldSegments.push({ text: commonSuffix, highlight: false });
+    newSegments.push({ text: commonSuffix, highlight: false });
+  }
+
+  // If nothing was highlighted (identical lines), just return plain
+  if (!oldMiddle && !newMiddle) {
+    return { old: [{ text: oldStr, highlight: false }], new: [{ text: newStr, highlight: false }] };
+  }
+
+  return { old: oldSegments, new: newSegments };
+}
+
+function DiffLineContent({ segments, type }: { segments: { text: string; highlight: boolean }[]; type: 'add' | 'del' }) {
+  return (
+    <>
+      {segments.map((seg, i) => (
+        <span
+          key={i}
+          style={seg.highlight ? {
+            backgroundColor: type === 'add' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)',
+            borderRadius: 2,
+          } : undefined}
+        >
+          {seg.text || ' '}
+        </span>
+      ))}
+    </>
+  );
+}
+
+function DiffFileSection({ file, defaultExpanded }: { file: DiffFile; defaultExpanded: boolean }) {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const displayPath = file.newPath === '/dev/null' ? file.oldPath : file.newPath;
+  const isNew = file.oldPath === '/dev/null';
+  const isDeleted = file.newPath === '/dev/null';
+
+  // Pre-compute word diffs for adjacent add/del line pairs
+  const hunkWordDiffs = useMemo(() => {
+    return file.hunks.map((hunk) => {
+      const wordDiffMap = new Map<number, { old: { text: string; highlight: boolean }[]; new: { text: string; highlight: boolean }[] }>();
+      const lines = hunk.lines;
+      let i = 0;
+      while (i < lines.length) {
+        if (lines[i].type === 'del') {
+          // Collect consecutive del lines
+          const delStart = i;
+          while (i < lines.length && lines[i].type === 'del') i++;
+          // Collect consecutive add lines
+          const addStart = i;
+          while (i < lines.length && lines[i].type === 'add') i++;
+          const addEnd = i;
+          // Pair them up for word diff
+          const delCount = addStart - delStart;
+          const addCount = addEnd - addStart;
+          const pairs = Math.min(delCount, addCount);
+          for (let p = 0; p < pairs; p++) {
+            const wd = computeWordDiff(lines[delStart + p].content, lines[addStart + p].content);
+            wordDiffMap.set(delStart + p, wd);
+            wordDiffMap.set(addStart + p, wd);
+          }
+        } else {
+          i++;
+        }
+      }
+      return wordDiffMap;
+    });
+  }, [file.hunks]);
+
+  // Stats bar for the file
+  const statsBarWidth = Math.min(file.additions + file.deletions, 5);
+  const addBlocks = file.additions + file.deletions > 0
+    ? Math.round((file.additions / (file.additions + file.deletions)) * statsBarWidth)
+    : 0;
+  const delBlocks = statsBarWidth - addBlocks;
+
+  return (
+    <div style={{ borderBottom: '1px solid var(--border)' }}>
+      {/* File header */}
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '8px 12px',
+          backgroundColor: 'var(--bg-sidebar)',
+          cursor: 'pointer',
+          userSelect: 'none',
+          position: 'sticky',
+          top: 0,
+          zIndex: 1,
+          borderBottom: expanded ? '1px solid var(--border)' : 'none',
+        }}
+      >
+        {expanded
+          ? <ChevronDown size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+          : <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        }
+        <FileText size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        <span style={{
+          fontSize: 13,
+          fontFamily: 'monospace',
+          color: 'var(--text-primary)',
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {displayPath}
+        </span>
+        {isNew && (
+          <span style={{
+            fontSize: 11,
+            padding: '1px 6px',
+            borderRadius: 3,
+            backgroundColor: 'rgba(34, 197, 94, 0.15)',
+            color: 'var(--status-running)',
+            fontWeight: 600,
+          }}>NEW</span>
+        )}
+        {isDeleted && (
+          <span style={{
+            fontSize: 11,
+            padding: '1px 6px',
+            borderRadius: 3,
+            backgroundColor: 'rgba(239, 68, 68, 0.15)',
+            color: 'var(--status-error)',
+            fontWeight: 600,
+          }}>DELETED</span>
+        )}
+        <span style={{ fontSize: 12, color: 'var(--status-running)', fontWeight: 600, marginLeft: 4 }}>
+          +{file.additions}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--status-error)', fontWeight: 600 }}>
+          -{file.deletions}
+        </span>
+        {/* Mini stats blocks */}
+        <span style={{ display: 'flex', gap: 1, marginLeft: 4 }}>
+          {Array.from({ length: addBlocks }).map((_, i) => (
+            <span key={`a${i}`} style={{ width: 8, height: 8, borderRadius: 1, backgroundColor: 'var(--status-running)', display: 'inline-block' }} />
+          ))}
+          {Array.from({ length: delBlocks }).map((_, i) => (
+            <span key={`d${i}`} style={{ width: 8, height: 8, borderRadius: 1, backgroundColor: 'var(--status-error)', display: 'inline-block' }} />
+          ))}
+        </span>
+      </div>
+
+      {/* Hunks */}
+      {expanded && (
+        <div style={{ overflow: 'auto' }}>
+          {file.hunks.map((hunk, hunkIdx) => (
+            <table
+              key={hunkIdx}
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontFamily: 'monospace',
+                fontSize: 12,
+                tableLayout: 'fixed',
+              }}
+            >
+              <colgroup>
+                <col style={{ width: 50 }} />
+                <col style={{ width: 50 }} />
+                <col style={{ width: 16 }} />
+                <col />
+              </colgroup>
+              <tbody>
+                {hunk.lines.map((line, lineIdx) => {
+                  if (line.type === 'header') {
+                    return (
+                      <tr key={lineIdx}>
+                        <td
+                          colSpan={4}
+                          style={{
+                            padding: '6px 12px',
+                            backgroundColor: 'rgba(96, 165, 250, 0.08)',
+                            color: 'var(--accent-blue)',
+                            fontSize: 12,
+                            fontFamily: 'monospace',
+                            borderTop: hunkIdx > 0 ? '1px solid var(--border)' : 'none',
+                          }}
+                        >
+                          {line.content}
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const bgColor =
+                    line.type === 'add' ? 'rgba(34, 197, 94, 0.1)' :
+                    line.type === 'del' ? 'rgba(239, 68, 68, 0.1)' :
+                    'transparent';
+
+                  const gutterBg =
+                    line.type === 'add' ? 'rgba(34, 197, 94, 0.18)' :
+                    line.type === 'del' ? 'rgba(239, 68, 68, 0.18)' :
+                    'transparent';
+
+                  const prefix = line.type === 'add' ? '+' : line.type === 'del' ? '-' : ' ';
+                  const prefixColor =
+                    line.type === 'add' ? 'var(--status-running)' :
+                    line.type === 'del' ? 'var(--status-error)' :
+                    'var(--text-muted)';
+
+                  // Word diff rendering
+                  const wordDiffData = hunkWordDiffs[hunkIdx]?.get(lineIdx);
+                  let contentEl: React.ReactNode;
+                  if (wordDiffData && line.type === 'del') {
+                    contentEl = <DiffLineContent segments={wordDiffData.old} type="del" />;
+                  } else if (wordDiffData && line.type === 'add') {
+                    contentEl = <DiffLineContent segments={wordDiffData.new} type="add" />;
+                  } else {
+                    contentEl = line.content || ' ';
+                  }
+
+                  return (
+                    <tr key={lineIdx} style={{ backgroundColor: bgColor }}>
+                      <td style={{
+                        padding: '0 8px',
+                        textAlign: 'right',
+                        color: 'var(--text-muted)',
+                        backgroundColor: gutterBg,
+                        fontSize: 11,
+                        lineHeight: '20px',
+                        userSelect: 'none',
+                        verticalAlign: 'top',
+                        borderRight: '1px solid var(--border)',
+                      }}>
+                        {line.oldLine ?? ''}
+                      </td>
+                      <td style={{
+                        padding: '0 8px',
+                        textAlign: 'right',
+                        color: 'var(--text-muted)',
+                        backgroundColor: gutterBg,
+                        fontSize: 11,
+                        lineHeight: '20px',
+                        userSelect: 'none',
+                        verticalAlign: 'top',
+                        borderRight: '1px solid var(--border)',
+                      }}>
+                        {line.newLine ?? ''}
+                      </td>
+                      <td style={{
+                        padding: '0 4px',
+                        textAlign: 'center',
+                        color: prefixColor,
+                        fontWeight: 700,
+                        lineHeight: '20px',
+                        userSelect: 'none',
+                        verticalAlign: 'top',
+                      }}>
+                        {prefix}
+                      </td>
+                      <td style={{
+                        padding: '0 8px',
+                        lineHeight: '20px',
+                        whiteSpace: 'pre',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        color: 'var(--text-primary)',
+                        verticalAlign: 'top',
+                      }}>
+                        {contentEl}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function DiffTab({ projectId }: { projectId: string }) {
   const [diff, setDiff] = useState<string>('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.projects.diff(projectId).then((res) => setDiff(res.diff)).catch(() => {});
+    setLoading(true);
+    api.projects.diff(projectId)
+      .then((res) => setDiff(res.diff))
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [projectId]);
 
-  const colorLine = (line: string): string => {
-    if (line.startsWith('+')) return 'var(--status-running)';
-    if (line.startsWith('-')) return 'var(--status-error)';
-    if (line.startsWith('@@')) return 'var(--accent-blue)';
-    return 'var(--text-primary)';
-  };
+  const parsed = useMemo(() => parseDiff(diff), [diff]);
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 13 }}>
+        Loading diff...
+      </div>
+    );
+  }
+
+  if (!diff || parsed.files.length === 0) {
+    return (
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flex: 1,
+        gap: 8,
+        color: 'var(--text-muted)',
+        padding: 24,
+      }}>
+        <FileText size={32} style={{ opacity: 0.4 }} />
+        <span style={{ fontSize: 14, fontWeight: 500 }}>No changes detected</span>
+        <span style={{ fontSize: 12, textAlign: 'center' }}>The working tree is clean. Make some edits and check back here.</span>
+      </div>
+    );
+  }
+
+  const { files, stats } = parsed;
 
   return (
-    <pre
-      style={{
-        padding: 12,
-        margin: 0,
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {/* Stats bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        padding: '8px 12px',
         fontSize: 12,
-        fontFamily: 'monospace',
-        whiteSpace: 'pre-wrap',
-        wordBreak: 'break-all',
-        overflow: 'auto',
-        flex: 1,
-      }}
-    >
-      {diff
-        ? diff.split('\n').map((line, i) => (
-            <div key={i} style={{ color: colorLine(line) }}>
-              {line}
-            </div>
-          ))
-        : <span style={{ color: 'var(--text-muted)' }}>No changes detected.</span>}
-    </pre>
+        color: 'var(--text-secondary)',
+        borderBottom: '1px solid var(--border)',
+        flexShrink: 0,
+        backgroundColor: 'var(--bg-primary)',
+      }}>
+        <span>
+          <strong style={{ color: 'var(--text-primary)' }}>{stats.filesChanged}</strong> file{stats.filesChanged !== 1 ? 's' : ''} changed
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--status-running)' }}>
+          <Plus size={12} />
+          <strong>{stats.totalAdditions}</strong> insertion{stats.totalAdditions !== 1 ? 's' : ''}
+        </span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--status-error)' }}>
+          <Minus size={12} />
+          <strong>{stats.totalDeletions}</strong> deletion{stats.totalDeletions !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* File sections */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        {files.map((file, idx) => (
+          <DiffFileSection key={`${file.newPath}-${idx}`} file={file} defaultExpanded={files.length <= 10} />
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -149,39 +708,144 @@ function CostTab({ session }: { session: Session }) {
   const [costData, setCostData] = useState<{
     tokensIn: number;
     tokensOut: number;
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
     costUsd: number;
+    model: string;
+    messageCount: number;
   } | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.sessions.cost(session.id).then(setCostData).catch(() => {});
+    setLoading(true);
+    api.sessions
+      .cost(session.id)
+      .then(setCostData)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [session.id]);
 
-  const totalTokens = session.claudeState?.tokenCount ?? 0;
+  // Refresh when claudeState updates (turn ends)
+  const stateTokenCount = session.claudeState?.tokenCount ?? 0;
+  useEffect(() => {
+    if (stateTokenCount > 0) {
+      api.sessions.cost(session.id).then(setCostData).catch(() => {});
+    }
+  }, [stateTokenCount, session.id]);
+
   const tokensIn = costData?.tokensIn ?? 0;
   const tokensOut = costData?.tokensOut ?? 0;
-  const costUsd = costData?.costUsd ?? (totalTokens * 0.000003);
+  const cacheCreation = costData?.cacheCreationTokens ?? 0;
+  const cacheRead = costData?.cacheReadTokens ?? 0;
+  const costUsd = costData?.costUsd ?? 0;
+  const model = costData?.model ?? '';
+  const messageCount = costData?.messageCount ?? 0;
+  const totalTokens = tokensIn + tokensOut + cacheCreation + cacheRead;
 
-  const rows = [
-    { label: 'Tokens In', value: tokensIn.toLocaleString() },
-    { label: 'Tokens Out', value: tokensOut.toLocaleString() },
-    { label: 'Total Tokens', value: (tokensIn + tokensOut || totalTokens).toLocaleString() },
-    { label: 'Cost USD', value: `$${costUsd.toFixed(4)}` },
-  ];
+  const formatTokens = (n: number): string => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+    return n.toLocaleString();
+  };
+
+  const formatCost = (n: number): string => {
+    if (n >= 1) return `$${n.toFixed(2)}`;
+    if (n >= 0.01) return `$${n.toFixed(3)}`;
+    return `$${n.toFixed(4)}`;
+  };
+
+  if (loading) {
+    return (
+      <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>
+        Loading cost data...
+      </div>
+    );
+  }
+
+  if (totalTokens === 0) {
+    return (
+      <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>
+        No cost data available yet. Cost tracking begins after the first Claude response.
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: 16 }}>
-      {rows.map((row) => (
+      {/* Big cost display */}
+      <div style={{
+        backgroundColor: 'var(--bg-hover)',
+        borderRadius: 6,
+        padding: '12px 16px',
+        marginBottom: 16,
+        textAlign: 'center',
+      }}>
+        <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
+          {formatCost(costUsd)}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+          Total session cost
+        </div>
+      </div>
+
+      {/* Token breakdown */}
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, fontWeight: 500 }}>
+        Token Usage
+      </div>
+      {[
+        { label: 'Input tokens', value: formatTokens(tokensIn), raw: tokensIn },
+        { label: 'Output tokens', value: formatTokens(tokensOut), raw: tokensOut },
+        { label: 'Cache write', value: formatTokens(cacheCreation), raw: cacheCreation },
+        { label: 'Cache read', value: formatTokens(cacheRead), raw: cacheRead },
+      ]
+        .filter((r) => r.raw > 0)
+        .map((row) => (
+          <div
+            key={row.label}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              padding: '5px 0',
+              fontSize: 13,
+              borderBottom: '1px solid var(--border)',
+            }}
+          >
+            <span style={{ color: 'var(--text-secondary)' }}>{row.label}</span>
+            <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row.value}</span>
+          </div>
+        ))}
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          padding: '5px 0',
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        <span style={{ color: 'var(--text-primary)' }}>Total</span>
+        <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{formatTokens(totalTokens)}</span>
+      </div>
+
+      {/* Session info */}
+      <div style={{ marginTop: 16, fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8, fontWeight: 500 }}>
+        Details
+      </div>
+      {[
+        { label: 'Model', value: model || 'Unknown' },
+        { label: 'API calls', value: messageCount.toLocaleString() },
+      ].map((row) => (
         <div
           key={row.label}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
-            padding: '6px 0',
+            padding: '5px 0',
             fontSize: 13,
           }}
         >
           <span style={{ color: 'var(--text-secondary)' }}>{row.label}</span>
-          <span style={{ color: 'var(--text-primary)', textAlign: 'right' }}>{row.value}</span>
+          <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row.value}</span>
         </div>
       ))}
     </div>

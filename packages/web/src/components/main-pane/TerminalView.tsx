@@ -12,11 +12,15 @@ interface Props {
 }
 
 export function TerminalView({ processId, process }: Props) {
-  const containerRef = useTerminal(processId);
-  const { detailPanelOpen, setDetailPanelOpen } = useAppStore();
-
   const isSession = process?.type === 'session';
   const session = isSession ? (process as Session) : null;
+
+  // Only disable terminal for errored sessions (resume failed / broken).
+  // Stopped sessions keep the terminal visible with scrollback.
+  const terminalDisabled = isSession && session?.state === 'errored';
+
+  const containerRef = useTerminal(processId, !!terminalDisabled);
+  const { detailPanelOpen, setDetailPanelOpen } = useAppStore();
 
   const showBanner =
     process &&
@@ -54,21 +58,37 @@ export function TerminalView({ processId, process }: Props) {
           overflow: 'hidden',
         }}
       >
-        {/* Terminal container */}
-        <div
-          style={{
-            flex: showDetailPanel ? '1 1 60%' : '1',
-            backgroundColor: '#1a1a1a',
-            overflow: 'hidden',
-            minHeight: 0,
-          }}
-        >
+        {/* Terminal container — hidden when session needs user action */}
+        {terminalDisabled ? (
           <div
-            ref={containerRef}
-            className="xterm-container"
-            style={{ width: '100%', height: '100%' }}
-          />
-        </div>
+            style={{
+              flex: 1,
+              backgroundColor: '#1a1a1a',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--text-muted)',
+              fontSize: 14,
+            }}
+          >
+            Terminal unavailable — prior session not found
+          </div>
+        ) : (
+          <div
+            style={{
+              flex: showDetailPanel ? '1 1 60%' : '1',
+              backgroundColor: '#1a1a1a',
+              overflow: 'hidden',
+              minHeight: 0,
+            }}
+          >
+            <div
+              ref={containerRef}
+              className="xterm-container"
+              style={{ width: '100%', height: '100%' }}
+            />
+          </div>
+        )}
 
         {/* Detail panel */}
         {showDetailPanel && session && (
@@ -82,7 +102,7 @@ export function TerminalView({ processId, process }: Props) {
               backgroundColor: 'var(--bg-primary)',
             }}
           >
-            <SessionDetailPanel session={session} projectId={session.projectId} />
+            <SessionDetailPanel key={session.id} session={session} projectId={session.projectId} />
           </div>
         )}
       </div>
