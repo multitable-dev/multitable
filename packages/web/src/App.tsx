@@ -15,14 +15,12 @@ import { useAppStore } from './stores/appStore';
 import { wsClient } from './lib/ws';
 import { api } from './lib/api';
 import { useTheme } from './hooks/useTheme';
-import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
 import type { Session } from './lib/types';
 
 function App() {
   const store = useAppStore();
   useTheme();
-  useKeyboardShortcuts();
 
   // Mobile detection
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);

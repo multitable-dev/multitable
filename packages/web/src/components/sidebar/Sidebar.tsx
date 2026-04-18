@@ -209,9 +209,51 @@ export function Sidebar() {
         label: 'Remove project',
         action: async () => {
           if (!window.confirm(`Remove project "${activeProject.name}"? This will not delete any files.`)) return;
+          const removedId = activeProjectId;
           try {
-            await api.projects.delete(activeProjectId);
-            store.removeProject(activeProjectId);
+            await api.projects.delete(removedId);
+
+            // Drop everything tied to the deleted project from the store
+            const remainingSessions = Object.fromEntries(
+              Object.entries(store.sessions).filter(([, s]) => s.projectId !== removedId)
+            );
+            const remainingCommands = Object.fromEntries(
+              Object.entries(store.commands).filter(([, c]) => c.projectId !== removedId)
+            );
+            const remainingTerminals = Object.fromEntries(
+              Object.entries(store.terminals).filter(([, t]) => t.projectId !== removedId)
+            );
+            useAppStore.setState({
+              sessions: remainingSessions,
+              commands: remainingCommands,
+              terminals: remainingTerminals,
+            });
+
+            store.removeProject(removedId);
+            store.setSelectedProcess(null);
+            store.setProjectOverviewOpen(false);
+
+            // Switch active project to the next available one (or none)
+            const nextProject = store.projects.find((p) => p.id !== removedId);
+            if (nextProject) {
+              store.setActiveProject(nextProject.id);
+              try {
+                const [s, c, t] = await Promise.all([
+                  api.sessions.list(nextProject.id),
+                  api.commands.list(nextProject.id),
+                  api.terminals.list(nextProject.id),
+                ]);
+                store.setSessions(s);
+                store.setCommands(c);
+                store.setTerminals(t);
+              } catch { /* daemon may be unreachable; non-fatal */ }
+            } else {
+              useAppStore.setState({ activeProjectId: null });
+            }
+
+            // Past Sessions: prior pinned rows just became unpinned
+            window.dispatchEvent(new Event('mt:past-sessions-refresh'));
+
             toast.success('Project removed');
           } catch {
             toast.error('Failed to remove project');
@@ -287,14 +329,13 @@ export function Sidebar() {
               setContextMenu({ type: 'project-header', id: activeProject.id, x: e.clientX, y: e.clientY });
             }}
           >
-            <ProjectHeader project={activeProject} shortcut="Alt+1" />
+            <ProjectHeader project={activeProject} />
           </div>
 
           <SidebarSection
             title="SESSIONS"
             running={runningSessions}
             total={projectSessions.length}
-            shortcut="Alt+S"
             onAdd={() => store.setAddAgentModalOpen(true)}
           >
             {projectSessions.length > 0 ? (
@@ -322,7 +363,6 @@ export function Sidebar() {
             title="TERMINALS"
             running={runningTerminals}
             total={projectTerminals.length}
-            shortcut="Alt+T"
             onAdd={handleAddTerminal}
           >
             {projectTerminals.length > 0 ? (
@@ -349,7 +389,6 @@ export function Sidebar() {
             title="COMMANDS"
             running={runningCommands}
             total={projectCommands.length}
-            shortcut="Alt+C"
             onAdd={() => setShowAddCommand(true)}
           >
             {projectCommands.length > 0 ? (
@@ -383,7 +422,7 @@ export function Sidebar() {
             paddingTop: 8,
           }}
         >
-          {otherProjects.map((proj, i) => (
+          {otherProjects.map((proj) => (
             <div
               key={proj.id}
               style={{
@@ -392,15 +431,10 @@ export function Sidebar() {
                 padding: '8px 16px',
                 cursor: 'pointer',
               }}
-              onDoubleClick={() => useAppStore.getState().setActiveProject(proj.id)}
+              onClick={() => useAppStore.getState().setActiveProject(proj.id)}
             >
               <span style={{ fontSize: 14, color: 'var(--text-secondary)' }}>
                 {proj.name}
-              </span>
-              <span
-                style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-muted)' }}
-              >
-                Alt+{i + 2}
               </span>
             </div>
           ))}

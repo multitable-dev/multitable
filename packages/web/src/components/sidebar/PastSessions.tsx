@@ -20,7 +20,6 @@ interface TranscriptProject {
   sessionCount: number;
 }
 
-const FOCUS_EVENT = 'mt:focus-past-sessions-search';
 const REFRESH_EVENT = 'mt:past-sessions-refresh';
 
 function relativeTime(ms: number): string {
@@ -64,7 +63,6 @@ export function PastSessions() {
   const [groupDeepLoaded, setGroupDeepLoaded] = useState<Set<string>>(new Set());
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
-  const inputRef = useRef<HTMLInputElement | null>(null);
   const fetchSeq = useRef(0);
 
   // Debounce query input
@@ -94,16 +92,6 @@ export function PastSessions() {
         setLoading(false);
       });
   }, [sectionCollapsed, debouncedQuery, scopeCwd, refreshTick]);
-
-  // Listen for keyboard-shortcut focus event
-  useEffect(() => {
-    const handler = () => {
-      setSectionCollapsed(false);
-      setTimeout(() => inputRef.current?.focus(), 0);
-    };
-    window.addEventListener(FOCUS_EVENT, handler);
-    return () => window.removeEventListener(FOCUS_EVENT, handler);
-  }, []);
 
   // Refresh when a session was deleted elsewhere (so unpinned items reappear)
   useEffect(() => {
@@ -280,7 +268,6 @@ export function PastSessions() {
           PAST SESSIONS
         </span>
         <div style={{ flex: 1, height: 1, backgroundColor: 'var(--border)', margin: '0 8px' }} />
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Ctrl+Shift+H</span>
       </div>
 
       {!sectionCollapsed && (
@@ -299,7 +286,6 @@ export function PastSessions() {
             >
               <Search size={12} style={{ color: 'var(--text-muted)', marginRight: 4 }} />
               <input
-                ref={inputRef}
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}

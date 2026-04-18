@@ -20,6 +20,7 @@ import {
   createTerminal,
 } from '../db/store.js';
 import { loadProjectConfig, loadGlobalConfig } from '../config/loader.js';
+import { HookManager } from '../hooks/installer.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -85,9 +86,26 @@ export function createProjectsRouter(manager: PtyManager): Router {
   });
 
   // DELETE /api/projects/:id
-  router.delete('/:id', (req: Request, res: Response) => {
+  router.delete('/:id', async (req: Request, res: Response) => {
     const project = getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    // Tear down all child processes before the cascade deletes their rows.
+    const sessions = getSessionsByProject(req.params.id);
+    const commands = getCommandsByProject(req.params.id);
+    const terminals = getTerminalsByProject(req.params.id);
+    for (const child of [...sessions, ...commands, ...terminals]) {
+      try { manager.remove(child.id); } catch { /* best effort */ }
+    }
+
+    // Uninstall claude hooks from the project's .claude/settings.json.
+    try {
+      const config = loadGlobalConfig();
+      const hookManager = new HookManager();
+      await hookManager.removeForProject(project.path, config.port);
+    } catch { /* best effort — file may not exist or already cleaned */ }
+
+    // Cascades to sessions/commands/terminals/session_events/cost_records.
     deleteProject(req.params.id);
     res.status(204).send();
   });

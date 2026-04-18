@@ -5,7 +5,7 @@ interface Props {
   title: string;
   running: number;
   total: number;
-  shortcut: string;
+  shortcut?: string;
   onAdd?: () => void;
   children: React.ReactNode;
 }
@@ -74,9 +74,11 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
             <Plus size={14} />
           </button>
         )}
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
-          {shortcut}
-        </span>
+        {shortcut && (
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+            {shortcut}
+          </span>
+        )}
       </div>
       {!collapsed && children}
     </div>

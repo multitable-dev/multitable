@@ -8,7 +8,6 @@ interface CommandItem {
   id: string;
   name: string;
   category: string;
-  shortcut?: string;
   action: () => void;
 }
 
@@ -99,7 +98,6 @@ export function CommandPalette() {
         id: 'action-start-all',
         name: 'Start all processes',
         category: 'Actions',
-        shortcut: 'Ctrl+Shift+S',
         action: () => {
           api.projects
             .startAll(activeProjectId)
@@ -111,7 +109,6 @@ export function CommandPalette() {
         id: 'action-stop-all',
         name: 'Stop all processes',
         category: 'Actions',
-        shortcut: 'Ctrl+Shift+X',
         action: () => {
           api.projects
             .stopAll(activeProjectId)
@@ -125,7 +122,6 @@ export function CommandPalette() {
         id: 'action-restart-selected',
         name: 'Restart selected process',
         category: 'Actions',
-        shortcut: 'Ctrl+Shift+R',
         action: () => {
           api.processes
             .restart(selectedProcessId)
@@ -152,7 +148,6 @@ export function CommandPalette() {
         id: 'create-terminal',
         name: 'New terminal',
         category: 'Create',
-        shortcut: 'Ctrl+T',
         action: () => {
           api.terminals
             .create(activeProjectId, {})
@@ -170,7 +165,6 @@ export function CommandPalette() {
       id: 'create-session',
       name: 'Add session...',
       category: 'Create',
-      shortcut: 'Ctrl+Shift+A',
       action: () => {
         setAddAgentModalOpen(true);
       },
@@ -187,7 +181,6 @@ export function CommandPalette() {
       id: 'create-project',
       name: 'Add project...',
       category: 'Create',
-      shortcut: 'Ctrl+Shift+P',
       action: () => {
         setAddProjectModalOpen(true);
       },
@@ -198,7 +191,6 @@ export function CommandPalette() {
       id: 'settings-global',
       name: 'Open global settings',
       category: 'Settings',
-      shortcut: 'Ctrl+,',
       action: () => {
         setGlobalSettingsOpen(true);
       },
@@ -334,20 +326,6 @@ export function CommandPalette() {
                     }}
                   >
                     <span>{item.name}</span>
-                    {item.shortcut && (
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: 'var(--text-muted)',
-                          backgroundColor: 'var(--bg-secondary, rgba(128,128,128,0.15))',
-                          padding: '2px 6px',
-                          borderRadius: 4,
-                          fontFamily: 'monospace',
-                        }}
-                      >
-                        {item.shortcut}
-                      </span>
-                    )}
                   </Command.Item>
                 ))}
               </Command.Group>

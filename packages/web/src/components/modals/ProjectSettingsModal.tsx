@@ -11,14 +11,12 @@ interface Props {
 
 export function ProjectSettingsModal({ onClose, project }: Props) {
   const [name, setName] = useState(project.name);
-  const [shortcut, setShortcut] = useState<number | null>(project.shortcut);
   const [icon, setIcon] = useState(project.icon || '');
   const [loading, setLoading] = useState(false);
   const store = useAppStore();
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave();
   };
 
   const handleSave = async () => {
@@ -26,7 +24,6 @@ export function ProjectSettingsModal({ onClose, project }: Props) {
     try {
       await api.projects.update(project.id, {
         name,
-        shortcut,
         icon: icon || null,
       });
       toast.success('Project settings saved');
@@ -114,26 +111,6 @@ export function ProjectSettingsModal({ onClose, project }: Props) {
             autoFocus
             style={inputStyle}
           />
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Keyboard shortcut</label>
-          <select
-            value={shortcut ?? ''}
-            onChange={(e) => setShortcut(e.target.value ? Number(e.target.value) : null)}
-            style={{
-              ...inputStyle,
-              maxWidth: 120,
-              cursor: 'pointer',
-            }}
-          >
-            <option value="">None</option>
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-              <option key={n} value={n}>
-                Alt+{n}
-              </option>
-            ))}
-          </select>
         </div>
 
         <div style={{ marginBottom: 24 }}>
