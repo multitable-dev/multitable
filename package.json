@@ -2,7 +2,14 @@
   "name": "multitable",
   "version": "0.0.1",
   "description": "A terminal multiplexer for the agentic coding age",
-  "keywords": ["terminal", "multiplexer", "agent", "claude", "coding", "cli"],
+  "keywords": [
+    "terminal",
+    "multiplexer",
+    "agent",
+    "claude",
+    "coding",
+    "cli"
+  ],
   "homepage": "https://multitable.dev",
   "repository": {
     "type": "git",
@@ -14,16 +21,17 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "concurrently -n daemon,web -c blue,magenta \"npm run dev -w @multitable/daemon\" \"npm run dev -w @multitable/web\"",
     "build": "npm run build --workspaces --if-present",
     "lint": "eslint packages/*/src --ext .ts,.tsx",
     "format": "prettier --write packages/*/src"
   },
   "devDependencies": {
-    "typescript": "^5.4.0",
-    "eslint": "^8.57.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "prettier": "^3.2.0"
+    "concurrently": "^8.2.2",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0",
+    "typescript": "^5.4.0"
   }
 }
