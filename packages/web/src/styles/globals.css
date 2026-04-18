@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #FFFFFF;
+  --bg-sidebar: #FAFAFA;
+  --bg-statusbar: #F5F5F5;
+  --text-primary: #111111;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --border: #e5e7eb;
+  --accent-blue: #3b82f6;
+  --status-running: #22c55e;
+  --status-idle: #22c55e;
+  --status-warning: #f59e0b;
+  --status-error: #ef4444;
+  --status-stopped: #9ca3af;
+  --bg-hover: #f3f4f6;
+  --selection-bg: transparent;
+  --selection-border: #3b82f6;
+}
+
+[data-theme="dark"] {
+  --bg-primary: #1a1a1a;
+  --bg-sidebar: #141414;
+  --bg-statusbar: #1e1e1e;
+  --text-primary: #e5e5e5;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --border: #2e2e2e;
+  --accent-blue: #60a5fa;
+  --status-running: #22c55e;
+  --status-idle: #22c55e;
+  --status-warning: #f59e0b;
+  --status-error: #ef4444;
+  --status-stopped: #6b7280;
+  --bg-hover: #2a2a2a;
+  --selection-bg: transparent;
+  --selection-border: #60a5fa;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+/* Reset box-sizing inside xterm so its internal layout isn't broken */
+.xterm *,
+.xterm *::before,
+.xterm *::after {
+  box-sizing: content-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 14px;
+}
+
+/* xterm.js container */
+.xterm-container {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  padding: 4px;
+}
+
+@keyframes connection-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

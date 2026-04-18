@@ -1,7 +1,114 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(git -C /home/erick/Documents/multitable log --oneline -10)",
+      "Bash(git -C /home/erick/Documents/multitable status)",
+      "Bash(git -C /home/erick/Documents/multitable ls-tree -r HEAD)",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(data[0][''text'']\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(npm install)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(npx vite build)",
+      "Bash(npx tsc -p tsconfig.json)",
+      "Bash(timeout 5 node packages/daemon/dist/index.js)",
+      "Bash(npm run build)",
+      "Bash(timeout 6 bash -c 'node packages/daemon/dist/index.js & sleep 2 && kill -INT $! && wait $!')",
+      "Bash(curl -s -X POST http://127.0.0.1:3000/api/projects -H \"Content-Type: application/json\" -d '{\"\"path\"\":\"\"/home/erick/Documents/multitable\"\"}')",
+      "Bash(python3 -m json.tool)"
+    ],
     "additionalDirectories": [
       "/home/erick/Documents/multitable/.github/ISSUE_TEMPLATE"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/pre-tool-use -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/post-tool-use -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/stop -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/session-start -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/session-end -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/subagent-start -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/subagent-stop -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/user-prompt-submit -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
     ]
   }
 }

@@ -11,3 +11,6 @@ coverage/
 .claude/settings.local.json
 .local/
 *.skill
+*.tsbuildinfo
+.eslintcache
+.claude/settings.json

@@ -1,0 +1,115 @@
+import type { WsMessage } from './types';
+import { useAppStore } from '../stores/appStore';
+
+type MessageHandler = (msg: WsMessage) => void;
+
+const MAX_RETRIES = 20;
+
+class WsClient {
+  private ws: WebSocket | null = null;
+  private handlers: Map<string, MessageHandler[]> = new Map();
+  private reconnectDelay = 1000;
+  private subscribedProcess: string | null = null;
+  private subscribedDims: { cols: number; rows: number } | null = null;
+  private retryCount = 0;
+  private hasConnectedBefore = false;
+
+  connect(): void {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const url = `${protocol}//${window.location.host}/ws`;
+
+    useAppStore.getState().setConnectionState('reconnecting');
+    this.ws = new WebSocket(url);
+
+    this.ws.onopen = () => {
+      const isReconnect = this.hasConnectedBefore;
+      this.hasConnectedBefore = true;
+      this.reconnectDelay = 1000;
+      this.retryCount = 0;
+      useAppStore.getState().setConnectionState('connected');
+
+      // Notify listeners so they can re-fetch data after server restart
+      if (isReconnect) {
+        const handlers = this.handlers.get('ws:reconnected') ?? [];
+        handlers.forEach(h => h({ type: 'ws:reconnected', payload: {} } as WsMessage));
+      }
+
+      if (this.subscribedProcess) {
+        const payload = this.subscribedDims ? { cols: this.subscribedDims.cols, rows: this.subscribedDims.rows } : {};
+        this.send({ type: 'subscribe', processId: this.subscribedProcess, payload });
+      }
+    };
+
+    this.ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(evt.data) as WsMessage;
+        const handlers = this.handlers.get(msg.type) ?? [];
+        handlers.forEach(h => h(msg));
+        const allHandlers = this.handlers.get('*') ?? [];
+        allHandlers.forEach(h => h(msg));
+      } catch {
+        // ignore malformed messages
+      }
+    };
+
+    this.ws.onclose = () => {
+      this.retryCount++;
+      if (this.retryCount >= MAX_RETRIES) {
+        useAppStore.getState().setConnectionState('disconnected');
+        return;
+      }
+      useAppStore.getState().setConnectionState('reconnecting');
+      setTimeout(() => {
+        this.reconnectDelay = Math.min(this.reconnectDelay * 2, 30000);
+        this.connect();
+      }, this.reconnectDelay);
+    };
+
+    this.ws.onerror = () => {
+      // onerror is always followed by onclose, so reconnect happens there
+    };
+  }
+
+  on(type: string, handler: MessageHandler): () => void {
+    const list = this.handlers.get(type) ?? [];
+    list.push(handler);
+    this.handlers.set(type, list);
+    return () => {
+      this.handlers.set(
+        type,
+        (this.handlers.get(type) ?? []).filter(h => h !== handler)
+      );
+    };
+  }
+
+  send(msg: WsMessage): void {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify(msg));
+    }
+  }
+
+  subscribe(processId: string, dims?: { cols: number; rows: number }): void {
+    this.subscribedProcess = processId;
+    this.subscribedDims = dims ?? null;
+    this.send({ type: 'subscribe', processId, payload: dims ? { cols: dims.cols, rows: dims.rows } : {} });
+  }
+
+  unsubscribe(processId: string): void {
+    this.send({ type: 'unsubscribe', processId, payload: {} });
+    if (this.subscribedProcess === processId) this.subscribedProcess = null;
+  }
+
+  sendInput(processId: string, data: string): void {
+    this.send({ type: 'pty-input', processId, payload: { data } });
+  }
+
+  sendResize(processId: string, cols: number, rows: number): void {
+    this.send({ type: 'pty-resize', processId, payload: { cols, rows } });
+  }
+
+  respondPermission(id: string, decision: 'allow' | 'deny' | 'always-allow'): void {
+    this.send({ type: 'permission:respond', payload: { id, decision } });
+  }
+}
+
+export const wsClient = new WsClient();

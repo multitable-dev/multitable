@@ -397,6 +397,86 @@ The daemon stores all persistent state in a SQLite database at `~/.config/multit
 - `session_events` — structured activity log per session (files read, files written, tools called)
 - `commands` — configured commands per project
 - `cost_records` — per-session token/cost snapshots over time
+- `terminals` — standalone shell terminals per project
+
+### SQLite Schema (CREATE TABLE)
+
+```sql
+CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    path TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    icon TEXT,
+    is_active INTEGER NOT NULL DEFAULT 0,
+    shortcut INTEGER,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    working_directory TEXT,
+    autostart INTEGER NOT NULL DEFAULT 0,
+    autorespawn INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'stopped',
+    claude_session_id TEXT,
+    label TEXT,
+    scratchpad TEXT,
+    scrollback_data BLOB,
+    tokens_in INTEGER NOT NULL DEFAULT 0,
+    tokens_out INTEGER NOT NULL DEFAULT 0,
+    cost_usd REAL NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    last_active_at INTEGER
+);
+
+CREATE TABLE commands (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    command TEXT NOT NULL,
+    working_directory TEXT,
+    autostart INTEGER NOT NULL DEFAULT 0,
+    autorestart INTEGER NOT NULL DEFAULT 0,
+    autorestart_max INTEGER NOT NULL DEFAULT 5,
+    autorestart_delay_ms INTEGER NOT NULL DEFAULT 2000,
+    autorestart_window_secs INTEGER NOT NULL DEFAULT 60,
+    terminal_alerts INTEGER NOT NULL DEFAULT 0,
+    file_watching TEXT,          -- JSON array of glob strings
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE terminals (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    shell TEXT,                  -- null = use default shell
+    working_directory TEXT,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE session_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,    -- 'tool_use' | 'file_read' | 'file_write' | 'command'
+    tool_name TEXT,
+    file_path TEXT,
+    metadata TEXT,               -- JSON blob for extra data
+    timestamp INTEGER NOT NULL
+);
+
+CREATE TABLE cost_records (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    timestamp INTEGER NOT NULL,
+    tokens_in INTEGER NOT NULL,
+    tokens_out INTEGER NOT NULL,
+    cost_usd REAL NOT NULL,
+    model TEXT
+);
+```
 
 ### File System Paths
 
@@ -533,6 +613,57 @@ Target quality: Azure Cloud Shell on mobile. The terminal is the primary surface
 - **Touch targets**: 44px minimum for all interactive elements.
 
 **What is NOT in the initial mobile build:** pinch-to-zoom font scaling, touch selection in xterm (fights xterm.js internals), bottom sheet sidebar, swipe gestures between sessions.
+
+### Connection and Error States
+
+#### Daemon Unreachable
+
+When the WebSocket connection fails on load (initial connect) or after all reconnection attempts are exhausted:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│             [wifi-off icon, 48px, --text-muted]          │
+│                                                          │
+│             Cannot connect to daemon                     │
+│             localhost:3000                               │
+│                                                          │
+│                    [↺ Retry now]                         │
+│                                                          │
+│  The MultiTable daemon may not be running.               │
+│  Start it with:  mt start                                │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+- Full-screen overlay covers the entire main pane
+- Sidebar still renders (dimmed, non-interactive)
+- "↺ Retry now" button triggers immediate reconnect attempt, resetting the backoff
+
+#### Reconnecting (Transient)
+
+When the WebSocket drops mid-session and reconnection backoff is in progress:
+
+- A 36px yellow banner appears at the top of the main pane:
+  `⚠ Reconnecting... (attempt 2)`
+- Sidebar is visible but dimmed (`opacity: 0.6`, `pointer-events: none`)
+- The terminal xterm.js instance stays mounted (no data loss)
+- On successful reconnect: banner disappears, sidebar re-enables, client re-subscribes and fetches updated state via REST
+
+#### Process Start Failure
+
+When `POST /api/processes/:id/start` returns an error:
+- Toast (red, 5s): `"Failed to start {name}: {error message}"`
+- Process stays in `stopped` state; sidebar and status bar unchanged
+
+#### mt.yml Reload Notification
+
+When chokidar detects a change to the active project's `mt.yml`:
+- Daemon reloads the config, adds/removes/updates processes accordingly
+- WebSocket emits `config:reloaded { projectId }` event
+- Frontend shows toast: `"mt.yml reloaded — {n} change(s) applied"`
+- New processes from the updated config appear in sidebar (in `stopped` state unless `autostart: true`)
+- Processes removed from `mt.yml` are stopped and removed from the sidebar
 
 ---
 
@@ -675,6 +806,98 @@ Pill-shaped label with 1px border, 11px uppercase text, `--text-secondary` color
 - Padding: 32px
 - Close on Escape or backdrop click
 
+### PermissionCard
+
+Displays a single pending Claude Code tool permission request.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ [shield-icon]  Write                          Claude Code   │
+│ ──────────────────────────────────────────────────────────  │
+│ path:    "src/api/routes.ts"                               │
+│ content: "export const routes = ..."          [expand ▼]   │
+│ ──────────────────────────────────────────────────────────  │
+│ ████████████████████████████░░░░░░░░  82s remaining        │
+│ ──────────────────────────────────────────────────────────  │
+│         [✓ Allow]    [★ Always Allow]    [✗ Deny]          │
+└────────────────────────────────────────────────────────────┘
+```
+
+- **Tool name**: 15px bold, `--text-primary`; icon from Lucide (e.g., `Edit3` for Write, `Terminal` for Bash)
+- **Session name**: right-aligned, 12px, `--text-secondary`
+- **Tool input**: formatted as `key: value` pairs; inputs >300 chars are collapsed with an [expand ▼] toggle that reveals the full JSON
+- **Countdown bar**: full-width, 4px height. Color transitions: `--accent-blue` → `#f59e0b` (at 50%) → `#ef4444` (at 20%). Driven by `requestAnimationFrame` + CSS `transform: scaleX()` for smooth 60fps animation
+- **Buttons**: Allow (green filled), Always Allow (blue outlined), Deny (red filled)
+- Background: `--bg-primary`, 1px `--border`, box-shadow, border-radius 8px, padding 16px
+- Width: 480px max
+
+### PermissionBar
+
+Container for stacked `PermissionCard` instances. Positioned above the status bar.
+
+- **Position**: fixed, `bottom: 36px` (above the status bar), `right: 16px`
+- Cards stack vertically with 8px gap, newest on top
+- Maximum 5 cards visible before scrolling
+- Invisible (no container frame) when `pending.length === 0`
+- Each card individually dismissible via Deny or Allow
+
+### OptionSelector
+
+Displays when Claude presents numbered choices. Appears as a bottom strip below the terminal area.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│ 💬 Which approach do you prefer?                  [✕ close]│
+│ [1. Refactor the existing class and add methods          ] │
+│ [2. Create a new service layer with dependency injection  ] │
+│ [3. Use a middleware pattern for cross-cutting concerns   ] │
+└────────────────────────────────────────────────────────────┘
+```
+
+- Background: `--bg-sidebar`, border-top: 1px `--border`, padding: 12px 16px
+- Question text: 14px, `--text-primary`, bold
+- Option buttons: secondary variant (outline), full-width, left-aligned text, 8px vertical gap
+- Button label: `"{n}. {option text}"` — truncated at 60 chars with ellipsis
+- **Keyboard**: digit keys 1–9 select the corresponding option (sends `{n}\r` to PTY)
+- **Auto-dismiss**: removed automatically when new PTY output arrives (user already responded via terminal)
+- **Manual dismiss**: Escape key or ✕ button (sends `option:dismiss` WS message)
+- Height: auto, max 300px then scrollable within the strip
+
+### ProcessCard
+
+Expandable settings card in the Project Overview (§17). One card per session or command.
+
+**Collapsed state:**
+```
+┌────────────────────────────────────────────────────────────┐
+│ ► [npm-icon] npm:dev  [AUTO]  [RUNNING]    npm run dev   ▼ │
+└────────────────────────────────────────────────────────────┘
+```
+
+**Expanded state:**
+```
+┌────────────────────────────────────────────────────────────┐
+│ ▼ [npm-icon] npm:dev  [AUTO]  [RUNNING]    npm run dev   ▲ │
+│ ─────────────────────────────────────────────────────────  │
+│  Name:              npm:dev                      [Rename]  │
+│  Command:           npm run dev                    [Edit]  │
+│  Working directory: /home/user/project           [Change]  │
+│  Auto-start:        [●──]  Start when project opens        │
+│  Auto-restart:      [○──]  Restart if process exits        │
+│  Terminal alerts:   [●──]  Notify on bell character (^G)   │
+│  File watching:     [src/**/*.ts ×]  [+ add pattern]       │
+│ ─────────────────────────────────────────────────────────  │
+│  [✓ Saved to mt.yml]                    [▶ Start] [■ Stop] │
+└────────────────────────────────────────────────────────────┘
+```
+
+- Card border: 1px `--border`, border-radius 8px, `--bg-primary` background
+- Collapsed height: 48px; expanded: auto
+- `[AUTO]` badge: shown when process originates from `mt.yml` (not manually added)
+- `[RUNNING]` badge: green, shown when `state === "running"`; `[STOPPED]` gray; `[ERROR]` red
+- Command icon: inferred from command string (npm → Node.js, php → PHP elephant, python → Python, cargo → Rust, etc.); falls back to generic terminal icon
+- `[✓ Saved to mt.yml]` / `[⚠ Not in mt.yml]`: sync status indicator below fields
+
 ---
 
 # Part IV: UI Specification (MVP Views)
@@ -747,6 +970,69 @@ v  COMMANDS —————————— 4/5   Alt+C
 - On hover: inline action icons (edit, restart, stop)
 - Selected item: 3px `--accent-blue` left border
 
+### Sidebar Empty States
+
+**No projects registered** (first launch):
+
+```
+┌──────────────────────────────┐
+│                              │
+│   [folder-plus icon, 24px]   │
+│   Add your first project     │
+│                              │
+└──────────────────────────────┘
+```
+
+The sidebar contains only this centered placeholder. Clicking it opens the Add Project Modal (§20.0).
+
+**Project registered but no processes configured:**
+
+The project header is shown, followed by a call-to-action below it:
+
+```
+✓  [icon] my-project       Alt+1
+─────────────────────────────────
+   No processes configured.
+
+   [+ Add Session]
+   [+ Add Command]
+   [+ Add Terminal]
+```
+
+Each button triggers the same action as the corresponding button in Project Overview (§17).
+
+### Section Header Quick-Add (+)
+
+Each section header shows a "+" icon button on the right side when hovered:
+
+```
+  SESSIONS ————————— 2/3  [+]   Alt+S
+```
+
+- **SESSIONS [+]** → Opens Add Agent Modal (§20.2)
+- **TERMINALS [+]** → Immediately creates a new terminal (no modal), same as `Ctrl+T`
+- **COMMANDS [+]** → Opens Add Process Modal (§20.1)
+
+Style: 16×16px icon button, `--text-muted` color, `--bg-sidebar` hover background, 4px border-radius. Hidden when section is collapsed.
+
+### Sidebar Item Hover Actions
+
+On hover of a sidebar item, action buttons appear on the right side (fade in, 150ms):
+
+```
+  ● npm:dev         5174  [↺][■]
+```
+
+| Process Type | State | Buttons |
+|---|---|---|
+| Session | Running | [↺ Restart] [■ Stop] |
+| Session | Stopped/Errored | [▶ Start] |
+| Command | Running | [↺ Restart] [■ Stop] |
+| Command | Stopped/Errored | [▶ Start] |
+| Terminal | Any | [✕ Close] |
+
+All icons are 16px Lucide icons. Hover state does not replace the metrics — metrics shift left to make room for the buttons.
+
 ### Other Projects List
 
 Below the active project's sections, other registered projects appear collapsed:
@@ -810,66 +1096,343 @@ Window resized → ResizeObserver fires → fitAddon.fit()
     → Child process redraws
 ```
 
+### Session Header Bar
+
+Sessions (type `"session"`) display a 40px header bar directly above the xterm.js area. This bar is not shown for terminals or commands.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ ● Claude Code   Editing src/api/routes.ts...    [↺] [🏷️][📑]│
+│ Session: abc123...def  ·  $0.42  ·  1,234 tokens            │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Top row (left to right):**
+- Status dot (10px) + session name (14px, `--text-primary`)
+- Live subtitle from `agent-subtitle` WS messages (12px, `--text-secondary`, truncated with ellipsis)
+- Right side: action buttons
+  - **[↺ Resume]**: shown only when `claudeSessionId` is set AND process is stopped. Writes `claude --resume {id}\r` to the PTY.
+  - **[🏷️ Re-summarize]**: shown when `userMessages.length > 0` at any time. Triggers label re-generation.
+  - **[📑 Files/Diff/Cost/Notes]**: tab-picker icon button that toggles the Session Detail Panel open to the last-used tab.
+
+**Second row:**
+- Claude session ID (monospace, 11px, truncated to 12 chars; click to copy full ID)
+- Session cost in USD
+- Token count
+
+Background: `--bg-sidebar`, 1px `--border` bottom, padding: 8px 16px.
+
+### Stopped / Errored Process State
+
+When the selected process is `stopped` or `errored`, a status banner appears at the top of the terminal area (above any scrollback):
+
+**Stopped:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ○ npm:dev is not running.                        [▶ Start]  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Errored (crashed):**
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ● npm:dev exited with code 1.                  [↺ Restart]  │
+└──────────────────────────────────────────────────────────────┘
+```
+
+- Background: `--bg-statusbar`, 1px `--border` bottom, 12px padding
+- Status dot + message text (14px) on the left
+- Action button (primary blue) on the right: `POST /api/processes/:id/start`
+- Scrollback from the last run is shown behind/below the banner (opacity: 0.7)
+- Banner disappears immediately when process transitions to `running`
+
+**Exception — sessions with `autorespawn: true` (default):** The daemon auto-respawns the PTY shell on subscribe, so no banner is shown. Instead, the session header shows the [↺ Resume] button for Claude resume.
+
+### New Terminal Creation Behavior
+
+When a new terminal is created (via `Ctrl+T`, the sidebar TERMINALS [+] button, or "+ Add Terminal" in Project Overview):
+
+1. `POST /api/projects/:id/terminals` → daemon creates Terminal record, spawns PTY with default shell
+2. Terminal auto-named: "Terminal 1", "Terminal 2", etc. (incrementing across all terminals for the project)
+3. Working directory: project root
+4. WebSocket `session:created { type: "terminal" }` event → sidebar adds the new item
+5. Frontend: `setSelectedProcess` to new terminal ID → main pane switches to it
+6. Terminal is immediately interactive — no banner, no delay, cursor ready
+
+`Ctrl+W` closes the currently selected terminal: sends `DELETE /api/terminals/:id` → PTY killed → sidebar item removed.
+
+**Rename:** Right-click sidebar item → "Rename..." → small inline text input appears in the sidebar item row, pre-filled with current name. Enter to confirm, Escape to cancel. `PUT /api/terminals/:id { name }`.
+
+### Session Detail Panel
+
+Sessions support a resizable detail panel below the terminal. It is hidden by default and opened by clicking a tab button in the session header bar.
+
+```
+┌────────────────────────────────────────────────────────────┐
+│  ● Claude Code   Editing routes.ts...       [↺][🏷️][📑]   │  ← session header (40px)
+│  Session: abc123  ·  $0.42  ·  1,234 tokens               │
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│                 xterm.js terminal area                     │
+│               (resizable, default ~60%)                    │
+│                                                            │
+├────────────────────────────────────────────────────────────┤
+│  [Files] [Diff] [Cost] [Notes]                   [✕ close] │  ← tab bar (36px)
+├────────────────────────────────────────────────────────────┤
+│                                                            │
+│           tab content area (~40%, min 120px)               │
+│                                                            │
+└────────────────────────────────────────────────────────────┘
+```
+
+- The divider between the terminal and detail panel is draggable (4px hit area)
+- [✕ close] collapses the panel entirely; re-clicking a tab re-opens it
+- Active tab underlined with `--accent-blue`
+- Tab shortcuts: `Ctrl+Shift+F` (Files), `Ctrl+Shift+D` (Diff), `Ctrl+Shift+N` (Notes)
+
+**Files tab — File Explorer:**
+
+Project directory tree rooted at the session's working directory.
+
+- Folder nodes: `►` collapsed, `▼` expanded; click to toggle
+- File nodes: click to open in `default_editor` via `POST /api/projects/:id/open-file { path }`
+- Files modified during the current session: yellow `•` dot on the right edge
+- Modified-file dots propagate up to parent folders
+- Tree loads lazily: folder expand → `GET /api/projects/:id/files?path=...`
+- "No changes yet" state: tree is shown without any highlight dots
+
+**Diff tab — Diff Viewer:**
+
+Git diff of changes made in the session's working directory.
+
+```
+┌──────────────────┬─────────────────────────────────────────┐
+│ src/api/routes.ts│ @@ -12,6 +12,14 @@                      │
+│ +14 -3           │                                         │
+│                  │ +export const userRoutes = Router()      │
+│ src/app.ts       │ +userRoutes.get('/me', authenticate,    │
+│ +2 -0            │  getUser)                               │
+│                  │                                         │
+└──────────────────┴─────────────────────────────────────────┘
+```
+
+- Left panel: file list with `+N/-N` line counts (click to jump to that file's diff)
+- Right panel: unified diff format
+- Added lines: `#22c55e15` background, `+` prefix in `--status-running` color
+- Removed lines: `#ef444415` background, `−` prefix in `--status-error` color
+- Unchanged context: `--text-muted`
+- Font: monospace 13px
+- Refreshes every 5s automatically; also refreshes on `session:updated` WS event
+- "No changes yet" placeholder when diff is empty
+
+**Cost tab — Cost Summary:**
+
+```
+Session Cost
+─────────────────────────────
+Tokens in:       12,340
+Tokens out:        3,892
+Total tokens:     16,232
+─────────────────────────────
+Model:     claude-sonnet-4-6
+Cost:                  $0.42
+─────────────────────────────
+Duration:            1h 23m
+Tools used:              47
+```
+
+- Font: 13px system sans-serif, values right-aligned
+- `"Not tracked"` shown for fields unavailable for non-Claude sessions
+- Updates live as `session:updated` WS events arrive
+
+**Notes tab — Scratchpad:**
+
+Full-width plain `<textarea>` filling the tab area.
+
+- Placeholder: `"Jot down your next prompts, ideas, or notes..."`
+- Font: monospace 13px, `--text-primary` color, `--bg-primary` background
+- No border or outline; padding: 16px
+- Content auto-saved to SQLite (`sessions.scratchpad`) with 500ms debounce
+- Persists across daemon restarts and session respawns
+
 ---
 
 ## 16. Main Pane: Dashboard View
 
 The overview shown on first load or when clicking the Dashboard navigation item.
 
-- Grid of project cards with mini status previews
-- Each card shows:
-  - Project name and icon
-  - Status indicators (idle, running, waiting, errored, completed)
-  - Session/command counts (e.g., "3 sessions, 5 commands")
-  - Aggregate cost for active sessions
-  - Error badge if any process has crashed
-- Click a card to switch to that project
-- Global search bar at the top for full-text search across all session histories
+### Layout
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  [🔍 Search sessions and commands...]        [+ Add Project]│
+│──────────────────────────────────────────────────────────│
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
+│  │ [icon]       │  │ [icon]       │  │ [icon]       │   │
+│  │ my-project ●4│  │ other-proj ●2│  │ third-proj ○0│   │
+│  │ /home/user/  │  │ /home/user/  │  │ /home/user/  │   │
+│  │─────────────│  │─────────────│  │─────────────│   │
+│  │ 3 sess  5 cmd│  │ 1 sess  2 cmd│  │ 2 sess  1 cmd│   │
+│  │─────────────│  │─────────────│  │─────────────│   │
+│  │ $0.42 today  │  │ $0.18 today  │  │ —           │   │
+│  └──────────────┘  └──────────────┘  └──────────────┘   │
+└──────────────────────────────────────────────────────────┘
+```
+
+- **Search bar**: full-width, `--bg-sidebar` background, 1px `--border`, auto-focused on load
+- **"+ Add Project" button**: top-right corner, primary blue, opens Add Project Modal (§20.0)
+- **Grid**: 3 columns on desktop (≥1200px), 2 columns (800–1199px), 1 column on mobile
+
+### Empty State (No Projects Registered)
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│              [folder-open icon, 48px]                    │
+│                                                          │
+│                  No projects yet                         │
+│                                                          │
+│   Register a project directory to start managing         │
+│   your processes and AI agents.                          │
+│                                                          │
+│            [+ Add your first project]                    │
+│                                                          │
+└──────────────────────────────────────────────────────────┘
+```
+
+Centered vertically and horizontally. Button: primary blue, opens Add Project Modal.
+
+### Project Card Layout
+
+```
+┌────────────────────────────────────┐
+│ [icon]  my-project           ● 4/5 │  ← name + running badge
+│         /home/user/code/my-project │  ← path (muted, 12px, truncated)
+│─────────────────────────────────── │
+│  3 sessions   5 commands   1 term  │  ← counts
+│─────────────────────────────────── │
+│  $0.42 today              ⚠ 1 err  │  ← cost + optional error badge
+└────────────────────────────────────┘
+```
+
+- Card border: 1px `--border`, border-radius 8px, `--bg-primary` background
+- Card hover: `--bg-sidebar` background, subtle shadow (`box-shadow: 0 2px 8px rgba(0,0,0,0.08)`)
+- Click: switches active project → navigates to Project Overview (§17)
+- **Running badge** `● 4/5`: green dot + "N/N" running/total. Gray dot if all stopped.
+- **Error badge** `⚠ N err`: only shown when 1+ processes are in `errored` state. `--status-error` color.
+- Project icon: auto-detected from `package.json` (Node), `artisan` (Laravel), `Cargo.toml` (Rust), etc. Falls back to a generic folder icon.
+
+### Search Results
+
+When the search input is non-empty (300ms debounce → `GET /api/search?q={query}`):
+
+The project grid is replaced by a results list:
+
+```
+Results for "routes"
+─────────────────────────────────────────────────
+[session-icon]  my-project  ›  Claude Code
+                "Add routes for user auth endpoints"    2h ago   $0.12
+
+[command-icon]  my-project  ›  npm:dev
+                npm run dev                             running
+
+─────────────────────────────────────────────────
+```
+
+- Each result: 2-row item — `{icon} {project} › {name}` on top, `{summary or command}` + timestamp/state below
+- Click a result: switches active project to that project, `setSelectedProcess` to that process, main pane shows terminal
+- "No results" state: `"No sessions or commands match '{query}'"` centered below the search bar
+- Escape or clearing the input returns to the project grid
 
 ---
 
 ## 17. Main Pane: Project Overview
 
-Displayed when clicking the project name/header itself (not a specific item).
+### How to Access
+
+Click the project name/header at the top of the sidebar (the `ProjectHeader` row), or double-click a collapsed project in the "other projects" section. The main pane switches to Project Overview.
+
+### Layout
 
 ```
-┌──────────────────────────────────────────────────┐
-│  my-project  [edit]  │  ● 4/5 Running            │
-│──────────────────────────────────────────────────│
-│                                                  │
-│  ┌──────────────────────────────────────────┐    │
-│  │  v [icon] npm:dev  [AUTO]                 │    │
-│  │    npm run dev                           │    │
-│  │                                          │    │
-│  │  Name:           npm:dev                 │    │
-│  │  Command:        npm run dev             │    │
-│  │  Auto-start:     [toggle on]             │    │
-│  │  Auto-restart:   [toggle off]            │    │
-│  │  Terminal alerts: [toggle on]            │    │
-│  │  File watching:  src/**/*.ts  [x]        │    │
-│  └──────────────────────────────────────────┘    │
-│                                                  │
-│  (repeat for each process)                       │
-│                                                  │
-│  [+ Add Session]  [+ Add Command]  [+ Add Term]  │
-└──────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  my-project  [⚙️ settings]  │  ● 4/5 Running             │
+│──────────────────────────────────────────────────────────│
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ ► [npm] npm:dev  [AUTO] [RUNNING]   npm run dev  ▼ │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │ ▼ [php] Queue  [AUTO] [RUNNING]  php artisan queue ▲│  │
+│  │ ─────────────────────────────────────────────────  │  │
+│  │  Name:              Queue                [Rename]  │  │
+│  │  Command:           php artisan queue:work [Edit]  │  │
+│  │  Working directory: /home/user/proj      [Change]  │  │
+│  │  Auto-start:        [●] Start when project opens   │  │
+│  │  Auto-restart:      [●] Restart if process exits   │  │
+│  │  Terminal alerts:   [○] Notify on bell (^G)        │  │
+│  │  File watching:     [app/**/*.php ×] [+ pattern]   │  │
+│  │ ─────────────────────────────────────────────────  │  │
+│  │  [✓ Saved to mt.yml]          [▶ Start] [■ Stop]   │  │
+│  └────────────────────────────────────────────────────┘  │
+│                                                          │
+│  (one ProcessCard per session, command, and terminal)    │
+│                                                          │
+│  [+ Add Session]      [+ Add Command]    [+ Add Terminal] │
+└──────────────────────────────────────────────────────────┘
 ```
 
-- Header: project name + edit icon + vertical divider + green dot + "4/5 Running" badge
-- Each process is an expandable card:
-  - Collapsed: icon, name, badges (AUTO), command text, status
-  - Expanded: full settings form with toggle switches
+- **Header**: project name (bold) + `[⚙️]` settings icon (opens §20.5) + divider + running count badge
+- **ProcessCard** (see §13): one per session, command, and terminal — collapsed by default, click to expand
+- **Add buttons**: always visible at the bottom of the list
 
-### Settings Fields
+### "Add" Button Behavior
+
+| Button | Action | What Happens After |
+|---|---|---|
+| **+ Add Session** | Opens Add Agent Modal (§20.2) | Session created in `stopped` state. If `autostart` was checked: starts immediately, sidebar item turns green, main pane switches to its terminal. |
+| **+ Add Command** | Opens Add Process Modal (§20.1) | Command created in `stopped` state. If `autostart` was checked: starts, port/CPU appear in sidebar when detected. |
+| **+ Add Terminal** | No modal — immediate | New PTY terminal spawned with default shell. Main pane switches to the new terminal immediately. |
+
+### Inline Editing in Expanded Cards
+
+Clicking **[Rename]** or **[Edit]** next to a field transitions that field to an inline edit mode:
+
+```
+  Name:  [npm:dev              ] [✓][✕]
+```
+
+- Text input pre-filled with current value; auto-focused
+- `Enter` or `✓` to confirm → `PUT /api/commands/:id { name }` (or `{ command }`)
+- `Escape` or `✕` to cancel with no save
+- Command field uses a monospace `<textarea>` that auto-grows
+
+Toggle switches (`Auto-start`, `Auto-restart`, `Terminal alerts`) save **immediately** on change — no save button needed.
+
+File watching chips: `[src/**/*.ts ×]` — clicking `×` removes the pattern immediately. `[+ pattern]` text input at the end of the chip row — Enter to add.
+
+### mt.yml Sync Indicator
+
+Each expanded ProcessCard shows sync status at the bottom:
+
+- `[✓ Saved to mt.yml]` — settings are current in `mt.yml`
+- `[⚠ Not saved to mt.yml] [Save →]` — settings exist in DB only
+
+Clicking `[Save →]` writes the current settings for that process to `mt.yml`. Processes added manually (not from `mt.yml`) start as "not saved" and can be optionally persisted.
+
+### Settings Fields Reference
 
 | Field | Type | Description |
 |---|---|---|
-| Name | Text display + "Rename" action link | The display name |
-| Command | Monospace text display + "Edit" action link | The shell command |
-| Auto-start | Toggle switch | "Start when project opens" |
-| Auto-restart | Toggle switch | "Restart if process exits" |
-| Terminal alerts | Toggle switch | "Notify on bell character" |
-| File watching | Text input + "Add" button | Glob patterns as removable chips |
+| Name | Inline text input (via [Rename]) | Display name in sidebar |
+| Command | Inline textarea (via [Edit]) | The shell command to run |
+| Working directory | Inline text input (via [Change]) | CWD for the process (empty = project root) |
+| Auto-start | Toggle switch | Start automatically when project opens |
+| Auto-restart | Toggle switch | Restart if process exits unexpectedly |
+| Terminal alerts | Toggle switch | Notify on bell character (`\x07`) |
+| File watching | Chip list + add input | Glob patterns that trigger restart on file change |
 
 ---
 
@@ -926,28 +1489,68 @@ Shown only when a process is selected. Each is a small text button with an icon:
 
 | Button | Icon | Action |
 |---|---|---|
-| Focus | circular arrow | Scroll terminal to bottom and follow output |
-| Pause | pause bars | Stop auto-scrolling |
-| Clear | circle-slash | Clear the terminal buffer |
-| Stop | square | Send SIGTERM to the process |
-| Restart | refresh | Stop and re-start the process |
+| Focus | circular arrow | `terminal.scrollToBottom()` + enable auto-scroll |
+| Pause | pause bars | Disable auto-scroll — view stays in place as new output arrives |
+| Clear | circle-slash | `terminal.clear()` (xterm.js) + `DELETE /api/processes/:id/scrollback` |
+| Stop | square | `POST /api/processes/:id/stop` (SIGTERM) |
+| Restart | refresh | `POST /api/processes/:id/restart` |
 
 ### Right Side — Metrics
 
-Always shows metrics for the currently selected process:
+Always shows metrics for the currently selected process. Context-dependent:
 
 ```
-CPU 2.1%  MEM 43 MB  npm:dev  ● Running
+No process selected:   MultiTable  ● Daemon running  v0.1.0
+
+Process running:       CPU 2.1%  MEM 43 MB  npm:dev  ● Running
+
+Process stopped:       CPU —     MEM —       npm:dev  ○ Stopped
+
+Process errored:       CPU —     MEM —       npm:dev  ● Error (code 1)
+
+Session (working):     CPU 1.4%  MEM 210 MB  Claude Code  ● Working
+
+Session (idle):        CPU 0.2%  MEM 210 MB  Claude Code  ○ Idle
 ```
 
-- CPU and memory in regular text
-- Process name in monospace
-- Status dot with label (Running, Stopped, Error)
-- For sessions: a second dot showing idle/working state
+- CPU/MEM: `--text-secondary`, 12px
+- Process name: monospace 12px, `--text-primary`
+- Status dot: 10px, colored per state; followed by state label text
+
+### Left Side — Context-Dependent Buttons
+
+| State | Buttons Shown |
+|---|---|
+| No process selected | (empty) |
+| Running | [Focus ↓] [Pause ‖] [Clear ⊘] [Stop ■] [Restart ↺] |
+| Stopped | [▶ Start] [Clear ⊘] |
+| Errored | [↺ Restart] [Clear ⊘] |
 
 ---
 
 ## 20. Modals & Dialogs
+
+### 20.0 Add Project Modal
+
+Triggered by: `"+ Add Project"` button on the Dashboard (§16), or `Ctrl+Shift+P`.
+
+**Layout:** Centered modal, max-width 520px, backdrop blur, `--bg-primary` background, 32px padding.
+
+**Fields:**
+
+| Field | Type | Details |
+|---|---|---|
+| Project directory | Text input (full width) | Absolute path to project directory. Placeholder: `"/home/user/code/my-project"`. Auto-focused on open. |
+
+**Validation (on submit):** Backend checks: (1) path exists and is a directory, (2) path is not already registered. Inline error shown below the input field on failure.
+
+**On success:** Modal closes → project appears in Dashboard grid and sidebar → active project switches to the new one → main pane shows Project Overview (§17) → toast: `"Project added"`
+
+**On error:** `"Directory not found"` or `"Project already registered"` shown inline below input. Input retains focus.
+
+**Keyboard:** Enter to submit, Escape to cancel.
+
+**Footer:** `"Cancel"` (text-only) + `"Add Project"` (primary blue)
 
 ### 20.1 Add Process Modal
 
@@ -976,8 +1579,76 @@ Variant of Add Process modal. Shows a selector for known agent types (Claude Cod
 Triggered on daemon startup when PIDs from a previous run are still alive.
 
 - "Found orphaned processes from a previous session"
-- List of process names and PIDs
-- Buttons: "Kill All" / "Reattach" / "Ignore"
+- List of process names and PIDs with their status (running / zombie)
+- Buttons: `"Kill All"` (red, kills all listed PIDs) / `"Reattach"` (attempts to reconnect PTY) / `"Ignore"` (cleans up PID tracking, leaves processes running unmanaged)
+
+### 20.4 Global Settings Modal
+
+Triggered by `Ctrl+,` or `"Open global settings"` in the command palette.
+
+**Layout:** Centered modal, max-width 680px, backdrop blur, 32px padding, sections separated by horizontal rules.
+
+**Section: Appearance**
+
+| Setting | Control | Config Key |
+|---|---|---|
+| Theme | 3-way segmented toggle: `Light` / `Dark` / `System` | `theme` |
+| Terminal font size | Number input with spinner, range 8–24 | `terminal_font_size` |
+| Terminal scrollback | Number input, range 1000–100000 lines | `terminal_scrollback` |
+
+Theme change is applied immediately (no restart) — CSS variables update on `<html>` element.
+
+**Section: Behavior**
+
+| Setting | Control | Config Key |
+|---|---|---|
+| Notifications | Toggle switch | `notifications` |
+| Default editor | Text input | `default_editor` (e.g., `code`, `zed`, `cursor`) |
+| Default shell | Text input | `default_shell` (empty = auto-detect `$SHELL`) |
+
+**Section: Network**
+
+| Setting | Control | Config Key |
+|---|---|---|
+| Daemon port | Number input | `port` |
+| Bind host | Text input | `host` (`127.0.0.1` = local only, `0.0.0.0` = LAN/Tailscale) |
+
+> Note: Changing `port` or `host` requires a daemon restart. A warning is shown inline: `"Restart the daemon for network changes to take effect."`
+
+**Footer:** `"Cancel"` + `"Save Settings"` (primary blue) — calls `PUT /api/config`
+
+### 20.5 Project Settings Modal
+
+Triggered by: right-click project → `"Project settings..."`, or the `[⚙️]` icon in the Project Overview header.
+
+**Layout:** Centered modal, max-width 560px.
+
+**Fields:**
+
+| Field | Type | Details |
+|---|---|---|
+| Project name | Text input | Display name shown in sidebar and Dashboard |
+| Icon | Emoji/icon picker | Optional. Falls back to auto-detected framework icon. |
+| Keyboard shortcut | Number select (1–9 or None) | Which `Alt+N` shortcut activates this project |
+| mt.yml auto-sync | Toggle switch | When on: all Project Overview edits are written to `mt.yml` immediately |
+
+**Danger Zone** (separated section with red border):
+
+```
+  ┌──────────────────────────────────────────────────────┐
+  │  ⚠ Danger Zone                                       │
+  │                                                      │
+  │  Remove project                    [Remove project]  │
+  │  Unregisters this project from MultiTable.           │
+  │  Does NOT delete the directory or files.             │
+  └──────────────────────────────────────────────────────┘
+```
+
+Clicking `[Remove project]` shows a confirmation dialog:
+> `"Remove my-project? All running processes will be stopped. The project directory will not be deleted."`
+> `[Cancel]` + `[Remove]` (red, destructive)
+
+**Footer:** `"Cancel"` + `"Save"` (primary blue) — calls `PUT /api/projects/:id`
 
 ---
 
@@ -1055,21 +1726,31 @@ Triggered by `Ctrl+K`.
 
 **Searchable Items:**
 
-| Category | Examples |
-|---|---|
-| Processes | "Claude Code", "npm:dev", "Queue" |
-| Actions | "Start all", "Stop all", "Restart all" |
-| Projects | "my-project", "other-project" |
-| Navigation | "Go to Sessions", "Go to Commands" |
-| Creation | "Add command", "Add terminal", "Add session" |
-| Settings | "Open project settings", "Toggle theme" |
+| Category | Item Examples | Action |
+|---|---|---|
+| Processes | "Claude Code", "npm:dev", "Queue", "Terminal 1" | Select → main pane switches to that process |
+| Actions | "Start all", "Stop all", "Restart all" | Run bulk process operation |
+| Projects | "my-project", "other-project" | Switch active project |
+| Navigation | "Go to Sessions", "Go to Commands", "Go to Dashboard" | Navigate to view |
+| Creation | "Add command...", "Add terminal", "Add session..." | Open the relevant modal |
+| Creation | "Add project..." | Open Add Project Modal (§20.0) |
+| Settings | "Open global settings" | Open Global Settings Modal (§20.4) |
+| Settings | "Open project settings" | Open Project Settings Modal (§20.5) |
+| Settings | "Toggle theme" | Cycle: light → dark → system |
+| Session | "Resume Claude in {name}" | Resume Claude session (requires `claude_session_id`) |
+| Session | "Re-summarize {name}" | Trigger session label re-generation |
+| Session | "View diff for {name}" | Open session detail, switch to Diff tab |
+| Session | "View cost for {name}" | Open session detail, switch to Cost tab |
+| Process | "Clear output: {name}" | Clear terminal buffer for that process |
+| Help | "Show keyboard shortcuts" | Opens keyboard shortcut reference panel |
 
 **Behavior:**
 
-- Fuzzy matching on item names
+- Fuzzy matching on item names and categories
 - Results grouped by category with light headers
 - Arrow keys to navigate, Enter to select, Escape to close
 - Recently used items appear first when the palette opens with an empty query
+- Items that aren't applicable in current context are hidden (e.g., "Resume Claude" hidden when no claude_session_id)
 
 ---
 
@@ -1104,7 +1785,40 @@ Triggered by `Ctrl+K`.
 | `Ctrl+Shift+R` | Restart selected process |
 | `Ctrl+Shift+L` | Clear selected terminal |
 
-Note: These are browser-compatible shortcuts, not native app shortcuts. Conflicts with browser defaults are avoided.
+### Project Management
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Shift+P` | Add project (opens Add Project Modal §20.0) |
+| `Ctrl+Shift+A` | Add session to active project (opens Add Agent Modal §20.2) |
+
+### Settings
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+,` | Open global settings (§20.4) |
+
+### Session Detail Panel
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+Shift+F` | Open / focus File Explorer tab |
+| `Ctrl+Shift+D` | Open / focus Diff Viewer tab |
+| `Ctrl+Shift+N` | Open / focus Scratchpad (Notes) tab |
+
+### Terminal
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+F` | Open in-terminal search (xterm-addon-search) |
+| `Ctrl+Shift+C` | Copy selected text from terminal |
+| `Ctrl+Shift+V` | Paste clipboard into terminal |
+
+> **Note on `Ctrl+F` in terminal:** When the terminal pane has focus, `Ctrl+F` triggers xterm.js built-in search instead of the browser's native Find. The search UI appears at the top of the xterm.js area: a text input, match count (e.g., "3 of 12"), and ↑ ↓ navigation buttons. `Escape` closes the search bar.
+>
+> **Note on `Ctrl+Shift+C` / `Ctrl+Shift+V`:** Standard `Ctrl+C` / `Ctrl+V` inside the terminal are forwarded to the PTY (Ctrl+C = SIGINT, Ctrl+V = literal paste may vary by shell). Use Ctrl+Shift+C/V for clipboard operations that bypass PTY forwarding.
+
+Note: All shortcuts are browser-compatible. Conflicts with browser defaults are avoided.
 
 ---
 
@@ -1317,6 +2031,7 @@ On shutdown, all child processes receive SIGTERM, then SIGKILL after a 5-second 
 | `POST` | `/api/hooks/session-end` | SessionEnd hook callback. Clears session state. |
 | `POST` | `/api/hooks/subagent-start` | SubagentStart hook callback. Tracks subagent count. |
 | `POST` | `/api/hooks/subagent-stop` | SubagentStop hook callback. Decrements subagent count. |
+| `POST` | `/api/hooks/user-prompt-submit` | UserPromptSubmit hook callback. Appends to `userMessages`; triggers label auto-summary on first message. |
 
 ### Claude Session Management
 
@@ -1324,6 +2039,26 @@ On shutdown, all child processes receive SIGTERM, then SIGKILL after a 5-second 
 |---|---|---|---|
 | `POST` | `/api/sessions/:id/spawn-claude` | Spawn Claude in an existing PTY | — |
 | `POST` | `/api/sessions/:id/resume-claude` | Resume Claude with stored session ID | — |
+
+### Terminal Management
+
+| Method | Path | Description | Request Body | Response |
+|---|---|---|---|---|
+| `GET` | `/api/projects/:id/terminals` | List terminals | — | `Terminal[]` |
+| `POST` | `/api/projects/:id/terminals` | Create terminal | `{ name?, shell?, workingDir? }` | `Terminal` |
+| `PUT` | `/api/terminals/:id` | Update terminal (rename, etc.) | `Partial<Terminal>` | `Terminal` |
+| `DELETE` | `/api/terminals/:id` | Close and delete terminal | — | `204` |
+
+### File & Git Operations
+
+| Method | Path | Description | Request Body / Query |
+|---|---|---|---|
+| `GET` | `/api/projects/:id/files` | List directory contents | `?path=relative/path` (default: project root) |
+| `POST` | `/api/projects/:id/open-file` | Open file in configured editor | `{ path: string }` |
+| `GET` | `/api/projects/:id/diff` | Get full git diff for the project | — |
+| `GET` | `/api/sessions/:id/diff` | Get git diff scoped to session file activity | — |
+| `GET` | `/api/sessions/:id/cost` | Get cost aggregate for session | — |
+| `DELETE` | `/api/processes/:id/scrollback` | Clear scrollback buffer for a process | — |
 
 ---
 
@@ -1378,14 +2113,18 @@ interface WsClientState {
 | `process-state-changed` | `{ processId: string, state: ProcessState, exitCode?: number }` | Process state transition |
 | `process-metrics` | `{ processId: string, cpu: number, memory: number, port?: number }` | Metrics update (every 2s) |
 | `session:updated` | `{ session: Session }` | Session metadata/state changed (tool, tokens, status) |
-| `session:created` | `{ session: Session }` | New session created |
-| `session:deleted` | `{ sessionId: string }` | Session removed |
-| `agent-subtitle` | `{ processId: string, subtitle: string }` | Live activity text for sessions |
+| `session:created` | `{ session: Session }` | New session, command, or terminal created |
+| `session:deleted` | `{ sessionId: string }` | Session, command, or terminal removed |
+| `session:label-updated` | `{ sessionId: string, label: string \| null }` | AI-generated session label updated (Section 31) |
+| `agent-subtitle` | `{ processId: string, subtitle: string }` | Live activity text for sessions (current tool name) |
 | `notification` | `{ type: "crash" \| "restart" \| "bell" \| "info", processId: string, message: string }` | Notification event |
 | `permission:prompt` | `{ prompt: PermissionPrompt }` | Tool permission request from Claude (Section 32) |
 | `permission:resolved` | `{ id: string }` | Permission request resolved |
-| `permission:expired` | `{ id: string }` | Permission request timed out |
+| `permission:expired` | `{ id: string }` | Permission request timed out (auto-denied) |
 | `option:prompt` | `{ sessionId: string, question: string, options: string[] }` | Claude presented numbered options (Section 31) |
+| `conflict-warning` | `{ sessionIds: string[], filePaths: string[] }` | Cross-session file overlap detected (Section 30) |
+| `config:reloaded` | `{ projectId: string }` | `mt.yml` reloaded after file change detected (Section 33) |
+| `project-state-changed` | `{ projectId: string, runningCount: number, totalCount: number, errorCount: number }` | Aggregate project process state changed (for Dashboard cards) |
 
 ### Subscribe Flow
 
@@ -1965,10 +2704,14 @@ CSS custom properties defined at `:root`, switched by adding `data-theme="dark"`
 xterm.js theme object is swapped when the app theme changes:
 
 ```typescript
-const lightTheme = {
+import type { ITheme } from '@xterm/xterm';
+
+const lightTheme: ITheme = {
     background: '#FFFFFF',
     foreground: '#111111',
     cursor: '#111111',
+    cursorAccent: '#FFFFFF',
+    selectionBackground: '#3b82f620',
     black: '#000000',
     red: '#ef4444',
     green: '#22c55e',
@@ -1977,14 +2720,38 @@ const lightTheme = {
     magenta: '#a855f7',
     cyan: '#06b6d4',
     white: '#e5e7eb',
-    // bright variants...
+    brightBlack: '#374151',
+    brightRed: '#dc2626',
+    brightGreen: '#16a34a',
+    brightYellow: '#d97706',
+    brightBlue: '#2563eb',
+    brightMagenta: '#7c3aed',
+    brightCyan: '#0891b2',
+    brightWhite: '#f9fafb',
 };
 
-const darkTheme = {
+const darkTheme: ITheme = {
     background: '#1a1a1a',
     foreground: '#e5e5e5',
     cursor: '#e5e5e5',
-    // ... adjusted for dark backgrounds
+    cursorAccent: '#1a1a1a',
+    selectionBackground: '#60a5fa30',
+    black: '#1c1c1c',
+    red: '#f87171',
+    green: '#4ade80',
+    yellow: '#fbbf24',
+    blue: '#60a5fa',
+    magenta: '#c084fc',
+    cyan: '#22d3ee',
+    white: '#e5e7eb',
+    brightBlack: '#6b7280',
+    brightRed: '#fca5a5',
+    brightGreen: '#86efac',
+    brightYellow: '#fde68a',
+    brightBlue: '#93c5fd',
+    brightMagenta: '#d8b4fe',
+    brightCyan: '#67e8f9',
+    brightWhite: '#ffffff',
 };
 ```
 
@@ -2191,6 +2958,9 @@ Note: The "MultiTable" name is retained as a brand. User-facing terminology uses
 | `glob` | File pattern matching |
 | `uuid` | Process and project IDs |
 | `yaml` | YAML parsing for mt.yml |
+| `env-paths` | Platform config directory resolution (`~/.config`, `%APPDATA%`, etc.) |
+| `pidusage` | Per-process CPU percentage and memory bytes (cross-platform metrics polling) |
+| `open` | Cross-platform file-in-editor and browser-open functionality |
 
 ### packages/web
 
@@ -2200,18 +2970,27 @@ Note: The "MultiTable" name is retained as a brand. User-facing terminology uses
 | `react-dom` | React DOM renderer |
 | `xterm` | Terminal emulation |
 | `@xterm/addon-fit` | Auto-fit terminal to container |
-| `@xterm/addon-web-links` | Clickable URLs in terminal |
+| `@xterm/addon-web-links` | Clickable URLs in terminal output |
+| `@xterm/addon-search` | In-terminal search (Ctrl+F, match highlighting, ↑↓ navigation) |
+| `@xterm/addon-unicode11` | Unicode 11 support (emoji, CJK, wide characters) |
 | `zustand` | State management |
 | `tailwindcss` | Styling |
-| `cmdk` | Command palette |
+| `cmdk` | Command palette (fuzzy search, keyboard navigation) |
 | `react-hot-toast` | Toast notifications |
-| `lucide-react` | Icons |
+| `lucide-react` | Icon set |
+| `vite` | Frontend build tool and dev server (dev dependency) |
+| `@vitejs/plugin-react` | React fast refresh and JSX transform for Vite (dev dependency) |
+| `typescript` | Type checker (dev dependency) |
+| `@types/react` | React type declarations (dev dependency) |
+| `@types/react-dom` | React DOM type declarations (dev dependency) |
 
 ### packages/cli
 
 | Package | Purpose |
 |---|---|
 | `commander` | CLI argument parsing |
+| `open` | Cross-platform browser launch for `mt open` command |
+| `chalk` | Terminal color output for `mt status` and other CLI output |
 
 ### Dev Dependencies (root)
 

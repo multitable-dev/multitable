@@ -1,0 +1,400 @@
+import { EventEmitter } from 'events';
+import * as nodePty from 'node-pty';
+import fs from 'fs';
+import { exec } from 'child_process';
+import { RingBuffer } from './ringBuffer.js';
+import { saveScrollback, getSessionById } from '../db/store.js';
+import { addPid, removePid } from '../pids.js';
+import type { ManagedProcess, ProcessConfig, ProcessMetrics, ProcessState, SpawnConfig } from '../types.js';
+
+const PORT_PATTERNS = [
+  /localhost:(\d+)/,
+  /http:\/\/[^:]+:(\d+)/,
+  /listening on.*?(\d+)/i,
+  /port (\d+)/i,
+  /:\s*(\d{4,5})\b/,
+];
+
+function detectPort(text: string): number | null {
+  for (const pattern of PORT_PATTERNS) {
+    const m = text.match(pattern);
+    if (m) {
+      const port = parseInt(m[1], 10);
+      if (port >= 1024 && port <= 65535) return port;
+    }
+  }
+  return null;
+}
+
+function detectShell(): string {
+  return process.env.SHELL || (process.platform === 'win32' ? 'powershell.exe' : '/bin/bash');
+}
+
+interface CpuSample {
+  time: number; // unix ms
+  utime: number;
+  stime: number;
+}
+
+async function readProcStat(pid: number): Promise<CpuSample | null> {
+  try {
+    const content = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const parts = content.split(' ');
+    const utime = parseInt(parts[13], 10);
+    const stime = parseInt(parts[14], 10);
+    return { time: Date.now(), utime, stime };
+  } catch {
+    return null;
+  }
+}
+
+async function readProcMemory(pid: number): Promise<number> {
+  try {
+    const content = fs.readFileSync(`/proc/${pid}/status`, 'utf8');
+    const match = content.match(/VmRSS:\s+(\d+)\s+kB/);
+    if (match) return parseInt(match[1], 10) * 1024;
+  } catch {}
+  return 0;
+}
+
+async function readMemoryFallback(pid: number): Promise<number> {
+  return new Promise((resolve) => {
+    exec(`ps -o rss= -p ${pid}`, (err, stdout) => {
+      if (err || !stdout.trim()) return resolve(0);
+      const kb = parseInt(stdout.trim(), 10);
+      resolve(isNaN(kb) ? 0 : kb * 1024);
+    });
+  });
+}
+
+const CLK_TCK = 100; // Hz, typical Linux default
+
+export class PtyManager extends EventEmitter {
+  private processes = new Map<string, ManagedProcess>();
+  private cpuSamples = new Map<string, CpuSample>();
+  private metricsInterval: NodeJS.Timeout | null = null;
+  private scrollbackInterval: NodeJS.Timeout | null = null;
+  private restartTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor() {
+    super();
+    this.startMetricsPolling();
+    this.startScrollbackFlushing();
+  }
+
+  // ─── Public API ────────────────────────────────────────────────────────────
+
+  spawn(cfg: SpawnConfig): ManagedProcess {
+    if (this.processes.has(cfg.id)) {
+      throw new Error(`Process ${cfg.id} already exists`);
+    }
+
+    const proc: ManagedProcess = {
+      id: cfg.id,
+      name: cfg.name,
+      command: cfg.command,
+      workingDir: cfg.workingDir,
+      type: cfg.type,
+      projectId: cfg.projectId,
+      config: cfg.config,
+      state: 'running',
+      pty: null,
+      pid: null,
+      startedAt: null,
+      restartCount: 0,
+      lastRestartAt: 0,
+      outputBuffer: new RingBuffer(),
+      metrics: { cpuPercent: 0, memoryBytes: 0, detectedPort: null },
+    };
+
+    this.processes.set(cfg.id, proc);
+    this.spawnPty(proc, cfg.cols ?? 80, cfg.rows ?? 24);
+    return proc;
+  }
+
+  get(id: string): ManagedProcess | undefined {
+    return this.processes.get(id);
+  }
+
+  getAll(): ManagedProcess[] {
+    return Array.from(this.processes.values());
+  }
+
+  kill(id: string): void {
+    const proc = this.processes.get(id);
+    if (!proc) return;
+    this.cancelRestartTimer(id);
+    if (proc.pty) {
+      try { proc.pty.kill(); } catch {}
+      proc.pty = null;
+    }
+    proc.pid = null;
+    this.setState(proc, 'stopped');
+    removePid(id);
+  }
+
+  restart(id: string): void {
+    const proc = this.processes.get(id);
+    if (!proc) return;
+    this.kill(id);
+    setTimeout(() => {
+      if (this.processes.has(id)) {
+        this.spawnPty(proc);
+      }
+    }, proc.config.autorestartDelayMs);
+  }
+
+  resize(id: string, cols: number, rows: number): void {
+    const proc = this.processes.get(id);
+    if (!proc || !proc.pty) return;
+    try {
+      proc.pty.resize(cols, rows);
+    } catch {}
+  }
+
+  write(id: string, data: string): void {
+    const proc = this.processes.get(id);
+    if (!proc || !proc.pty) return;
+    try {
+      proc.pty.write(data);
+    } catch {}
+  }
+
+  remove(id: string): void {
+    this.kill(id);
+    this.processes.delete(id);
+    this.cpuSamples.delete(id);
+  }
+
+  destroy(): void {
+    if (this.metricsInterval) clearInterval(this.metricsInterval);
+    if (this.scrollbackInterval) clearInterval(this.scrollbackInterval);
+    for (const id of this.processes.keys()) {
+      this.kill(id);
+    }
+  }
+
+  // Respawn PTY for a process if it is dead (for autorespawn on subscribe)
+  respawnIfDead(id: string, cols = 80, rows = 24): ManagedProcess | undefined {
+    const proc = this.processes.get(id);
+    if (!proc) return undefined;
+    if (proc.state !== 'running' && proc.config.autorespawn) {
+      this.spawnPty(proc, cols, rows);
+    }
+    return proc;
+  }
+
+  // ─── Private ───────────────────────────────────────────────────────────────
+
+  private spawnPty(proc: ManagedProcess, cols = 80, rows = 24): void {
+    // Clear old scrollback — TUI apps (like Claude Code) use the alternate
+    // screen buffer, so replaying raw PTY output produces garbage.  Instead,
+    // session history is preserved by resuming with `--resume`.
+    proc.outputBuffer.clear();
+
+    // For sessions, use --resume if a Claude session ID is known
+    let command = proc.command;
+    if (proc.type === 'session') {
+      try {
+        const session = getSessionById(proc.id);
+        if (session?.claudeSessionId) {
+          command = `claude --resume ${session.claudeSessionId}`;
+        }
+      } catch { /* fall back to original command */ }
+    }
+
+    const shell = detectShell();
+    const [cmd, ...args] = this.buildCommand(command);
+
+    let ptyProcess: nodePty.IPty;
+    try {
+      ptyProcess = nodePty.spawn(cmd, args, {
+        name: 'xterm-256color',
+        cols,
+        rows,
+        cwd: proc.workingDir || process.cwd(),
+        env: { ...process.env } as Record<string, string>,
+      });
+    } catch (err) {
+      console.error(`[PtyManager] Failed to spawn ${proc.id}:`, err);
+      this.setState(proc, 'errored');
+      return;
+    }
+
+    proc.pty = ptyProcess;
+    proc.pid = ptyProcess.pid;
+    proc.startedAt = new Date();
+    proc.state = 'running';
+
+    addPid(proc.id, ptyProcess.pid);
+
+    ptyProcess.onData((data: string) => {
+      proc.outputBuffer.write(data);
+
+      // Detect port if not yet found
+      if (!proc.metrics.detectedPort) {
+        const port = detectPort(data);
+        if (port) {
+          proc.metrics.detectedPort = port;
+          this.emit('metrics', { processId: proc.id, metrics: { ...proc.metrics } });
+        }
+      }
+
+      this.emit('data', { processId: proc.id, data });
+    });
+
+    ptyProcess.onExit(({ exitCode, signal }) => {
+      removePid(proc.id);
+      proc.pty = null;
+      proc.pid = null;
+
+      // Flush scrollback to DB immediately so it survives respawn/restart
+      if (proc.type === 'session' && proc.outputBuffer.size > 0) {
+        try {
+          const data = Buffer.from(proc.outputBuffer.read(), 'utf8');
+          saveScrollback(proc.id, data);
+        } catch { /* best effort */ }
+      }
+
+      const shouldRestart = this.shouldAutorestart(proc, exitCode ?? 0);
+      if (shouldRestart) {
+        this.setState(proc, 'running'); // keep running state during restart
+        this.scheduleRestart(proc);
+      } else {
+        this.setState(proc, exitCode === 0 ? 'stopped' : 'errored');
+      }
+
+      this.emit('exit', { processId: proc.id, exitCode, signal });
+    });
+
+    this.emit('state-changed', { processId: proc.id, state: proc.state });
+  }
+
+  private buildCommand(command: string): string[] {
+    // Split command respecting quotes
+    const parts: string[] = [];
+    let current = '';
+    let inQuote: string | null = null;
+
+    for (const ch of command) {
+      if (inQuote) {
+        if (ch === inQuote) { inQuote = null; }
+        else { current += ch; }
+      } else if (ch === '"' || ch === "'") {
+        inQuote = ch;
+      } else if (ch === ' ') {
+        if (current) { parts.push(current); current = ''; }
+      } else {
+        current += ch;
+      }
+    }
+    if (current) parts.push(current);
+
+    if (parts.length === 0) {
+      return [detectShell()];
+    }
+    return parts;
+  }
+
+  private shouldAutorestart(proc: ManagedProcess, exitCode: number): boolean {
+    if (!proc.config.autorestart) return false;
+    if (proc.state === 'stopped') return false; // manually stopped
+
+    const now = Date.now();
+    const windowMs = proc.config.autorestartWindowSecs * 1000;
+
+    if (now - proc.lastRestartAt > windowMs) {
+      proc.restartCount = 0;
+    }
+
+    if (proc.restartCount >= proc.config.autorestartMax) return false;
+
+    return true;
+  }
+
+  private scheduleRestart(proc: ManagedProcess): void {
+    const id = proc.id;
+    this.cancelRestartTimer(id);
+
+    const timer = setTimeout(() => {
+      this.restartTimers.delete(id);
+      const current = this.processes.get(id);
+      if (!current) return;
+
+      current.restartCount++;
+      current.lastRestartAt = Date.now();
+      this.spawnPty(current);
+    }, proc.config.autorestartDelayMs);
+
+    this.restartTimers.set(id, timer);
+  }
+
+  private cancelRestartTimer(id: string): void {
+    const timer = this.restartTimers.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      this.restartTimers.delete(id);
+    }
+  }
+
+  private setState(proc: ManagedProcess, state: ProcessState): void {
+    proc.state = state;
+    this.emit('state-changed', { processId: proc.id, state });
+  }
+
+  private startMetricsPolling(): void {
+    this.metricsInterval = setInterval(async () => {
+      for (const [id, proc] of this.processes) {
+        if (!proc.pid || proc.state !== 'running') continue;
+
+        try {
+          let memoryBytes = 0;
+          let cpuPercent = 0;
+
+          if (process.platform === 'linux') {
+            memoryBytes = await readProcMemory(proc.pid);
+            const sample = await readProcStat(proc.pid);
+            if (sample) {
+              const prev = this.cpuSamples.get(id);
+              if (prev) {
+                const dtMs = sample.time - prev.time;
+                const dtTicks = ((sample.utime + sample.stime) - (prev.utime + prev.stime));
+                if (dtMs > 0) {
+                  cpuPercent = (dtTicks / CLK_TCK) / (dtMs / 1000) * 100;
+                }
+              }
+              this.cpuSamples.set(id, sample);
+            }
+          } else {
+            memoryBytes = await readMemoryFallback(proc.pid);
+            // CPU fallback via ps
+            cpuPercent = await new Promise<number>((resolve) => {
+              exec(`ps -o %cpu= -p ${proc.pid}`, (err, stdout) => {
+                if (err || !stdout.trim()) return resolve(0);
+                resolve(parseFloat(stdout.trim()) || 0);
+              });
+            });
+          }
+
+          proc.metrics.cpuPercent = cpuPercent;
+          proc.metrics.memoryBytes = memoryBytes;
+
+          this.emit('metrics', { processId: id, metrics: { ...proc.metrics } });
+        } catch {}
+      }
+    }, 2000);
+  }
+
+  private startScrollbackFlushing(): void {
+    this.scrollbackInterval = setInterval(() => {
+      for (const [id, proc] of this.processes) {
+        if (proc.type === 'session' && proc.outputBuffer.size > 0) {
+          try {
+            const data = Buffer.from(proc.outputBuffer.read(), 'utf8');
+            saveScrollback(id, data);
+          } catch {}
+        }
+      }
+    }, 3000);
+  }
+}
