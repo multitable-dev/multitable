@@ -3,10 +3,12 @@ import { Command } from 'cmdk';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
+import { BUILTIN_THEMES } from '../../lib/themes';
 
 interface CommandItem {
   id: string;
   name: string;
+  subtitle?: string;
   category: string;
   action: () => void;
 }
@@ -19,60 +21,65 @@ export function CommandPalette() {
     sessions,
     commands,
     terminals,
-    activeProjectId,
+    focusedProjectId,
     selectedProcessId,
     setSelectedProcess,
-    setActiveProject,
+    toggleProjectExpanded,
+    setFocusedProject,
     setProjectOverviewOpen,
     setAddAgentModalOpen,
     setAddProcessModalOpen,
     setAddProjectModalOpen,
     setGlobalSettingsOpen,
     setProjectSettingsOpen,
-    setTheme,
-    theme,
+    setActiveTheme,
+    activeThemeId,
+    customThemes,
   } = useAppStore();
 
   const close = () => setCommandPaletteOpen(false);
 
+  const requireFocused = (): string | null => {
+    if (!focusedProjectId) {
+      toast.error('Select a project first');
+      return null;
+    }
+    return focusedProjectId;
+  };
+
   const items = useMemo<CommandItem[]>(() => {
     const result: CommandItem[] = [];
+    const projectName = (pid: string) =>
+      projects.find((p) => p.id === pid)?.name ?? '';
 
-    // --- Processes: sessions + commands + terminals ---
-    const allSessions = Object.values(sessions).filter(
-      (s) => s.projectId === activeProjectId,
-    );
-    const allCommands = Object.values(commands).filter(
-      (c) => c.projectId === activeProjectId,
-    );
-    const allTerminals = Object.values(terminals).filter(
-      (t) => t.projectId === activeProjectId,
-    );
-
-    for (const s of allSessions) {
+    // --- Processes: sessions + commands + terminals from ALL projects ---
+    for (const s of Object.values(sessions)) {
       result.push({
         id: s.id,
         name: s.name,
+        subtitle: projectName(s.projectId),
         category: 'Processes',
         action: () => {
           setSelectedProcess(s.id);
         },
       });
     }
-    for (const c of allCommands) {
+    for (const c of Object.values(commands)) {
       result.push({
         id: c.id,
         name: c.name,
+        subtitle: projectName(c.projectId),
         category: 'Processes',
         action: () => {
           setSelectedProcess(c.id);
         },
       });
     }
-    for (const t of allTerminals) {
+    for (const t of Object.values(terminals)) {
       result.push({
         id: t.id,
         name: t.name || 'Terminal',
+        subtitle: projectName(t.projectId),
         category: 'Processes',
         action: () => {
           setSelectedProcess(t.id);
@@ -80,27 +87,31 @@ export function CommandPalette() {
       });
     }
 
-    // --- Projects ---
+    // --- Projects: toggle expand + focus ---
     for (const p of projects) {
       result.push({
         id: `project-${p.id}`,
         name: p.name,
         category: 'Projects',
         action: () => {
-          setActiveProject(p.id);
+          toggleProjectExpanded(p.id);
+          setFocusedProject(p.id);
+          setSelectedProcess(null);
+          setProjectOverviewOpen(true);
         },
       });
     }
 
     // --- Actions ---
-    if (activeProjectId) {
+    if (focusedProjectId) {
       result.push({
         id: 'action-start-all',
         name: 'Start all processes',
+        subtitle: projectName(focusedProjectId),
         category: 'Actions',
         action: () => {
           api.projects
-            .startAll(activeProjectId)
+            .startAll(focusedProjectId)
             .then(() => toast.success('All processes started'))
             .catch(() => toast.error('Failed to start all'));
         },
@@ -108,10 +119,11 @@ export function CommandPalette() {
       result.push({
         id: 'action-stop-all',
         name: 'Stop all processes',
+        subtitle: projectName(focusedProjectId),
         category: 'Actions',
         action: () => {
           api.projects
-            .stopAll(activeProjectId)
+            .stopAll(focusedProjectId)
             .then(() => toast.success('All processes stopped'))
             .catch(() => toast.error('Failed to stop all'));
         },
@@ -143,37 +155,42 @@ export function CommandPalette() {
     });
 
     // --- Creation ---
-    if (activeProjectId) {
-      result.push({
-        id: 'create-terminal',
-        name: 'New terminal',
-        category: 'Create',
-        action: () => {
-          api.terminals
-            .create(activeProjectId, {})
-            .then((t) => {
-              const s = useAppStore.getState();
-              s.upsertTerminal(t);
-              s.setSelectedProcess(t.id);
-              toast.success('Terminal created');
-            })
-            .catch(() => toast.error('Failed to create terminal'));
-        },
-      });
-    }
+    result.push({
+      id: 'create-terminal',
+      name: 'New terminal',
+      subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
+      category: 'Create',
+      action: () => {
+        const pid = requireFocused();
+        if (!pid) return;
+        api.terminals
+          .create(pid, {})
+          .then((t) => {
+            const s = useAppStore.getState();
+            s.upsertTerminal(t);
+            s.setSelectedProcess(t.id);
+            toast.success('Terminal created');
+          })
+          .catch(() => toast.error('Failed to create terminal'));
+      },
+    });
     result.push({
       id: 'create-session',
       name: 'Add session...',
+      subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
       category: 'Create',
       action: () => {
+        if (!requireFocused()) return;
         setAddAgentModalOpen(true);
       },
     });
     result.push({
       id: 'create-command',
       name: 'Add command...',
+      subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
       category: 'Create',
       action: () => {
+        if (!requireFocused()) return;
         setAddProcessModalOpen(true);
       },
     });
@@ -198,26 +215,26 @@ export function CommandPalette() {
     result.push({
       id: 'settings-project',
       name: 'Open project settings',
+      subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
       category: 'Settings',
       action: () => {
+        if (!requireFocused()) return;
         setProjectSettingsOpen(true);
       },
     });
-    result.push({
-      id: 'settings-theme',
-      name: 'Toggle theme',
-      category: 'Settings',
-      action: () => {
-        const cycle: Record<string, 'light' | 'dark' | 'system'> = {
-          light: 'dark',
-          dark: 'system',
-          system: 'light',
-        };
-        const next = cycle[theme] || 'light';
-        setTheme(next);
-        toast.success(`Theme: ${next}`);
-      },
-    });
+    const allThemes = [...BUILTIN_THEMES, ...customThemes];
+    for (const t of allThemes) {
+      result.push({
+        id: `theme-${t.id}`,
+        name: `Theme: ${t.name}`,
+        subtitle: activeThemeId === t.id ? '(active)' : undefined,
+        category: 'Themes',
+        action: () => {
+          setActiveTheme(t.id);
+          toast.success(`Theme: ${t.name}`);
+        },
+      });
+    }
 
     return result;
   }, [
@@ -225,18 +242,20 @@ export function CommandPalette() {
     commands,
     terminals,
     projects,
-    activeProjectId,
+    focusedProjectId,
     selectedProcessId,
-    theme,
+    activeThemeId,
+    customThemes,
     setSelectedProcess,
-    setActiveProject,
+    toggleProjectExpanded,
+    setFocusedProject,
     setProjectOverviewOpen,
     setAddAgentModalOpen,
     setAddProcessModalOpen,
     setAddProjectModalOpen,
     setGlobalSettingsOpen,
     setProjectSettingsOpen,
-    setTheme,
+    setActiveTheme,
   ]);
 
   // Group items by category
@@ -309,7 +328,7 @@ export function CommandPalette() {
                 {groupItems.map((item) => (
                   <Command.Item
                     key={item.id}
-                    value={item.name}
+                    value={`${item.name} ${item.subtitle ?? ''}`}
                     onSelect={() => {
                       item.action();
                       close();
@@ -326,6 +345,11 @@ export function CommandPalette() {
                     }}
                   >
                     <span>{item.name}</span>
+                    {item.subtitle && (
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+                        {item.subtitle}
+                      </span>
+                    )}
                   </Command.Item>
                 ))}
               </Command.Group>

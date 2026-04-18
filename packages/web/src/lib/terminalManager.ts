@@ -129,10 +129,7 @@ class TerminalManager {
     if (entry) entry.terminal.write(data);
   }
 
-  updateTheme(isDark: boolean): void {
-    const theme = isDark
-      ? { background: '#1a1a1a', foreground: '#e5e5e5', cursor: '#e5e5e5' }
-      : { background: '#FFFFFF', foreground: '#111111', cursor: '#111111' };
+  updateThemeColors(theme: { background: string; foreground: string; cursor: string }): void {
     for (const { terminal } of this.entries.values()) {
       terminal.options.theme = theme;
     }

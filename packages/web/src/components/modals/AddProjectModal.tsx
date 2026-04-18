@@ -18,7 +18,8 @@ export function AddProjectModal({ onClose }: Props) {
     try {
       const project = await api.projects.create({ path: dirPath.trim() });
       store.addProject(project);
-      store.setActiveProject(project.id);
+      store.expandProject(project.id);
+      store.setProjectOverviewOpen(true);
       toast.success(`Project "${project.name}" added`);
       onClose();
     } catch (e: any) {

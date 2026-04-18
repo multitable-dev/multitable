@@ -1,24 +1,23 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { terminalManager } from '../lib/terminalManager';
+import { BUILTIN_THEMES, BUILTIN_LIGHT, applyThemeToDocument } from '../lib/themes';
 
 export function useTheme() {
-  const theme = useAppStore(s => s.theme);
+  const activeThemeId = useAppStore((s) => s.activeThemeId);
+  const customThemes = useAppStore((s) => s.customThemes);
+
+  const activeTheme = useMemo(() => {
+    const all = [...BUILTIN_THEMES, ...customThemes];
+    return all.find((t) => t.id === activeThemeId) ?? BUILTIN_LIGHT;
+  }, [activeThemeId, customThemes]);
 
   useEffect(() => {
-    const applyTheme = (dark: boolean) => {
-      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-      terminalManager.updateTheme(dark);
-    };
-
-    if (theme === 'system') {
-      const mq = window.matchMedia('(prefers-color-scheme: dark)');
-      applyTheme(mq.matches);
-      const handler = (e: MediaQueryListEvent) => applyTheme(e.matches);
-      mq.addEventListener('change', handler);
-      return () => mq.removeEventListener('change', handler);
-    } else {
-      applyTheme(theme === 'dark');
-    }
-  }, [theme]);
+    applyThemeToDocument(activeTheme);
+    terminalManager.updateThemeColors({
+      background: activeTheme.colors.bgPrimary,
+      foreground: activeTheme.colors.textPrimary,
+      cursor: activeTheme.colors.textPrimary,
+    });
+  }, [activeTheme]);
 }

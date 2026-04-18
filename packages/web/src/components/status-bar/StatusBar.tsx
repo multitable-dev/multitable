@@ -2,8 +2,9 @@ import React from 'react';
 import { useProcess } from '../../hooks/useProcess';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
-import { RefreshCw, Square, Play, Pause } from 'lucide-react';
+import { RefreshCw, Square, Play, Pause, Palette, Settings } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
+import { BUILTIN_THEMES } from '../../lib/themes';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
@@ -11,8 +12,23 @@ function formatBytes(bytes: number): string {
 }
 
 export function StatusBar() {
-  const { selectedProcessId } = useAppStore();
+  const {
+    selectedProcessId,
+    activeThemeId,
+    customThemes,
+    setActiveTheme,
+    setGlobalSettingsOpen,
+  } = useAppStore();
   const process = useProcess(selectedProcessId);
+
+  const allThemes = [...BUILTIN_THEMES, ...customThemes];
+  const activeTheme = allThemes.find((t) => t.id === activeThemeId) ?? allThemes[0];
+
+  const cycleTheme = () => {
+    const idx = allThemes.findIndex((t) => t.id === activeThemeId);
+    const next = allThemes[(idx + 1) % allThemes.length];
+    setActiveTheme(next.id);
+  };
 
   return (
     <div
@@ -124,8 +140,45 @@ export function StatusBar() {
         </>
       )}
       {!process && (
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MultiTable</span>
+        <>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MultiTable</span>
+          <div style={{ flex: 1 }} />
+        </>
       )}
+      <button
+        onClick={cycleTheme}
+        title={`Theme: ${activeTheme?.name ?? 'Light'} (click to cycle)`}
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-secondary)',
+          fontSize: 12,
+          padding: '2px 6px',
+          borderRadius: 4,
+        }}
+      >
+        <Palette size={14} />
+        {activeTheme?.name ?? 'Light'}
+      </button>
+      <button
+        onClick={() => setGlobalSettingsOpen(true)}
+        title="Customize themes"
+        style={{
+          background: 'none',
+          border: 'none',
+          cursor: 'pointer',
+          color: 'var(--text-secondary)',
+          padding: '2px 4px',
+          display: 'flex',
+          alignItems: 'center',
+        }}
+      >
+        <Settings size={14} />
+      </button>
     </div>
   );
 }

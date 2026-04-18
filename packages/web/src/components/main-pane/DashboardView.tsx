@@ -4,7 +4,7 @@ import { useAppStore } from '../../stores/appStore';
 import { AddProjectModal } from '../modals/AddProjectModal';
 
 export function DashboardView() {
-  const { projects, sessions, commands, setActiveProject } = useAppStore();
+  const { projects, sessions, commands, expandProject, setProjectOverviewOpen } = useAppStore();
   const [search, setSearch] = useState('');
   const [showAddProject, setShowAddProject] = useState(false);
 
@@ -63,7 +63,10 @@ export function DashboardView() {
           return (
             <div
               key={project.id}
-              onClick={() => setActiveProject(project.id)}
+              onClick={() => {
+                expandProject(project.id);
+                setProjectOverviewOpen(true);
+              }}
               style={{
                 backgroundColor: 'var(--bg-sidebar)',
                 border: '1px solid var(--border)',

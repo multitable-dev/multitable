@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
+import { Palette } from 'lucide-react';
+import { BUILTIN_THEMES } from './lib/themes';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { MainPane } from './components/main-pane/MainPane';
 import { StatusBar } from './components/status-bar/StatusBar';
@@ -37,13 +39,13 @@ function App() {
     if (isMobile) setMobileDrawerOpen(false);
   }, [store.selectedProcessId, isMobile]);
 
-  // Compute running/total counts for mobile top bar
-  const activeProject = store.projects.find(p => p.id === store.activeProjectId);
+  // Compute running/total counts for mobile top bar (scoped to focused project)
+  const focusedProject = store.projects.find(p => p.id === store.focusedProjectId);
   const allProcesses = [
     ...Object.values(store.sessions),
     ...Object.values(store.commands),
     ...Object.values(store.terminals),
-  ].filter(p => p.projectId === store.activeProjectId);
+  ].filter(p => p.projectId === store.focusedProjectId);
   const runningCount = allProcesses.filter(p => p.state === 'running').length;
   const totalCount = allProcesses.length;
 
@@ -51,26 +53,57 @@ function App() {
     // Connect WebSocket
     wsClient.connect();
 
-    // Load projects and processes for the active project.
+    // Load projects and processes for ALL projects. Expanded state is a
+    // pure frontend concern — backend processes stay alive regardless.
     // Called on mount and again on WS reconnect (e.g. after server restart).
     function loadData() {
       api.projects
         .list()
-        .then(projects => {
+        .then(async projects => {
           store.setProjects(projects);
-          const active = projects.find(p => p.isActive) ?? projects[0];
-          if (active) {
-            store.setActiveProject(active.id);
-            Promise.all([
-              api.sessions.list(active.id),
-              api.commands.list(active.id),
-              api.terminals.list(active.id),
-            ]).then(([sessions, commands, terminals]) => {
-              store.setSessions(sessions);
-              store.setCommands(commands);
-              store.setTerminals(terminals);
-            });
+          if (projects.length === 0) return;
+
+          // Restore expanded state from localStorage (intersect with known ids)
+          let expanded: string[] = [];
+          try {
+            const raw = localStorage.getItem('mt:expandedProjectIds');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const valid = new Set(projects.map(p => p.id));
+                expanded = parsed.filter((x: unknown): x is string =>
+                  typeof x === 'string' && valid.has(x)
+                );
+              }
+            }
+          } catch {
+            // localStorage unavailable or corrupt; fall through to default
           }
+          if (expanded.length === 0) {
+            const initial = projects.find(p => p.isActive) ?? projects[0];
+            expanded = [initial.id];
+          }
+          useAppStore.setState({
+            expandedProjectIds: expanded,
+            focusedProjectId: expanded[0] ?? null,
+          });
+
+          // Fetch processes for every project in parallel
+          const triples = await Promise.all(
+            projects.map(p =>
+              Promise.all([
+                api.sessions.list(p.id).catch(() => []),
+                api.commands.list(p.id).catch(() => []),
+                api.terminals.list(p.id).catch(() => []),
+              ])
+            )
+          );
+          const allSessions = triples.flatMap(([s]) => s);
+          const allCommands = triples.flatMap(([, c]) => c);
+          const allTerminals = triples.flatMap(([, , t]) => t);
+          store.setSessions(allSessions);
+          store.setCommands(allCommands);
+          store.setTerminals(allTerminals);
         })
         .catch(() => {
           // Daemon may not be running yet; WS reconnect will handle it
@@ -78,6 +111,20 @@ function App() {
     }
 
     loadData();
+
+    // Persist expandedProjectIds to localStorage on every change
+    const unsubPersist = useAppStore.subscribe((state, prev) => {
+      if (state.expandedProjectIds !== prev.expandedProjectIds) {
+        try {
+          localStorage.setItem(
+            'mt:expandedProjectIds',
+            JSON.stringify(state.expandedProjectIds)
+          );
+        } catch {
+          // ignore quota/availability errors
+        }
+      }
+    });
 
     // Wire WebSocket events to store
     const offs = [
@@ -149,6 +196,7 @@ function App() {
 
     return () => {
       offs.forEach(off => off());
+      unsubPersist();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -182,11 +230,29 @@ function App() {
             &#9776;
           </button>
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
-            {activeProject?.name || 'MultiTable'}
+            {focusedProject?.name || 'MultiTable'}
           </span>
           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             &#9889; {runningCount}/{totalCount}
           </span>
+          {(() => {
+            const allThemes = [...BUILTIN_THEMES, ...store.customThemes];
+            const cycle = () => {
+              const idx = allThemes.findIndex((t) => t.id === store.activeThemeId);
+              const next = allThemes[(idx + 1) % allThemes.length];
+              store.setActiveTheme(next.id);
+            };
+            const active = allThemes.find((t) => t.id === store.activeThemeId);
+            return (
+              <button
+                onClick={cycle}
+                title={`Theme: ${active?.name ?? 'Light'}`}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 4, display: 'flex', alignItems: 'center' }}
+              >
+                <Palette size={16} />
+              </button>
+            );
+          })()}
         </div>
       )}
 
@@ -221,9 +287,9 @@ function App() {
       <CommandPalette />
       <ConnectionOverlay />
       <Toaster position="top-right" />
-      {store.addAgentModalOpen && store.activeProjectId && (
+      {store.addAgentModalOpen && store.focusedProjectId && (
         <AddAgentModal
-          projectId={store.activeProjectId}
+          projectId={store.focusedProjectId}
           onClose={() => store.setAddAgentModalOpen(false)}
         />
       )}
@@ -233,7 +299,7 @@ function App() {
         />
       )}
       {store.projectSettingsOpen && (() => {
-        const project = store.projects.find(p => p.id === store.activeProjectId);
+        const project = store.projects.find(p => p.id === store.focusedProjectId);
         return project ? (
           <ProjectSettingsModal
             project={project}

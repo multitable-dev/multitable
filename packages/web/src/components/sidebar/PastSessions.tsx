@@ -126,29 +126,21 @@ export function PastSessions() {
   }, [data]);
 
   const handleSelectPinned = async (pinnedSessionId: string) => {
-    // If already in the active project's sessions, just select it
-    if (store.sessions[pinnedSessionId]) {
+    // All projects' sessions are prefetched on boot, so this is usually a hit
+    const cached = store.sessions[pinnedSessionId];
+    if (cached) {
+      store.expandProject(cached.projectId);
       store.setSelectedProcess(pinnedSessionId);
       return;
     }
-    // Otherwise we need to find which project the session belongs to and switch
+    // Fallback: the session was created since boot — walk projects to locate it
     try {
-      const allProjects = store.projects;
-      // Brute force: ask each project's sessions endpoint until we find it.
-      // (Could be more efficient with a global /api/sessions list, but the
-      // count of projects is small.)
-      for (const p of allProjects) {
+      for (const p of store.projects) {
         const sessions = await api.sessions.list(p.id);
-        if (sessions.find((s) => s.id === pinnedSessionId)) {
-          store.setActiveProject(p.id);
-          const [s, c, t] = await Promise.all([
-            api.sessions.list(p.id),
-            api.commands.list(p.id),
-            api.terminals.list(p.id),
-          ]);
-          store.setSessions(s);
-          store.setCommands(c);
-          store.setTerminals(t);
+        const match = sessions.find((s) => s.id === pinnedSessionId);
+        if (match) {
+          store.mergeSessions(sessions);
+          store.expandProject(p.id);
           store.setSelectedProcess(pinnedSessionId);
           return;
         }
@@ -166,15 +158,15 @@ export function PastSessions() {
       // Refresh projects list (a new project may have been auto-created)
       const projects = await api.projects.list();
       store.setProjects(projects);
-      store.setActiveProject(res.projectId);
       const [s, c, t] = await Promise.all([
         api.sessions.list(res.projectId),
         api.commands.list(res.projectId),
         api.terminals.list(res.projectId),
       ]);
-      store.setSessions(s);
-      store.setCommands(c);
-      store.setTerminals(t);
+      store.mergeSessions(s);
+      store.mergeCommands(c);
+      store.mergeTerminals(t);
+      store.expandProject(res.projectId);
       store.setSelectedProcess(res.sessionId);
       // Refresh transcript list so the just-resumed session appears as pinned
       api.transcripts

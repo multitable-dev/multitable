@@ -8,10 +8,10 @@ export function MainPane() {
   const store = useAppStore();
   const { selectedProcessId } = store;
 
-  if (!selectedProcessId && store.projectOverviewOpen && store.activeProjectId) {
+  if (!selectedProcessId && store.projectOverviewOpen && store.focusedProjectId) {
     return (
       <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-        <ProjectOverview projectId={store.activeProjectId} />
+        <ProjectOverview projectId={store.focusedProjectId} />
       </div>
     );
   }
