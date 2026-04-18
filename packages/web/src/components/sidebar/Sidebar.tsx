@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { ProjectHeader } from './ProjectHeader';
 import { SidebarSection } from './SidebarSection';
 import { SidebarItem } from './SidebarItem';
+import { PastSessions } from './PastSessions';
 import { AddProcessModal } from '../modals/AddProcessModal';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import type { MenuItem } from '../context-menu/ContextMenu';
@@ -65,6 +66,15 @@ export function Sidebar() {
     }
   };
 
+  // After deleting a process, if it was the one currently selected, route the
+  // user back to the all-projects dashboard so the main pane doesn't dangle on
+  // a now-missing tab.
+  const routeAwayIfSelected = (deletedId: string) => {
+    if (selectedProcessId !== deletedId) return;
+    store.setSelectedProcess(null);
+    store.setProjectOverviewOpen(false);
+  };
+
   const handleAddTerminal = async () => {
     if (!activeProjectId) return;
     try {
@@ -101,6 +111,8 @@ export function Sidebar() {
           try {
             await api.sessions.delete(process.id);
             store.removeSession(process.id);
+            routeAwayIfSelected(process.id);
+            window.dispatchEvent(new Event('mt:past-sessions-refresh'));
             toast.success('Session deleted');
           } catch {
             toast.error('Failed to delete session');
@@ -144,6 +156,7 @@ export function Sidebar() {
           try {
             await api.commands.delete(process.id);
             store.removeCommand(process.id);
+            routeAwayIfSelected(process.id);
             toast.success('Command deleted');
           } catch {
             toast.error('Failed to delete command');
@@ -162,6 +175,7 @@ export function Sidebar() {
         try {
           await api.terminals.delete(process.id);
           store.removeTerminal(process.id);
+          routeAwayIfSelected(process.id);
           toast.success('Terminal closed');
         } catch {
           toast.error('Failed to close terminal');
@@ -239,6 +253,34 @@ export function Sidebar() {
     >
       {activeProject && (
         <>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '8px 16px 4px',
+              backgroundColor: 'var(--bg-sidebar)',
+            }}
+          >
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 600,
+                color: 'var(--text-muted)',
+                letterSpacing: '0.05em',
+              }}
+            >
+              ACTIVE PROJECT
+            </span>
+            <div
+              style={{
+                flex: 1,
+                height: 1,
+                backgroundColor: 'var(--border)',
+                margin: '0 8px',
+              }}
+            />
+          </div>
+
           <div
             onContextMenu={(e) => {
               e.preventDefault();
@@ -370,6 +412,10 @@ export function Sidebar() {
           No project registered. Add a project to get started.
         </div>
       )}
+
+      <div style={{ marginTop: 'auto' }}>
+        <PastSessions />
+      </div>
 
       {showAddCommand && activeProjectId && (
         <AddProcessModal

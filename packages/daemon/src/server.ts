@@ -14,6 +14,7 @@ import { createProcessesRouter } from './api/processes.js';
 import { createTerminalsRouter } from './api/terminals.js';
 import { createConfigRouter } from './api/config.js';
 import { createSearchRouter } from './api/search.js';
+import { createTranscriptsRouter } from './api/transcripts.js';
 import { createHooksRouter } from './hooks/receiver.js';
 
 export interface ServerInstance {
@@ -71,6 +72,7 @@ export function createServer(
   app.use('/api/hooks', createHooksRouter(manager, permManager, broadcast));
   app.use('/api/config', createConfigRouter());
   app.use('/api/search', createSearchRouter(manager));
+  app.use('/api/transcripts', createTranscriptsRouter(manager));
 
   // Health check
   app.get('/api/health', (_req, res) => {

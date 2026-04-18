@@ -164,6 +164,10 @@ export function useKeyboardShortcuts() {
             state.setDetailPanelOpen(true);
             state.setDetailPanelTab('notes');
             return;
+          case 'h': // Past Sessions search
+            e.preventDefault();
+            window.dispatchEvent(new Event('mt:focus-past-sessions-search'));
+            return;
         }
       }
 

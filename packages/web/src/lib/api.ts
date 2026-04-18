@@ -94,4 +94,29 @@ export const api = {
     get<Array<{ sessionId: string; name: string; snippet: string }>>(
       `/api/search?q=${encodeURIComponent(q)}`
     ),
+  transcripts: {
+    list: (params?: { q?: string; cwd?: string; limit?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.q) qs.set('q', params.q);
+      if (params?.cwd) qs.set('cwd', params.cwd);
+      if (params?.limit) qs.set('limit', String(params.limit));
+      const tail = qs.toString() ? `?${qs.toString()}` : '';
+      return get<{
+        projects: { cwd: string; projectName: string; sessionCount: number }[];
+        sessions: {
+          sessionId: string;
+          cwd: string;
+          projectName: string;
+          gitBranch: string | null;
+          firstPrompt: string | null;
+          mtime: number;
+          pinnedSessionId: string | null;
+        }[];
+      }>(`/api/transcripts${tail}`);
+    },
+    resume: (sessionId: string) =>
+      post<{ ok: boolean; sessionId: string; projectId: string; pid: number }>(
+        `/api/transcripts/${sessionId}/resume`
+      ),
+  },
 };
