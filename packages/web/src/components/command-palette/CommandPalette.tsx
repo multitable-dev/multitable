@@ -129,19 +129,6 @@ export function CommandPalette() {
         },
       });
     }
-    if (selectedProcessId) {
-      result.push({
-        id: 'action-restart-selected',
-        name: 'Restart selected process',
-        category: 'Actions',
-        action: () => {
-          api.processes
-            .restart(selectedProcessId)
-            .then(() => toast.success('Process restarted'))
-            .catch(() => toast.error('Failed to restart'));
-        },
-      });
-    }
 
     // --- Navigation ---
     result.push({

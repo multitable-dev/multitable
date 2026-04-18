@@ -60,11 +60,26 @@ export function ProjectSidebarItem({ project }: Props) {
   };
 
   const handleSelectProcess = (proc: ManagedProcess) => {
-    if (selectedProcessId === proc.id && proc.state !== 'running') {
+    const needsReselect = selectedProcessId === proc.id && proc.state !== 'running';
+    if (needsReselect) {
       setSelectedProcess(null);
       requestAnimationFrame(() => setSelectedProcess(proc.id));
     } else {
       setSelectedProcess(proc.id);
+    }
+
+    // Auto-resume/start sessions when clicked in a non-running state.
+    // Errored state means a previous resume already failed — don't auto-retry;
+    // the user must explicitly start a new session.
+    if (proc.type === 'session' && proc.state === 'stopped') {
+      const s = proc as any;
+      const hasPrior = !!(s.claudeSessionId || s.claudeState?.claudeSessionId);
+      const attempt = hasPrior
+        ? api.sessions.resumeClaude(proc.id)
+        : api.processes.start(proc.id);
+      attempt.catch(() => {
+        toast.error(hasPrior ? 'Failed to resume session' : 'Failed to start session');
+      });
     }
   };
 
@@ -93,10 +108,6 @@ export function ProjectSidebarItem({ project }: Props) {
           if (isRunning) api.processes.stop(process.id).catch(() => toast.error('Failed to stop'));
           else api.processes.start(process.id).catch(() => toast.error('Failed to start'));
         },
-      },
-      {
-        label: 'Restart',
-        action: () => api.processes.restart(process.id).catch(() => toast.error('Failed to restart')),
       },
       {
         label: 'Clear output',
@@ -131,10 +142,6 @@ export function ProjectSidebarItem({ project }: Props) {
           if (isRunning) api.processes.stop(process.id).catch(() => toast.error('Failed to stop'));
           else api.processes.start(process.id).catch(() => toast.error('Failed to start'));
         },
-      },
-      {
-        label: 'Restart',
-        action: () => api.processes.restart(process.id).catch(() => toast.error('Failed to restart')),
       },
       {
         label: 'Copy command',

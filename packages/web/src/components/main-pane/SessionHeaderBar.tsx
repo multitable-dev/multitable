@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCw, PanelBottom, Play } from 'lucide-react';
+import { PanelBottom, Play } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
@@ -11,12 +11,9 @@ interface Props {
 
 export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
   const claudeState = session.claudeState;
-  const hasPriorConversation = !!(session.claudeSessionId || claudeState?.claudeSessionId);
-  const notRunning = session.state === 'stopped' || session.state === 'errored';
-  // Resume: stopped with a prior conversation to resume
-  const showResume = notRunning && hasPriorConversation && session.state !== 'errored';
-  // Start New: errored (resume failed) or stopped without any prior conversation
-  const showStartNew = (session.state === 'errored') || (session.state === 'stopped' && !hasPriorConversation);
+  // Only surface "Start New" when a resume attempt already failed (errored).
+  // Stopped sessions auto-resume on click from the sidebar.
+  const showStartNew = session.state === 'errored';
 
   const handleCopySessionId = () => {
     if (claudeState?.claudeSessionId) {
@@ -75,23 +72,6 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-          {showResume && (
-            <button
-              onClick={() => api.sessions.resumeClaude(session.id)}
-              title="Resume Claude"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: 'var(--text-secondary)',
-                cursor: 'pointer',
-                padding: 4,
-                display: 'flex',
-                alignItems: 'center',
-              }}
-            >
-              <RotateCw size={14} />
-            </button>
-          )}
           {showStartNew && (
             <button
               onClick={() => api.processes.start(session.id)}

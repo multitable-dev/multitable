@@ -7,7 +7,6 @@ import {
   TerminalSquare,
   Play,
   Square,
-  RotateCcw,
   ChevronRight,
   ChevronDown,
 } from 'lucide-react';
@@ -48,11 +47,6 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
     e.stopPropagation();
     api.processes.stop(process.id);
   };
-  const handleRestart = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    api.processes.restart(process.id);
-  };
-
   const handleToggleAutostart = () => {
     if (process.type === 'session') {
       api.sessions.update(process.id, {
@@ -286,24 +280,6 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
               }}
             >
               <Square size={12} /> Stop
-            </button>
-            <button
-              onClick={handleRestart}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 500,
-                color: 'var(--text-primary)',
-                background: 'transparent',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <RotateCcw size={12} /> Restart
             </button>
           </div>
         </div>

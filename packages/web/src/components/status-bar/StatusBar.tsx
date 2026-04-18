@@ -2,7 +2,7 @@ import React from 'react';
 import { useProcess } from '../../hooks/useProcess';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
-import { RefreshCw, Square, Play, Pause, Palette, Settings } from 'lucide-react';
+import { Square, Palette, Settings } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { BUILTIN_THEMES } from '../../lib/themes';
 
@@ -45,70 +45,24 @@ export function StatusBar() {
     >
       {process && (
         <>
-          <button
-            onClick={() => api.processes.start(process.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              padding: '2px 4px',
-            }}
-          >
-            <Play size={12} /> Focus
-          </button>
-          <button
-            onClick={() => {}}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              padding: '2px 4px',
-            }}
-          >
-            <Pause size={12} /> Pause
-          </button>
-          <button
-            onClick={() => api.processes.stop(process.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              padding: '2px 4px',
-            }}
-          >
-            <Square size={12} /> Stop
-          </button>
-          <button
-            onClick={() => api.processes.restart(process.id)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: 'var(--text-secondary)',
-              fontSize: 12,
-              padding: '2px 4px',
-            }}
-          >
-            <RefreshCw size={12} /> Restart
-          </button>
+          {process.state === 'running' && (
+            <button
+              onClick={() => api.processes.stop(process.id)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-secondary)',
+                fontSize: 12,
+                padding: '2px 4px',
+              }}
+            >
+              <Square size={12} /> Stop
+            </button>
+          )}
 
           <div style={{ flex: 1 }} />
 

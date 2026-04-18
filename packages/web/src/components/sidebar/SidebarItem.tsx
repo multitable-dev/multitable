@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { StatusDot } from './StatusDot';
-import { RefreshCw, Square } from 'lucide-react';
+import { Square } from 'lucide-react';
 import type { ManagedProcess } from '../../lib/types';
 import { api } from '../../lib/api';
 
@@ -79,24 +79,8 @@ export function SidebarItem({
               {metrics}
             </span>
           )}
-          {hovered && (
+          {hovered && process.state === 'running' && (
             <div style={{ display: 'flex', gap: 4, marginLeft: 8 }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  api.processes.restart(process.id);
-                }}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  padding: 2,
-                  color: 'var(--text-muted)',
-                }}
-                title="Restart"
-              >
-                <RefreshCw size={12} />
-              </button>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
