@@ -66,7 +66,7 @@ interface AppState {
   globalSettingsOpen: boolean;
   projectSettingsOpen: boolean;
   detailPanelOpen: boolean;
-  detailPanelTab: 'files' | 'diff' | 'cost' | 'notes';
+  detailPanelTab: 'files' | 'diff' | 'cost' | 'prompts' | 'notes';
   connectionState: 'connected' | 'reconnecting' | 'disconnected';
   projectOverviewOpen: boolean;
   contextMenu: { type: string; id: string; x: number; y: number } | null;
@@ -83,7 +83,7 @@ interface AppState {
   setGlobalSettingsOpen: (open: boolean) => void;
   setProjectSettingsOpen: (open: boolean) => void;
   setDetailPanelOpen: (open: boolean) => void;
-  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'notes') => void;
+  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'prompts' | 'notes') => void;
   setConnectionState: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
   setProjectOverviewOpen: (open: boolean) => void;
   setContextMenu: (menu: { type: string; id: string; x: number; y: number } | null) => void;

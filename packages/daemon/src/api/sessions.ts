@@ -12,6 +12,8 @@ import {
   insertSessionEvent,
 } from '../db/store.js';
 import { parseSessionCost } from '../hooks/costParser.js';
+import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
+import { getClaudeState } from '../hooks/receiver.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -148,6 +150,41 @@ export function createSessionsRouter(manager: PtyManager): Router {
     // Fallback to DB aggregate
     const cost = getSessionCostAggregate(req.params.id);
     res.json({ ...cost, cacheCreationTokens: 0, cacheReadTokens: 0, model: '', messageCount: 0 });
+  });
+
+  // GET /api/sessions/:id/prompts — all user prompts in the session.
+  // Three-tier lookup:
+  //   1. The session's own JSONL by claudeSessionId (exact match).
+  //   2. Scan every JSONL in the project's encoded Claude projects dir,
+  //      filtered to entries whose cwd matches the session's workingDir.
+  //      Picks up ancestors and resumed-from sessions whose prompts live
+  //      in a different file than the current claudeSessionId.
+  //   3. In-memory userMessages (fallback for brand-new sessions).
+  router.get('/:id/prompts', (req: Request, res: Response) => {
+    const session = getSessionById(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    if (session.claudeSessionId && session.workingDirectory) {
+      try {
+        const prompts = parseSessionPrompts(session.workingDirectory, session.claudeSessionId);
+        if (prompts.length > 0) {
+          return res.json({ prompts, source: 'jsonl' });
+        }
+      } catch {}
+    }
+
+    if (session.workingDirectory) {
+      try {
+        const prompts = parseAllProjectPrompts(session.workingDirectory);
+        if (prompts.length > 0) {
+          return res.json({ prompts, source: 'jsonl-project' });
+        }
+      } catch {}
+    }
+
+    const state = getClaudeState(req.params.id);
+    const fallback = (state?.userMessages ?? []).map((text) => ({ text, timestamp: null }));
+    res.json({ prompts: fallback, source: 'memory' });
   });
 
   // POST /api/sessions/:id/start

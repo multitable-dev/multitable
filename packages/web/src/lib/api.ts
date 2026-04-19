@@ -66,6 +66,10 @@ export const api = {
       model: string;
       messageCount: number;
     }>(`/api/sessions/${id}/cost`),
+    prompts: (id: string) => get<{
+      prompts: Array<{ text: string; timestamp: number | null }>;
+      source: 'jsonl' | 'jsonl-project' | 'memory';
+    }>(`/api/sessions/${id}/prompts`),
   },
   commands: {
     list: (projectId: string) => get<Command[]>(`/api/projects/${projectId}/commands`),

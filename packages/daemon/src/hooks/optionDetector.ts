@@ -27,8 +27,9 @@ const QUESTION_SIGNALS = [
 const NUMBERED_LIST_RE = /^\s*(\d+)[.)]\s+(.+)$/;
 
 function encodePath(projectPath: string): string {
-  // Claude Code encodes the path by stripping leading slash and replacing / with -
-  return projectPath.replace(/^\//, '').replace(/\//g, '-');
+  // Claude Code replaces every "/" with "-" including the leading slash:
+  // /home/erick/foo -> -home-erick-foo
+  return projectPath.replace(/\//g, '-');
 }
 
 function getSessionJsonlPath(projectPath: string, claudeSessionId: string): string {

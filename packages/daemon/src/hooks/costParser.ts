@@ -49,7 +49,9 @@ export interface CostAggregate {
 }
 
 function encodePath(projectPath: string): string {
-  return projectPath.replace(/^\//, '').replace(/\//g, '-');
+  // Claude Code replaces every "/" with "-" including the leading slash:
+  // /home/erick/foo -> -home-erick-foo
+  return projectPath.replace(/\//g, '-');
 }
 
 function getSessionJsonlPath(projectPath: string, claudeSessionId: string): string {

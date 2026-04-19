@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Folder, File, ChevronRight, FileText, Plus, Minus } from 'lucide-react';
+import { X, Folder, File, ChevronRight, FileText, Plus, Minus, MessageSquare } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
+import { wsClient } from '../../lib/ws';
 import type { Session } from '../../lib/types';
 import { IconButton, Badge, Spinner } from '../ui';
 
@@ -10,12 +11,13 @@ interface Props {
   projectId: string;
 }
 
-type TabId = 'files' | 'diff' | 'cost' | 'notes';
+type TabId = 'files' | 'diff' | 'cost' | 'prompts' | 'notes';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'files', label: 'Files' },
   { id: 'diff', label: 'Diff' },
   { id: 'cost', label: 'Cost' },
+  { id: 'prompts', label: 'Prompts' },
   { id: 'notes', label: 'Notes' },
 ];
 
@@ -845,6 +847,171 @@ function CostTab({ session }: { session: Session }) {
   );
 }
 
+function PromptsTab({ session }: { session: Session }) {
+  const [prompts, setPrompts] = useState<Array<{ text: string; timestamp: number | null }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState('');
+
+  const fetchPrompts = () => {
+    return api.sessions
+      .prompts(session.id)
+      .then((res) => {
+        setPrompts(res.prompts);
+      })
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    fetchPrompts().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id]);
+
+  // Live-refresh whenever a new user prompt arrives. The observational hook
+  // channel carries every UserPromptSubmit; refetch so we catch the full
+  // text including any new lines since last fetch.
+  useEffect(() => {
+    const off = wsClient.on('hook:UserPromptSubmit', (msg: any) => {
+      if (msg?.payload?.sessionId === session.id) {
+        fetchPrompts();
+      }
+    });
+    return off;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.id]);
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return prompts;
+    const q = query.toLowerCase();
+    return prompts.filter((p) => p.text.toLowerCase().includes(q));
+  }, [prompts, query]);
+
+  const formatTime = (ts: number | null, idx: number) => {
+    if (ts) {
+      const d = new Date(ts);
+      return d.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+    return `#${idx + 1}`;
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>
+        <Spinner size="sm" /> Loading prompts...
+      </div>
+    );
+  }
+
+  if (prompts.length === 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, gap: 8, color: 'var(--text-muted)', padding: 24 }}>
+        <MessageSquare size={32} style={{ opacity: 0.4 }} />
+        <span style={{ fontSize: 14, fontWeight: 500 }}>No prompts yet</span>
+        <span style={{ fontSize: 12, textAlign: 'center' }}>
+          User prompts in this session will appear here.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+      {/* Search + count */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '8px 12px',
+          borderBottom: '1px solid var(--border)',
+          flexShrink: 0,
+          backgroundColor: 'var(--bg-primary)',
+        }}
+      >
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Filter prompts…"
+          style={{
+            flex: 1,
+            fontSize: 12,
+            padding: '4px 8px',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-sm)',
+            backgroundColor: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            outline: 'none',
+          }}
+        />
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+          {query.trim() ? `${filtered.length} / ${prompts.length}` : `${prompts.length} prompt${prompts.length === 1 ? '' : 's'}`}
+        </span>
+      </div>
+
+      {/* Prompt list */}
+      <div className="mt-scroll" style={{ flex: 1, overflow: 'auto', padding: 8 }}>
+        {filtered.map((p, i) => {
+          const idx = prompts.indexOf(p);
+          return (
+            <div
+              key={idx}
+              style={{
+                padding: '8px 10px',
+                marginBottom: 6,
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid var(--border)',
+                backgroundColor: 'var(--bg-elevated)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 600,
+                    color: 'var(--text-muted)',
+                    fontVariantNumeric: 'tabular-nums',
+                    backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 70%, transparent)',
+                    padding: '2px 6px',
+                    borderRadius: 'var(--radius-sm)',
+                  }}
+                >
+                  {formatTime(p.timestamp, idx)}
+                </span>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {p.text.length.toLocaleString()} chars
+                </span>
+              </div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: 'var(--text-primary)',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.45,
+                }}
+              >
+                {p.text}
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length === 0 && query.trim() && (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 12 }}>
+            No prompts match "{query}"
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NotesTab({ session }: { session: Session }) {
   const [value, setValue] = useState(session.scratchpad ?? '');
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -967,6 +1134,7 @@ export function SessionDetailPanel({ session, projectId }: Props) {
         {detailPanelTab === 'files' && <FilesTab projectId={projectId} />}
         {detailPanelTab === 'diff' && <DiffTab projectId={projectId} />}
         {detailPanelTab === 'cost' && <CostTab session={session} />}
+        {detailPanelTab === 'prompts' && <PromptsTab session={session} />}
         {detailPanelTab === 'notes' && <NotesTab session={session} />}
       </div>
     </div>
