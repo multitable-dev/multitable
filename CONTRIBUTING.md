@@ -55,8 +55,8 @@ Open a Discussion in the Ideas category. Describe:
 1. Fork the repo
 2. Create a branch: `git checkout -b feat/your-feature`
 3. Make your changes
-4. Run tests: `npm test`
-5. Run lint: `npm run lint`
+4. Run lint: `npm run lint`
+5. Run build: `npm run build`
 6. Commit using conventional commits:
    - `feat: add session timeline panel`
    - `fix: terminal resize not propagating`

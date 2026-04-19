@@ -13,7 +13,6 @@
 ## Checklist
 
 - [ ] I've read the [Contributing Guide](../CONTRIBUTING.md)
-- [ ] Tests pass (`npm test`)
 - [ ] Lint passes (`npm run lint`)
-- [ ] I've added tests for new functionality (if applicable)
+- [ ] Build passes (`npm run build`)
 - [ ] Breaking changes are documented (if applicable)

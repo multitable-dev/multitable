@@ -17,6 +17,9 @@
   },
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "workspaces": [
     "packages/*"
   ],
