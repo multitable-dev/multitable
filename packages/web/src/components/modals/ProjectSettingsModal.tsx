@@ -17,12 +17,18 @@ export function ProjectSettingsModal({ onClose, project }: Props) {
   const store = useAppStore();
 
   const handleSave = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) {
+      toast.error('Project name cannot be empty');
+      return;
+    }
     setLoading(true);
     try {
-      await api.projects.update(project.id, {
-        name,
+      const updated = await api.projects.update(project.id, {
+        name: trimmed,
         icon: icon || null,
       });
+      store.updateProject(updated);
       toast.success('Project settings saved');
       onClose();
     } catch {

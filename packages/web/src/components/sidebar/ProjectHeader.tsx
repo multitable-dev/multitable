@@ -1,6 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight } from 'lucide-react';
+import toast from 'react-hot-toast';
 import type { Project } from '../../lib/types';
+import { api } from '../../lib/api';
+import { useAppStore } from '../../stores/appStore';
 
 interface Props {
   project: Project;
@@ -10,6 +13,8 @@ interface Props {
   onToggle: () => void;
   onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
 }
 
 export function ProjectHeader({
@@ -20,21 +25,63 @@ export function ProjectHeader({
   onToggle,
   onSelect,
   onContextMenu,
+  editing = false,
+  onEditingChange,
 }: Props) {
-  const [hover, setHover] = React.useState(false);
-  const [toggleHover, setToggleHover] = React.useState(false);
+  const [hover, setHover] = useState(false);
+  const [toggleHover, setToggleHover] = useState(false);
+  const [draft, setDraft] = useState(project.name);
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const updateProject = useAppStore((s) => s.updateProject);
+
+  useEffect(() => {
+    if (editing) {
+      setDraft(project.name);
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
+    }
+  }, [editing, project.name]);
+
+  const commitEdit = async () => {
+    const trimmed = draft.trim();
+    if (saving) return;
+    if (!trimmed || trimmed === project.name) {
+      onEditingChange?.(false);
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await api.projects.update(project.id, { name: trimmed });
+      updateProject(updated);
+    } catch {
+      toast.error('Failed to rename project');
+    } finally {
+      setSaving(false);
+      onEditingChange?.(false);
+    }
+  };
+
+  const cancelEdit = () => {
+    setDraft(project.name);
+    onEditingChange?.(false);
+  };
+
   return (
     <div
-      onClick={onSelect}
+      onClick={editing ? undefined : onSelect}
       onContextMenu={onContextMenu}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
+      title={project.path}
       style={{
         display: 'flex',
         alignItems: 'center',
         padding: '8px 12px',
         borderBottom: '1px solid var(--border)',
-        cursor: 'pointer',
+        cursor: editing ? 'text' : 'pointer',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         backgroundColor: focused
@@ -81,20 +128,59 @@ export function ProjectHeader({
           }}
         />
       </button>
-      <span
-        style={{
-          fontSize: 15,
-          fontWeight: 600,
-          color: 'var(--text-primary)',
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
-        {project.name}
-      </span>
-      {shortcut && (
+      {editing ? (
+        <input
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              commitEdit();
+            } else if (e.key === 'Escape') {
+              e.preventDefault();
+              cancelEdit();
+            }
+          }}
+          onBlur={commitEdit}
+          disabled={saving}
+          style={{
+            flex: 1,
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            background: 'var(--bg-input, var(--bg-elevated))',
+            border: '1px solid var(--border)',
+            borderRadius: 2,
+            padding: '1px 4px',
+            margin: 0,
+            outline: 'none',
+            boxShadow: 'none',
+            fontFamily: 'inherit',
+            minWidth: 0,
+          }}
+        />
+      ) : (
+        <span
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            onEditingChange?.(true);
+          }}
+          style={{
+            fontSize: 15,
+            fontWeight: 600,
+            color: 'var(--text-primary)',
+            flex: 1,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {project.name}
+        </span>
+      )}
+      {shortcut && !editing && (
         <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{shortcut}</span>
       )}
     </div>

@@ -26,6 +26,7 @@ interface AppState {
   focusedProjectId: string | null;
   setProjects: (projects: Project[]) => void;
   addProject: (project: Project) => void;
+  updateProject: (project: Project) => void;
   removeProject: (id: string) => void;
   expandProject: (id: string) => void;
   collapseProject: (id: string) => void;
@@ -105,6 +106,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   focusedProjectId: null,
   setProjects: (projects) => set({ projects }),
   addProject: (project) => set((s) => ({ projects: [...s.projects, project] })),
+  updateProject: (project) =>
+    set((s) => ({
+      projects: s.projects.map((p) => (p.id === project.id ? { ...p, ...project } : p)),
+    })),
   removeProject: (id) =>
     set((s) => ({
       projects: s.projects.filter((p) => p.id !== id),

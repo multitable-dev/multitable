@@ -42,6 +42,7 @@ export function ProjectSidebarItem({ project }: Props) {
   const color = getProjectColor(project.id, dark);
 
   const [showAddCommand, setShowAddCommand] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
     type: string;
     id: string;
@@ -239,6 +240,11 @@ export function ProjectSidebarItem({ project }: Props) {
       action: () => api.projects.stopAll(project.id).catch(() => toast.error('Failed to stop all')),
     },
     {
+      label: 'Rename project',
+      action: () => setRenaming(true),
+      divider: true,
+    },
+    {
       label: 'Project settings',
       action: () => {
         store.setFocusedProject(project.id);
@@ -363,6 +369,8 @@ export function ProjectSidebarItem({ project }: Props) {
         focused={focused}
         onSelect={handleSelectProject}
         onToggle={handleToggleExpand}
+        editing={renaming}
+        onEditingChange={setRenaming}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ type: 'project-header', id: project.id, x: e.clientX, y: e.clientY });
