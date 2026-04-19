@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { ProjectSidebarItem } from './ProjectSidebarItem';
 import { PastSessions } from './PastSessions';
+import { LogoArt } from './LogoArt';
 import { Button } from '../ui';
 
 export function Sidebar() {
@@ -37,26 +38,66 @@ export function Sidebar() {
     >
       <div
         style={{
-          padding: 8,
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >
-        <Button
-          variant="ghost"
-          size="md"
-          block
-          leftIcon={<LayoutGrid size={14} />}
-          onClick={goToDashboard}
-          title="View all projects"
+        {/* Logo */}
+        <div
+          aria-label="MultiTable"
           style={{
-            justifyContent: 'flex-start',
-            backgroundColor: onDashboard ? 'var(--bg-hover)' : undefined,
-            color: onDashboard ? 'var(--text-primary)' : 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            padding: '14px 14px 8px',
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
           }}
         >
-          Dashboard
-        </Button>
+          <LogoArt />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span
+              style={{
+                fontSize: 15,
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                letterSpacing: -0.2,
+                lineHeight: 1,
+              }}
+            >
+              MultiTable
+            </span>
+            <span
+              style={{
+                fontSize: 10,
+                color: 'var(--text-muted)',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                letterSpacing: 0.5,
+                lineHeight: 1,
+              }}
+            >
+              v0.1
+            </span>
+          </div>
+        </div>
+        {/* Dashboard button */}
+        <div style={{ padding: '0 8px 8px' }}>
+          <Button
+            variant="ghost"
+            size="md"
+            block
+            leftIcon={<LayoutGrid size={14} />}
+            onClick={goToDashboard}
+            title="View all projects"
+            style={{
+              justifyContent: 'flex-start',
+              backgroundColor: onDashboard ? 'var(--bg-hover)' : undefined,
+              color: onDashboard ? 'var(--text-primary)' : 'var(--text-secondary)',
+            }}
+          >
+            Dashboard
+          </Button>
+        </div>
       </div>
 
       {projects.length === 0 ? (
