@@ -79,7 +79,12 @@ export function createHooksRouter(
 
     const sessionId = findSessionByClaudeId(session_id) || '';
     const state = ensureClaudeState(sessionId);
-    state.currentTool = tool_name;
+    // AskUserQuestion is intercepted and answered in the web UI rather than
+    // executed — don't mark it as the running tool, or currentTool will get
+    // stuck (PostToolUse doesn't fire when we deny via PreToolUse hook).
+    if (tool_name !== 'AskUserQuestion') {
+      state.currentTool = tool_name;
+    }
     state.lastActivity = Date.now();
 
     permManager.handlePreToolUse(

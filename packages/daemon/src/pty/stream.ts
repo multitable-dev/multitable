@@ -41,6 +41,9 @@ export function handleWsMessage(
     case 'permission:respond':
       handlePermissionRespond(msg, permManager);
       break;
+    case 'permission:answer-question':
+      handleAnswerQuestion(msg, permManager);
+      break;
     case 'option:dismiss':
       // handled at server level
       break;
@@ -219,4 +222,13 @@ function handlePermissionRespond(msg: WsMessage, permManager: PermissionManager)
       ? decision
       : 'deny';
   permManager.respond(id, normalized, updatedInput);
+}
+
+function handleAnswerQuestion(msg: WsMessage, permManager: PermissionManager): void {
+  const { id, answers } = msg.payload || {};
+  if (!id || !Array.isArray(answers)) return;
+  const sanitized: string[][] = answers.map((a: unknown) =>
+    Array.isArray(a) ? a.filter((s): s is string => typeof s === 'string') : []
+  );
+  permManager.respondAskQuestion(id, sanitized);
 }

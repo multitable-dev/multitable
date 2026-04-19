@@ -1,7 +1,7 @@
 import { EventEmitter } from 'events';
 import { v4 as uuidv4 } from 'uuid';
 import type { Response } from 'express';
-import type { PermissionPrompt } from '../types.js';
+import type { PermissionPrompt, AskQuestion } from '../types.js';
 
 const TIMEOUT_MS = 110000;
 
@@ -42,6 +42,59 @@ function sendAll(entry: PendingPermission, body: Record<string, any>): void {
   }
 }
 
+function parseAskQuestions(toolInput: Record<string, any> | undefined): AskQuestion[] {
+  const raw = toolInput?.questions;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((q) => q && typeof q.question === 'string' && Array.isArray(q.options))
+    .map((q) => ({
+      question: String(q.question),
+      header: typeof q.header === 'string' ? q.header : undefined,
+      multiSelect: Boolean(q.multiSelect),
+      options: q.options
+        .filter((o: any) => o && typeof o.label === 'string')
+        .map((o: any) => ({
+          label: String(o.label),
+          description: typeof o.description === 'string' ? o.description : undefined,
+          preview: typeof o.preview === 'string' ? o.preview : undefined,
+        })),
+    }));
+}
+
+// Format the user's AskUserQuestion answers into a hook response. We use
+// the PreToolUse `permissionDecision: "deny"` path with a descriptive
+// reason — Claude Code cancels the native AskUserQuestion tool (we don't
+// want its in-terminal UI to run) and feeds the reason back to Claude as
+// text. Claude reads this as the user's answer and proceeds.
+function buildAskQuestionResponse(
+  prompt: PermissionPrompt,
+  answers: string[][]
+): Record<string, any> {
+  const questions = prompt.questions || [];
+  const lines: string[] = [];
+
+  questions.forEach((q, i) => {
+    const picked = answers[i] || [];
+    const header = q.header ? `[${q.header}] ` : '';
+    lines.push(`${header}${q.question}`);
+    if (picked.length === 0) {
+      lines.push('  (no answer)');
+    } else {
+      for (const p of picked) lines.push(`  → ${p}`);
+    }
+  });
+
+  const reason = `User answered AskUserQuestion in web UI:\n${lines.join('\n')}`;
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      permissionDecisionReason: reason,
+    },
+  };
+}
+
 export type PermissionDecision = 'allow' | 'deny' | 'always-allow';
 
 export class PermissionManager extends EventEmitter {
@@ -73,14 +126,19 @@ export class PermissionManager extends EventEmitter {
   ): void {
     const { tool_name, tool_input, session_id: claudeSessionId } = hookData;
 
+    // AskUserQuestion is a structured question payload, not a permission
+    // gate. Don't auto-defer or auto-allow it — always surface to the web UI
+    // so we can render a proper radio/checkbox interface.
+    const isAskQuestion = tool_name === 'AskUserQuestion';
+
     // Auto-defer safe read-only tools
-    if (this.autoDeferTools.has(tool_name)) {
+    if (!isAskQuestion && this.autoDeferTools.has(tool_name)) {
       res.json({ approved: true });
       return;
     }
 
     // Honor prior "always allow" decisions for this session + tool
-    if (this.sessionAllowList.get(sessionId)?.has(tool_name)) {
+    if (!isAskQuestion && this.sessionAllowList.get(sessionId)?.has(tool_name)) {
       res.json({ approved: true });
       return;
     }
@@ -104,6 +162,12 @@ export class PermissionManager extends EventEmitter {
       toolInput: tool_input || {},
       createdAt: Date.now(),
       timeoutMs: TIMEOUT_MS,
+      ...(isAskQuestion
+        ? {
+            kind: 'ask-question' as const,
+            questions: parseAskQuestions(tool_input),
+          }
+        : { kind: 'permission' as const }),
     };
 
     const timer = setTimeout(() => {
@@ -140,6 +204,27 @@ export class PermissionManager extends EventEmitter {
       sendAll(entry, { approved: false });
     }
 
+    this.emit('permission:resolved', id);
+  }
+
+  /**
+   * Respond to a pending AskUserQuestion prompt with the user's selections.
+   * `answers` is parallel to `prompt.questions` — one string array per
+   * question containing the selected option labels.
+   */
+  respondAskQuestion(id: string, answers: string[][]): void {
+    const entry = this.pending.get(id);
+    if (!entry) return;
+    if (entry.prompt.kind !== 'ask-question') {
+      // Fall back to plain approve; caller used the wrong method.
+      this.respond(id, 'allow');
+      return;
+    }
+
+    clearTimeout(entry.timer);
+    this.pending.delete(id);
+
+    sendAll(entry, buildAskQuestionResponse(entry.prompt, answers));
     this.emit('permission:resolved', id);
   }
 

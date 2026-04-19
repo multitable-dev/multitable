@@ -48,6 +48,19 @@ export interface WsClientState {
   alive: boolean;
 }
 
+export interface AskQuestionOption {
+  label: string;
+  description?: string;
+  preview?: string;
+}
+
+export interface AskQuestion {
+  question: string;
+  header?: string;
+  options: AskQuestionOption[];
+  multiSelect?: boolean;
+}
+
 export interface PermissionPrompt {
   id: string;
   sessionId: string;
@@ -56,6 +69,11 @@ export interface PermissionPrompt {
   toolInput: Record<string, any>;
   createdAt: number;
   timeoutMs: number;
+  // When set, this prompt is a structured AskUserQuestion payload rather
+  // than a generic tool-permission gate. The frontend should render a
+  // question UI instead of an Allow/Deny card.
+  kind?: 'permission' | 'ask-question';
+  questions?: AskQuestion[];
 }
 
 export interface ClaudeSessionState {

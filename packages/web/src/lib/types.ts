@@ -73,6 +73,19 @@ export interface Project {
   terminals?: Terminal[];
 }
 
+export interface AskQuestionOption {
+  label: string;
+  description?: string;
+  preview?: string;
+}
+
+export interface AskQuestion {
+  question: string;
+  header?: string;
+  options: AskQuestionOption[];
+  multiSelect?: boolean;
+}
+
 export interface PermissionPrompt {
   id: string;
   sessionId: string;
@@ -81,6 +94,8 @@ export interface PermissionPrompt {
   toolInput: Record<string, unknown>;
   createdAt: number;
   timeoutMs: number;
+  kind?: 'permission' | 'ask-question';
+  questions?: AskQuestion[];
 }
 
 export interface OptionPrompt {

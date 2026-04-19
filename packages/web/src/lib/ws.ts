@@ -122,6 +122,10 @@ class WsClient {
   respondPermission(id: string, decision: 'allow' | 'deny' | 'always-allow'): void {
     this.send({ type: 'permission:respond', payload: { id, decision } });
   }
+
+  answerQuestion(id: string, answers: string[][]): void {
+    this.send({ type: 'permission:answer-question', payload: { id, answers } });
+  }
 }
 
 export const wsClient = new WsClient();
