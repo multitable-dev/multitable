@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Folder, File, ChevronRight, FileText, Plus, Minus, MessageSquare } from 'lucide-react';
+import { X, Folder, File, ChevronRight, FileText, Plus, Minus, MessageSquare, Check, Copy } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
 import { wsClient } from '../../lib/ws';
+import { copyToClipboard } from '../../lib/clipboard';
 import type { Session } from '../../lib/types';
 import { IconButton, Badge, Spinner } from '../ui';
 
@@ -28,11 +29,27 @@ interface FileEntry {
 }
 
 function FilesTab({ projectId }: { projectId: string }) {
+  const projects = useAppStore(s => s.projects);
+  const projectPath = useMemo(() => {
+    const p = projects.find(pr => pr.id === projectId);
+    return p?.path ?? '';
+  }, [projects, projectId]);
+
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [expanded, setExpanded] = useState<Record<string, FileEntry[]>>({});
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Track the last-copied entry path for transient feedback — keyed by the
+  // entry's relative path, cleared after ~1.2s.
+  const [copiedPath, setCopiedPath] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!projectId) {
@@ -73,62 +90,117 @@ function FilesTab({ projectId }: { projectId: string }) {
     }
   };
 
-  const openFile = (path: string) => {
-    api.projects.openFile(projectId, path).catch((err) => {
-      console.error('[FilesTab] Failed to open file:', path, err);
-    });
+  const copyEntryPath = async (entry: FileEntry, e: React.MouseEvent) => {
+    // Prevent the click from bubbling to the row and triggering folder expand.
+    e.stopPropagation();
+    const abs = projectPath
+      ? `${projectPath.replace(/\/$/, '')}/${entry.path}`
+      : entry.path;
+    const ok = await copyToClipboard(abs);
+    if (!ok) return;
+    setCopiedPath(entry.path);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = setTimeout(() => setCopiedPath(null), 1200);
+  };
+
+  const handleRowClick = (entry: FileEntry) => {
+    // Folders expand/collapse on click. Files do nothing — the only way to
+    // interact with a file is the copy-path button.
+    if (entry.type === 'directory') toggleFolder(entry.path);
   };
 
   const renderEntries = (entries: FileEntry[], depth: number) => (
     <>
-      {entries.map((entry) => (
-        <React.Fragment key={entry.path}>
-          <div
-            onClick={() =>
-              entry.type === 'directory' ? toggleFolder(entry.path) : openFile(entry.path)
-            }
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '4px 8px',
-              paddingLeft: 8 + depth * 16,
-              cursor: 'pointer',
-              userSelect: 'none',
-              WebkitUserSelect: 'none',
-              fontSize: 13,
-              color: 'var(--text-primary)',
-              borderRadius: 'var(--radius-sm)',
-              transition: 'background-color var(--dur-fast) var(--ease-out)',
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-hover)')
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent')
-            }
-          >
-            {entry.type === 'directory' ? (
-              <Folder size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-            ) : (
-              <File size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-            )}
-            <span
+      {entries.map((entry) => {
+        const isCopied = copiedPath === entry.path;
+        const isDir = entry.type === 'directory';
+        return (
+          <React.Fragment key={entry.path}>
+            <div
+              onClick={() => handleRowClick(entry)}
               style={{
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                paddingLeft: 8 + depth * 16,
+                cursor: isDir ? 'pointer' : 'default',
+                userSelect: 'none',
+                WebkitUserSelect: 'none',
+                fontSize: 13,
+                color: 'var(--text-primary)',
+                borderRadius: 'var(--radius-sm)',
+                transition: 'background-color var(--dur-fast) var(--ease-out)',
               }}
+              onMouseEnter={(e) =>
+                ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-hover)')
+              }
+              onMouseLeave={(e) =>
+                ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent')
+              }
             >
-              {entry.name}
-            </span>
-          </div>
-          {entry.type === 'directory' &&
-            expandedPaths.has(entry.path) &&
-            expanded[entry.path] &&
-            renderEntries(expanded[entry.path], depth + 1)}
-        </React.Fragment>
-      ))}
+              {isDir ? (
+                <Folder size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              ) : (
+                <File size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              )}
+              <span
+                style={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {entry.name}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => copyEntryPath(entry, e)}
+                title="Copy path"
+                aria-label={`Copy path for ${entry.name}`}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  background: isCopied
+                    ? 'color-mix(in srgb, var(--accent-blue) 20%, transparent)'
+                    : 'transparent',
+                  border: '1px solid',
+                  borderColor: isCopied ? 'var(--accent-blue)' : 'var(--border)',
+                  color: isCopied ? 'var(--accent-blue)' : 'var(--text-muted)',
+                  padding: '2px 6px',
+                  borderRadius: 'var(--radius-sm)',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  flexShrink: 0,
+                  transition: 'background-color var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast)',
+                }}
+                onMouseEnter={(e) => {
+                  if (!isCopied) {
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-muted)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (!isCopied) {
+                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+                  }
+                }}
+              >
+                {isCopied ? <Check size={12} /> : <Copy size={12} />}
+                {isCopied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+            {isDir &&
+              expandedPaths.has(entry.path) &&
+              expanded[entry.path] &&
+              renderEntries(expanded[entry.path], depth + 1)}
+          </React.Fragment>
+        );
+      })}
     </>
   );
 
