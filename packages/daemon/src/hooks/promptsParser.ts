@@ -19,7 +19,7 @@ interface JsonlEntry {
 
 function encodePath(projectPath: string): string {
   // Claude Code encodes the absolute path by replacing every "/" with "-",
-  // INCLUDING the leading slash. So /home/erick/foo becomes -home-erick-foo
+  // INCLUDING the leading slash. So /home/user/foo becomes -home-user-foo
   // (note the leading dash). Stripping the leading slash loses that dash
   // and misses the directory entirely.
   return projectPath.replace(/\//g, '-');

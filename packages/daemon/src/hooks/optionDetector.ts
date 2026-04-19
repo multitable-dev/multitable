@@ -28,7 +28,7 @@ const NUMBERED_LIST_RE = /^\s*(\d+)[.)]\s+(.+)$/;
 
 function encodePath(projectPath: string): string {
   // Claude Code replaces every "/" with "-" including the leading slash:
-  // /home/erick/foo -> -home-erick-foo
+  // /home/user/foo -> -home-user-foo
   return projectPath.replace(/\//g, '-');
 }
 
