@@ -122,18 +122,26 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
   );
 }
 
-export function PermissionBar() {
+interface PermissionBarProps {
+  sessionId?: string;
+}
+
+export function PermissionBar({ sessionId }: PermissionBarProps = {}) {
   const pendingPermissions = useAppStore(s => s.pendingPermissions);
-  if (pendingPermissions.length === 0) return null;
+  const filtered = sessionId
+    ? pendingPermissions.filter(p => p.sessionId === sessionId)
+    : pendingPermissions;
+  if (filtered.length === 0) return null;
   return (
     <div
       style={{
         padding: '8px 12px',
         borderTop: '1px solid var(--border)',
         backgroundColor: 'var(--bg-statusbar)',
+        flexShrink: 0,
       }}
     >
-      {pendingPermissions.map(prompt => (
+      {filtered.map(prompt => (
         <PermissionCard key={prompt.id} prompt={prompt} />
       ))}
     </div>

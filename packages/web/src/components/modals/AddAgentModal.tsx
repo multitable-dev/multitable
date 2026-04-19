@@ -5,12 +5,12 @@ import toast from 'react-hot-toast';
 
 const AGENTS = [
   { name: 'Claude Code', command: 'claude', recommended: true },
-  { name: 'Codex', command: 'codex' },
-  { name: 'Gemini CLI', command: 'gemini' },
-  { name: 'Amp', command: 'amp' },
-  { name: 'Aider', command: 'aider' },
-  { name: 'Goose', command: 'goose' },
-  { name: 'Custom', command: '' },
+  { name: 'Codex', command: 'codex', comingSoon: true },
+  { name: 'Gemini CLI', command: 'gemini', comingSoon: true },
+  { name: 'Amp', command: 'amp', comingSoon: true },
+  { name: 'Aider', command: 'aider', comingSoon: true },
+  { name: 'Goose', command: 'goose', comingSoon: true },
+  { name: 'Custom', command: '', comingSoon: true },
 ];
 
 interface Props {
@@ -27,6 +27,7 @@ export function AddAgentModal({ onClose, projectId }: Props) {
   const [selectedAgent, setSelectedAgent] = useState('Claude Code');
 
   const handlePresetClick = (agent: typeof AGENTS[number]) => {
+    if ((agent as any).comingSoon) return;
     setSelectedAgent(agent.name);
     setName(agent.name === 'Custom' ? '' : agent.name);
     setCommand(agent.command);
@@ -110,36 +111,59 @@ export function AddAgentModal({ onClose, projectId }: Props) {
             marginBottom: 24,
           }}
         >
-          {AGENTS.map(agent => (
-            <button
-              key={agent.name}
-              onClick={() => handlePresetClick(agent)}
-              style={{
-                padding: '10px 12px',
-                borderRadius: 8,
-                border: `1px solid ${
-                  selectedAgent === agent.name
-                    ? 'var(--accent-blue)'
-                    : (agent as any).recommended
-                      ? 'rgba(59, 130, 246, 0.3)'
-                      : 'var(--border)'
-                }`,
-                backgroundColor:
-                  selectedAgent === agent.name
-                    ? 'rgba(59, 130, 246, 0.1)'
-                    : (agent as any).recommended
-                      ? 'rgba(59, 130, 246, 0.05)'
-                      : 'transparent',
-                color: 'var(--text-primary)',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: selectedAgent === agent.name ? 600 : 400,
-                textAlign: 'center',
-              }}
-            >
-              {agent.name}
-            </button>
-          ))}
+          {AGENTS.map(agent => {
+            const comingSoon = (agent as any).comingSoon;
+            return (
+              <button
+                key={agent.name}
+                onClick={() => handlePresetClick(agent)}
+                disabled={comingSoon}
+                title={comingSoon ? 'Coming soon' : undefined}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: `1px solid ${
+                    selectedAgent === agent.name
+                      ? 'var(--accent-blue)'
+                      : (agent as any).recommended
+                        ? 'rgba(59, 130, 246, 0.3)'
+                        : 'var(--border)'
+                  }`,
+                  backgroundColor:
+                    selectedAgent === agent.name
+                      ? 'rgba(59, 130, 246, 0.1)'
+                      : (agent as any).recommended
+                        ? 'rgba(59, 130, 246, 0.05)'
+                        : 'transparent',
+                  color: 'var(--text-primary)',
+                  cursor: comingSoon ? 'not-allowed' : 'pointer',
+                  fontSize: 13,
+                  fontWeight: selectedAgent === agent.name ? 600 : 400,
+                  textAlign: 'center',
+                  opacity: comingSoon ? 0.45 : 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 2,
+                }}
+              >
+                <span>{agent.name}</span>
+                {comingSoon && (
+                  <span
+                    style={{
+                      fontSize: 10,
+                      fontWeight: 500,
+                      color: 'var(--text-muted)',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.4,
+                    }}
+                  >
+                    Coming soon
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <div style={{ marginBottom: 16 }}>
           <label

@@ -6,7 +6,6 @@ import { Sidebar } from './components/sidebar/Sidebar';
 import { MainPane } from './components/main-pane/MainPane';
 import { StatusBar } from './components/status-bar/StatusBar';
 import { CommandPalette } from './components/command-palette/CommandPalette';
-import { PermissionBar } from './components/permission/PermissionBar';
 import { OptionSelector } from './components/option/OptionSelector';
 import { AddAgentModal } from './components/modals/AddAgentModal';
 import { GlobalSettingsModal } from './components/modals/GlobalSettingsModal';
@@ -16,6 +15,7 @@ import { TouchToolbar } from './components/mobile/TouchToolbar';
 import { useAppStore } from './stores/appStore';
 import { wsClient } from './lib/ws';
 import { api } from './lib/api';
+import { playPermissionChime } from './lib/sound';
 import { useTheme } from './hooks/useTheme';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
 import type { Session } from './lib/types';
@@ -151,6 +151,7 @@ function App() {
       }),
       wsClient.on('permission:prompt', (msg: any) => {
         store.addPermission(msg.payload.prompt);
+        playPermissionChime();
       }),
       wsClient.on('permission:resolved', (msg: any) => {
         store.removePermission(msg.payload.id);
@@ -281,7 +282,6 @@ function App() {
       </div>
 
       <OptionSelector />
-      <PermissionBar />
       {!isMobile && <StatusBar />}
       {isMobile && <TouchToolbar />}
       <CommandPalette />

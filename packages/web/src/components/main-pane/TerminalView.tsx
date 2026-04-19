@@ -4,6 +4,7 @@ import { useAppStore } from '../../stores/appStore';
 import { SessionHeaderBar } from './SessionHeaderBar';
 import { ProcessBanner } from './ProcessBanner';
 import { SessionDetailPanel } from './SessionDetailPanel';
+import { PermissionBar } from '../permission/PermissionBar';
 import type { ManagedProcess, Session } from '../../lib/types';
 
 interface Props {
@@ -106,6 +107,9 @@ export function TerminalView({ processId, process }: Props) {
           </div>
         )}
       </div>
+
+      {/* Session-scoped permission confirmations */}
+      {session && <PermissionBar sessionId={session.id} />}
     </div>
   );
 }

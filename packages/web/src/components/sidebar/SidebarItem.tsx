@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { StatusDot } from './StatusDot';
-import { Square } from 'lucide-react';
+import { Bell, Square } from 'lucide-react';
 import type { ManagedProcess } from '../../lib/types';
 import { api } from '../../lib/api';
+import { useAppStore } from '../../stores/appStore';
 
 interface Props {
   process: ManagedProcess;
@@ -22,6 +23,15 @@ export function SidebarItem({
   onContextMenu,
 }: Props) {
   const [hovered, setHovered] = useState(false);
+
+  const pendingCount = useAppStore(s =>
+    process.type === 'session'
+      ? s.pendingPermissions.reduce(
+          (n, p) => (p.sessionId === process.id ? n + 1 : n),
+          0,
+        )
+      : 0,
+  );
 
   const isIdle =
     process.type === 'session' &&
@@ -67,6 +77,28 @@ export function SidebarItem({
           >
             {process.name}
           </span>
+          {pendingCount > 0 && (
+            <span
+              title={`${pendingCount} confirmation${pendingCount === 1 ? '' : 's'} pending`}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 3,
+                marginLeft: 6,
+                padding: '1px 6px',
+                borderRadius: 8,
+                background: 'var(--accent-blue)',
+                color: 'white',
+                fontSize: 10,
+                fontWeight: 600,
+                flexShrink: 0,
+                animation: 'mt-pulse 1.6s ease-in-out infinite',
+              }}
+            >
+              <Bell size={9} />
+              {pendingCount}
+            </span>
+          )}
           {metrics && !hovered && (
             <span
               style={{
