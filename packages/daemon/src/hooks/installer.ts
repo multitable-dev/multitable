@@ -18,15 +18,49 @@ interface ClaudeSettings {
   [key: string]: any;
 }
 
+// All observational-safe Claude Code hook events. Every one either:
+//   - accepts an empty {} response without changing behavior, or
+//   - is ignored entirely (StopFailure, PermissionDenied, etc.)
+//
+// Intentionally skipped:
+//   FileChanged   - matcher is a pipe-list of literal filenames, not "*".
+//                   An empty matcher watches nothing, so registering here
+//                   would be a no-op. Re-add per-project with explicit paths.
+//   WorktreeCreate - stdout is consumed as the worktree path, and any
+//                    non-zero exit fails creation. Safer to leave unhooked
+//                    until we have a real worktree flow to wire up.
 const HOOK_EVENTS = [
-  'PreToolUse',
-  'PostToolUse',
-  'Stop',
+  // Session & context
   'SessionStart',
   'SessionEnd',
+  'InstructionsLoaded',
+  'UserPromptSubmit',
+  'PreCompact',
+  'PostCompact',
+  // Tool lifecycle
+  'PreToolUse',
+  'PostToolUse',
+  'PostToolUseFailure',
+  'PermissionRequest',
+  'PermissionDenied',
+  // Agent & task
   'SubagentStart',
   'SubagentStop',
-  'UserPromptSubmit',
+  'TaskCreated',
+  'TaskCompleted',
+  'TeammateIdle',
+  // Turn
+  'Stop',
+  'StopFailure',
+  // Observability
+  'Notification',
+  'ConfigChange',
+  'CwdChanged',
+  // Worktree
+  'WorktreeRemove',
+  // MCP
+  'Elicitation',
+  'ElicitationResult',
 ] as const;
 
 function eventToEndpoint(event: string): string {

@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { wsClient } from '../../lib/ws';
 import type { PermissionPrompt } from '../../lib/types';
 import { Button } from '../ui';
+import { ToolInputPreview } from './ToolInputPreview';
 
 function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
   const removePermission = useAppStore(s => s.removePermission);
@@ -67,23 +68,9 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
           }}
         />
       </div>
-      <pre
-        className="mt-scroll"
-        style={{
-          fontSize: 11,
-          color: 'var(--text-secondary)',
-          margin: '0 0 10px',
-          overflow: 'auto',
-          maxHeight: 90,
-          padding: '8px 10px',
-          backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 60%, transparent)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-md)',
-          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        }}
-      >
-        {JSON.stringify(prompt.toolInput, null, 2)}
-      </pre>
+      <div style={{ marginBottom: 10 }}>
+        <ToolInputPreview toolName={prompt.toolName} input={prompt.toolInput} />
+      </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <Button size="sm" variant="primary" onClick={() => respond('allow')}>
           Allow

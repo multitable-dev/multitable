@@ -109,6 +109,182 @@
           }
         ]
       }
+    ],
+    "InstructionsLoaded": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/instructions-loaded -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/pre-compact -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/post-compact -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/post-tool-use-failure -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/permission-request -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/permission-denied -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "TaskCreated": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/task-created -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "TaskCompleted": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/task-completed -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/teammate-idle -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/stop-failure -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/notification -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "ConfigChange": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/config-change -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "CwdChanged": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/cwd-changed -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "WorktreeRemove": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/worktree-remove -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "Elicitation": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/elicitation -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
+    ],
+    "ElicitationResult": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -s -X POST http://localhost:3000/api/hooks/elicitation-result -H 'Content-Type: application/json' -d @-"
+          }
+        ]
+      }
     ]
   }
 }

@@ -17,6 +17,15 @@ import type { ClaudeSessionState } from '../types.js';
 // In-memory claude session states, keyed by multitable session ID
 const claudeStates = new Map<string, ClaudeSessionState>();
 
+// Convert kebab-case URL segment back to PascalCase event name, mirroring
+// the encoder in installer.ts. "post-tool-use-failure" -> "PostToolUseFailure".
+function endpointToEvent(endpoint: string): string {
+  return endpoint
+    .split('-')
+    .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ''))
+    .join('');
+}
+
 // Agent-modal defaults from AddAgentModal — session.name matching one of these
 // is considered unnamed and eligible for auto-rename from the first prompt.
 const AGENT_DEFAULT_NAMES = new Set([
@@ -69,8 +78,23 @@ export function createHooksRouter(
     return session?.id ?? null;
   }
 
+  // Observational fan-out: forward every hook event to WebSocket subscribers
+  // so the web UI gets a live feed of everything Claude Code does. The raw
+  // hook payload is attached so consumers can render custom UIs.
+  function broadcastHook(eventName: string, body: any): void {
+    const sessionId = findSessionByClaudeId(body?.session_id || '') || '';
+    broadcast(`hook:${eventName}`, {
+      event: eventName,
+      sessionId,
+      claudeSessionId: body?.session_id || null,
+      payload: body || {},
+      receivedAt: Date.now(),
+    });
+  }
+
   // PreToolUse — hold response open for permission gate
   router.post('/pre-tool-use', (req: Request, res: Response) => {
+    broadcastHook('PreToolUse', req.body);
     const { tool_name, tool_input, session_id } = req.body || {};
     if (!tool_name) {
       res.json({ approved: true });
@@ -96,6 +120,7 @@ export function createHooksRouter(
 
   // PostToolUse — update state and cost records
   router.post('/post-tool-use', (req: Request, res: Response) => {
+    broadcastHook('PostToolUse', req.body);
     const { tool_name, tool_result, session_id, usage } = req.body || {};
     const sessionId = findSessionByClaudeId(session_id) || '';
 
@@ -132,6 +157,7 @@ export function createHooksRouter(
 
   // Stop — session turn complete
   router.post('/stop', async (req: Request, res: Response) => {
+    broadcastHook('Stop', req.body);
     const { session_id, stop_reason } = req.body || {};
     const sessionId = findSessionByClaudeId(session_id) || '';
 
@@ -187,6 +213,7 @@ export function createHooksRouter(
 
   // SessionStart
   router.post('/session-start', (req: Request, res: Response) => {
+    broadcastHook('SessionStart', req.body);
     console.log('[hooks] session-start received:', JSON.stringify(req.body));
     const { session_id } = req.body || {};
     let sessionId = findSessionByClaudeId(session_id) || '';
@@ -252,6 +279,7 @@ export function createHooksRouter(
 
   // SessionEnd
   router.post('/session-end', (req: Request, res: Response) => {
+    broadcastHook('SessionEnd', req.body);
     const { session_id } = req.body || {};
     const sessionId = findSessionByClaudeId(session_id) || '';
 
@@ -270,6 +298,7 @@ export function createHooksRouter(
 
   // SubagentStart
   router.post('/subagent-start', (req: Request, res: Response) => {
+    broadcastHook('SubagentStart', req.body);
     const { session_id, parent_session_id } = req.body || {};
     const parentSessionId = findSessionByClaudeId(parent_session_id || session_id) || '';
 
@@ -285,6 +314,7 @@ export function createHooksRouter(
 
   // SubagentStop
   router.post('/subagent-stop', (req: Request, res: Response) => {
+    broadcastHook('SubagentStop', req.body);
     const { session_id, parent_session_id } = req.body || {};
     const parentSessionId = findSessionByClaudeId(parent_session_id || session_id) || '';
 
@@ -300,6 +330,7 @@ export function createHooksRouter(
 
   // UserPromptSubmit — capture user messages for labeling
   router.post('/user-prompt-submit', (req: Request, res: Response) => {
+    broadcastHook('UserPromptSubmit', req.body);
     const { session_id, prompt } = req.body || {};
     const sessionId = findSessionByClaudeId(session_id) || '';
 
@@ -328,6 +359,16 @@ export function createHooksRouter(
       }
     }
 
+    res.json({});
+  });
+
+  // Catch-all for observational events that don't need specialized handling.
+  // Any event registered by the installer that isn't matched above lands
+  // here — we broadcast to the UI and return {} to let Claude Code proceed
+  // normally (no decision field = no blocking, no input rewrite).
+  router.post('/:event', (req: Request, res: Response) => {
+    const eventName = endpointToEvent(req.params.event);
+    broadcastHook(eventName, req.body);
     res.json({});
   });
 
