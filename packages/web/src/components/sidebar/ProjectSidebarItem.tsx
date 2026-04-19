@@ -9,6 +9,8 @@ import type { MenuItem } from '../context-menu/ContextMenu';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
 import type { ManagedProcess, Project } from '../../lib/types';
+import { getProjectColor } from '../../lib/projectColor';
+import { useIsDark } from '../../hooks/useIsDark';
 
 function formatMetrics(proc: ManagedProcess): string {
   const parts: string[] = [];
@@ -35,6 +37,8 @@ export function ProjectSidebarItem({ project }: Props) {
 
   const expanded = expandedProjectIds.includes(project.id);
   const focused = focusedProjectId === project.id;
+  const dark = useIsDark();
+  const color = getProjectColor(project.id, dark);
 
   const [showAddCommand, setShowAddCommand] = useState(false);
   const [contextMenu, setContextMenu] = useState<{
@@ -273,7 +277,15 @@ export function ProjectSidebarItem({ project }: Props) {
   };
 
   return (
-    <div>
+    <div
+      style={{
+        border: `2px solid ${color.stripe}`,
+        borderRadius: 8,
+        margin: '6px 8px',
+        overflow: 'hidden',
+        boxShadow: focused ? `0 0 0 1px ${color.stripe}` : undefined,
+      }}
+    >
       <ProjectHeader
         project={project}
         expanded={expanded}

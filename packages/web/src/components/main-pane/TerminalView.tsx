@@ -81,6 +81,7 @@ export function TerminalView({ processId, process }: Props) {
               backgroundColor: '#1a1a1a',
               overflow: 'hidden',
               minHeight: 0,
+              position: 'relative',
             }}
           >
             <div
@@ -88,6 +89,8 @@ export function TerminalView({ processId, process }: Props) {
               className="xterm-container"
               style={{ width: '100%', height: '100%' }}
             />
+            {/* Session-scoped permission confirmations (overlay on terminal) */}
+            {session && <PermissionBar sessionId={session.id} />}
           </div>
         )}
 
@@ -107,9 +110,6 @@ export function TerminalView({ processId, process }: Props) {
           </div>
         )}
       </div>
-
-      {/* Session-scoped permission confirmations */}
-      {session && <PermissionBar sessionId={session.id} />}
     </div>
   );
 }

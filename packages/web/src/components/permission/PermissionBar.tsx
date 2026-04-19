@@ -135,10 +135,18 @@ export function PermissionBar({ sessionId }: PermissionBarProps = {}) {
   return (
     <div
       style={{
-        padding: '8px 12px',
-        borderTop: '1px solid var(--border)',
+        position: 'absolute',
+        left: 12,
+        right: 12,
+        bottom: 12,
+        padding: 12,
+        borderRadius: 8,
+        border: '1px solid var(--border)',
         backgroundColor: 'var(--bg-statusbar)',
-        flexShrink: 0,
+        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+        zIndex: 10,
+        maxHeight: '60%',
+        overflowY: 'auto',
       }}
     >
       {filtered.map(prompt => (

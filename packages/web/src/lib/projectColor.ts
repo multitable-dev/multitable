@@ -1,3 +1,14 @@
+const PALETTE = [
+  { name: 'White', hex: '#E8E8E8' },
+  { name: 'Red', hex: '#DF0100' },
+  { name: 'Blue', hex: '#0071E3' },
+  { name: 'Green', hex: '#0A7C4F' },
+  { name: 'Black', hex: '#2A2A28' },
+  { name: 'Purple', hex: '#6B2D8C' },
+  { name: 'Yellow', hex: '#FFBF00' },
+  { name: 'Orange', hex: '#F9A227' },
+];
+
 function hashString(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -7,25 +18,28 @@ function hashString(s: string): number {
   return h >>> 0;
 }
 
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const v = hex.replace('#', '');
+  return {
+    r: parseInt(v.slice(0, 2), 16),
+    g: parseInt(v.slice(2, 4), 16),
+    b: parseInt(v.slice(4, 6), 16),
+  };
+}
+
 export function getProjectColor(
   id: string,
-  dark: boolean
+  _dark: boolean
 ): {
   stripe: string;
   tint: string;
   dot: string;
 } {
-  const hue = hashString(id) % 360;
-  if (dark) {
-    return {
-      stripe: `hsl(${hue} 60% 62%)`,
-      tint: `hsl(${hue} 60% 55% / 0.14)`,
-      dot: `hsl(${hue} 65% 65%)`,
-    };
-  }
+  const { hex } = PALETTE[hashString(id) % PALETTE.length];
+  const { r, g, b } = hexToRgb(hex);
   return {
-    stripe: `hsl(${hue} 55% 48%)`,
-    tint: `hsl(${hue} 70% 55% / 0.12)`,
-    dot: `hsl(${hue} 60% 48%)`,
+    stripe: hex,
+    tint: `rgba(${r}, ${g}, ${b}, 0.12)`,
+    dot: hex,
   };
 }

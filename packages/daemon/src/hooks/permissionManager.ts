@@ -18,9 +18,28 @@ const AUTO_DEFER_TOOLS = new Set([
 
 interface PendingPermission {
   prompt: PermissionPrompt;
-  res: Response;
+  // Multiple held-open HTTP responses can attach to the same prompt when
+  // Claude Code retries the hook (or parallel agents request the same tool).
+  responders: Response[];
   timer: NodeJS.Timeout;
   sessionId: string;
+  dedupKey: string;
+}
+
+function makeDedupKey(sessionId: string, toolName: string, toolInput: Record<string, any>): string {
+  let inputPart: string;
+  try {
+    inputPart = JSON.stringify(toolInput ?? {});
+  } catch {
+    inputPart = String(toolInput);
+  }
+  return `${sessionId}|${toolName}|${inputPart}`;
+}
+
+function sendAll(entry: PendingPermission, body: Record<string, any>): void {
+  for (const r of entry.responders) {
+    try { r.json(body); } catch {}
+  }
 }
 
 export type PermissionDecision = 'allow' | 'deny' | 'always-allow';
@@ -66,6 +85,16 @@ export class PermissionManager extends EventEmitter {
       return;
     }
 
+    // Dedup: if an identical prompt is already pending for this session,
+    // attach this HTTP response to it instead of creating a second card.
+    const dedupKey = makeDedupKey(sessionId, tool_name, tool_input || {});
+    for (const entry of this.pending.values()) {
+      if (entry.dedupKey === dedupKey) {
+        entry.responders.push(res);
+        return;
+      }
+    }
+
     const id = uuidv4();
     const prompt: PermissionPrompt = {
       id,
@@ -81,7 +110,7 @@ export class PermissionManager extends EventEmitter {
       this.expire(id);
     }, TIMEOUT_MS);
 
-    this.pending.set(id, { prompt, res, timer, sessionId });
+    this.pending.set(id, { prompt, responders: [res], timer, sessionId, dedupKey });
     this.emit('permission:prompt', prompt);
   }
 
@@ -106,9 +135,9 @@ export class PermissionManager extends EventEmitter {
 
     const approved = decision === 'allow' || decision === 'always-allow';
     if (approved) {
-      entry.res.json({ approved: true, ...(updatedInput ? { tool_input: updatedInput } : {}) });
+      sendAll(entry, { approved: true, ...(updatedInput ? { tool_input: updatedInput } : {}) });
     } else {
-      entry.res.json({ approved: false });
+      sendAll(entry, { approved: false });
     }
 
     this.emit('permission:resolved', id);
@@ -120,9 +149,7 @@ export class PermissionManager extends EventEmitter {
 
     this.pending.delete(id);
     // On timeout, auto-approve to not block Claude
-    try {
-      entry.res.json({ approved: true });
-    } catch {}
+    sendAll(entry, { approved: true });
 
     this.emit('permission:expired', id);
   }
@@ -146,7 +173,7 @@ export class PermissionManager extends EventEmitter {
     for (const [id, entry] of this.pending) {
       if (entry.sessionId === sessionId) {
         clearTimeout(entry.timer);
-        try { entry.res.json({ approved: true }); } catch {}
+        sendAll(entry, { approved: true });
         this.pending.delete(id);
         this.emit('permission:resolved', id);
       }
