@@ -141,7 +141,15 @@ function App() {
         if (pid) store.updateProcessMetrics(pid, msg.payload);
       }),
       wsClient.on('session:updated', (msg: any) => {
-        store.upsertSession(msg.payload.session);
+        // Preserve in-memory claudeState (label, tokens, etc.) since the
+        // backend broadcasts the DB row which doesn't carry transient state.
+        const incoming: Session = msg.payload.session;
+        const existing = store.sessions[incoming.id];
+        store.upsertSession(
+          existing?.claudeState
+            ? { ...incoming, claudeState: existing.claudeState }
+            : incoming
+        );
       }),
       wsClient.on('session:created', (msg: any) => {
         store.upsertSession(msg.payload.session);

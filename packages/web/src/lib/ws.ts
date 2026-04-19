@@ -112,6 +112,11 @@ class WsClient {
 
   sendResize(processId: string, cols: number, rows: number): void {
     this.send({ type: 'pty-resize', processId, payload: { cols, rows } });
+    // Cache latest dims so auto-resubscribe on reconnect uses the current size
+    // rather than whatever dims were passed at initial subscribe.
+    if (this.subscribedProcess === processId) {
+      this.subscribedDims = { cols, rows };
+    }
   }
 
   respondPermission(id: string, decision: 'allow' | 'deny' | 'always-allow'): void {

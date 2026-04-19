@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import type { PtyManager } from '../pty/manager.js';
 import type { PermissionManager } from './permissionManager.js';
 import {
+  getSessionById,
   getSessionByClaudeId,
   updateSession,
   insertCostRecord,
@@ -15,6 +16,24 @@ import type { ClaudeSessionState } from '../types.js';
 
 // In-memory claude session states, keyed by multitable session ID
 const claudeStates = new Map<string, ClaudeSessionState>();
+
+// Agent-modal defaults from AddAgentModal — session.name matching one of these
+// is considered unnamed and eligible for auto-rename from the first prompt.
+const AGENT_DEFAULT_NAMES = new Set([
+  'Claude Code',
+  'Codex',
+  'Gemini CLI',
+  'Amp',
+  'Aider',
+  'Goose',
+]);
+
+function titleFromFirstPrompt(prompt: string, maxLen = 60): string {
+  const firstLine = prompt.split('\n', 1)[0] ?? prompt;
+  const cleaned = firstLine.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= maxLen) return cleaned;
+  return cleaned.slice(0, maxLen - 1).trimEnd() + '…';
+}
 
 export function getClaudeState(sessionId: string): ClaudeSessionState | undefined {
   return claudeStates.get(sessionId);
@@ -281,11 +300,26 @@ export function createHooksRouter(
 
     if (sessionId && prompt) {
       const state = ensureClaudeState(sessionId);
+      const isFirstPrompt = state.userMessages.length === 0;
       state.userMessages.push(prompt);
       state.lastActivity = Date.now();
       // Limit stored messages
       if (state.userMessages.length > 20) {
         state.userMessages = state.userMessages.slice(-20);
+      }
+
+      // Auto-rename on the first prompt if the session still has a default
+      // agent-modal name. Gives immediate sidebar context without waiting for
+      // the Haiku labeler (which refines the subtitle separately).
+      if (isFirstPrompt) {
+        const session = getSessionById(sessionId);
+        if (session && AGENT_DEFAULT_NAMES.has(session.name)) {
+          const title = titleFromFirstPrompt(prompt);
+          if (title) {
+            const updated = updateSession(sessionId, { name: title });
+            if (updated) broadcast('session:updated', { session: updated });
+          }
+        }
       }
     }
 

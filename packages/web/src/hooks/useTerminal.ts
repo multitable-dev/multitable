@@ -23,6 +23,21 @@ export function useTerminal(processId: string | null, disabled = false) {
     // Subscribe with actual terminal dimensions
     wsClient.subscribe(processId, initialDims ?? undefined);
 
+    // Corrective resize after xterm's glyph measurements settle. attach() runs
+    // fit() across two RAFs internally, so the sync fit above may report stale
+    // dims. Re-fit after the same cadence and push the final size to the PTY —
+    // otherwise a session resumed into a stopped/registered process may keep
+    // its spawn-time size until the user manually triggers a container resize.
+    let correctiveCancelled = false;
+    requestAnimationFrame(() => {
+      if (correctiveCancelled) return;
+      requestAnimationFrame(() => {
+        if (correctiveCancelled) return;
+        const dims = terminalManager.fit(processId);
+        if (dims) wsClient.sendResize(processId, dims.cols, dims.rows);
+      });
+    });
+
     // Handle scrollback replay from backend
     const offScrollback = wsClient.on('scrollback', (msg) => {
       if (msg.processId === processId) {
@@ -70,6 +85,7 @@ export function useTerminal(processId: string | null, disabled = false) {
 
     return () => {
       clearTimeout(resizeTimer);
+      correctiveCancelled = true;
       offScrollback();
       offOutput();
       disposeInput.dispose();

@@ -54,7 +54,8 @@ export const api = {
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
     spawnClaude: (id: string) => post<void>(`/api/sessions/${id}/spawn-claude`),
-    resumeClaude: (id: string) => post<void>(`/api/sessions/${id}/resume-claude`),
+    resumeClaude: (id: string, dims?: { cols: number; rows: number }) =>
+      post<void>(`/api/sessions/${id}/resume-claude`, dims),
     diff: (id: string) => get<{ diff: string }>(`/api/sessions/${id}/diff`),
     cost: (id: string) => get<{
       tokensIn: number;

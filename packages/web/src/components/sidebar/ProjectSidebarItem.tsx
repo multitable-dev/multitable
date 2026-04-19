@@ -7,6 +7,7 @@ import { AddProcessModal } from '../modals/AddProcessModal';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import type { MenuItem } from '../context-menu/ContextMenu';
 import { api } from '../../lib/api';
+import { terminalManager } from '../../lib/terminalManager';
 import toast from 'react-hot-toast';
 import type { ManagedProcess, Project } from '../../lib/types';
 import { getProjectColor } from '../../lib/projectColor';
@@ -78,12 +79,22 @@ export function ProjectSidebarItem({ project }: Props) {
     if (proc.type === 'session' && proc.state === 'stopped') {
       const s = proc as any;
       const hasPrior = !!(s.claudeSessionId || s.claudeState?.claudeSessionId);
-      const attempt = hasPrior
-        ? api.sessions.resumeClaude(proc.id)
-        : api.processes.start(proc.id);
-      attempt.catch(() => {
-        toast.error(hasPrior ? 'Failed to resume session' : 'Failed to start session');
-      });
+      if (hasPrior) {
+        // Defer resume until after TerminalView mounts and the xterm has fitted,
+        // so the backend spawns the PTY at the real container size (not 80×24).
+        // Double-RAF matches terminalManager.attach's own fit timing, ensuring
+        // glyph measurements have settled before we read cols/rows.
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const dims = terminalManager.fit(proc.id);
+            api.sessions
+              .resumeClaude(proc.id, dims ?? undefined)
+              .catch(() => toast.error('Failed to resume session'));
+          });
+        });
+      } else {
+        api.processes.start(proc.id).catch(() => toast.error('Failed to start session'));
+      }
     }
   };
 
