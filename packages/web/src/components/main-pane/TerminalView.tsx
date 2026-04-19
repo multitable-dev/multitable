@@ -82,6 +82,7 @@ export function TerminalView({ processId, process }: Props) {
               overflow: 'hidden',
               minHeight: 0,
               position: 'relative',
+              boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.4)',
             }}
           >
             <div

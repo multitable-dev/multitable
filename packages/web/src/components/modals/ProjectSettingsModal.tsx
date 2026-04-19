@@ -3,6 +3,7 @@ import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
 import type { Project } from '../../lib/types';
+import { Modal, Input, Button } from '../ui';
 
 interface Props {
   onClose: () => void;
@@ -14,10 +15,6 @@ export function ProjectSettingsModal({ onClose, project }: Props) {
   const [icon, setIcon] = useState(project.icon || '');
   const [loading, setLoading] = useState(false);
   const store = useAppStore();
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
-  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -47,162 +44,78 @@ export function ProjectSettingsModal({ onClose, project }: Props) {
     }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '8px 12px',
-    borderRadius: 6,
-    border: '1px solid var(--border)',
-    backgroundColor: 'var(--bg-primary)',
-    color: 'var(--text-primary)',
-    fontSize: 14,
-    outline: 'none',
-    boxSizing: 'border-box',
-  };
-
   const labelStyle: React.CSSProperties = {
     fontSize: 13,
     color: 'var(--text-secondary)',
     display: 'block',
-    marginBottom: 4,
+    marginBottom: 6,
+    fontWeight: 500,
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title="Project Settings"
+      width={540}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} loading={loading}>
+            {loading ? 'Saving...' : 'Save'}
+          </Button>
+        </>
+      }
     >
+      <div style={{ marginBottom: 14 }}>
+        <label style={labelStyle}>Project name</label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <label style={labelStyle}>Icon (emoji)</label>
+        <Input
+          value={icon}
+          onChange={(e) => setIcon(e.target.value)}
+          placeholder="e.g. \uD83D\uDE80"
+          wrapperStyle={{ maxWidth: 100 }}
+        />
+      </div>
+
+      {/* Danger Zone */}
       <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
         style={{
-          backgroundColor: 'var(--bg-primary)',
-          borderRadius: 12,
-          padding: 32,
-          width: '100%',
-          maxWidth: 520,
-          border: '1px solid var(--border)',
+          border: '1px solid color-mix(in srgb, var(--status-error) 50%, var(--border))',
+          borderRadius: 'var(--radius-lg)',
+          padding: 16,
+          backgroundColor: 'color-mix(in srgb, var(--status-error) 5%, transparent)',
         }}
       >
-        <h2
+        <h3
           style={{
-            fontSize: 18,
-            fontWeight: 600,
-            marginBottom: 24,
-            marginTop: 0,
-            color: 'var(--text-primary)',
+            fontSize: 13,
+            fontWeight: 700,
+            color: 'var(--status-error)',
+            margin: '0 0 6px',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
           }}
         >
-          Project Settings
-        </h2>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={labelStyle}>Project name</label>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            autoFocus
-            style={inputStyle}
-          />
-        </div>
-
-        <div style={{ marginBottom: 24 }}>
-          <label style={labelStyle}>Icon (emoji)</label>
-          <input
-            value={icon}
-            onChange={(e) => setIcon(e.target.value)}
-            placeholder="e.g. \uD83D\uDE80"
-            style={{ ...inputStyle, maxWidth: 80 }}
-          />
-        </div>
-
-        {/* Danger Zone */}
-        <div
+          Danger Zone
+        </h3>
+        <p
           style={{
-            border: '1px solid var(--status-error)',
-            borderRadius: 8,
-            padding: 16,
-            marginBottom: 24,
+            fontSize: 13,
+            color: 'var(--text-secondary)',
+            margin: '0 0 12px',
           }}
         >
-          <h3
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              color: 'var(--status-error)',
-              margin: '0 0 8px',
-            }}
-          >
-            Danger Zone
-          </h3>
-          <p
-            style={{
-              fontSize: 13,
-              color: 'var(--text-secondary)',
-              margin: '0 0 12px',
-            }}
-          >
-            Remove this project from MultiTable. This will not delete any files on disk.
-          </p>
-          <button
-            onClick={handleRemove}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--status-error)',
-              backgroundColor: 'transparent',
-              color: 'var(--status-error)',
-              cursor: 'pointer',
-              fontSize: 13,
-              fontWeight: 500,
-            }}
-          >
-            Remove project
-          </button>
-        </div>
-
-        {/* Footer */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 14,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'var(--accent-blue)',
-              color: 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+          Remove this project from MultiTable. This will not delete any files on disk.
+        </p>
+        <Button variant="danger" size="sm" onClick={handleRemove}>
+          Remove project
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }

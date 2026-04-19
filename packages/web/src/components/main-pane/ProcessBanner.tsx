@@ -2,6 +2,7 @@ import React from 'react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { api } from '../../lib/api';
 import type { ManagedProcess, Session } from '../../lib/types';
+import { Button } from '../ui';
 
 interface Props {
   process: ManagedProcess;
@@ -15,8 +16,6 @@ export function ProcessBanner({ process }: Props) {
 
   const session = process.type === 'session' ? (process as Session) : null;
 
-  // Sessions: auto-resume/start happens on sidebar click — just show status,
-  // except for errored (resume failed) where the user must explicitly start new.
   let message: string;
   let button: { label: string; onClick: () => void } | null = null;
 
@@ -38,38 +37,30 @@ export function ProcessBanner({ process }: Props) {
     };
   }
 
+  const stripeColor = isErrored ? 'var(--status-error)' : 'var(--status-warning)';
+
   return (
     <div
       style={{
         backgroundColor: 'var(--bg-statusbar)',
         borderBottom: '1px solid var(--border)',
+        borderLeft: `3px solid ${stripeColor}`,
         padding: '12px 16px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexShrink: 0,
+        animation: 'mt-slide-up var(--dur-med) var(--ease-out)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <StatusDot state={process.state} size={10} />
-        <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>{message}</span>
+        <span style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>{message}</span>
       </div>
       {button && (
-        <button
-          onClick={button.onClick}
-          style={{
-            padding: '6px 12px',
-            borderRadius: 6,
-            border: 'none',
-            backgroundColor: 'var(--accent-blue)',
-            color: 'white',
-            fontSize: 13,
-            cursor: 'pointer',
-            fontWeight: 500,
-          }}
-        >
+        <Button variant="primary" size="sm" onClick={button.onClick}>
           {button.label}
-        </button>
+        </Button>
       )}
     </div>
   );

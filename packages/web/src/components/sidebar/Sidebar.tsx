@@ -3,6 +3,7 @@ import { LayoutGrid } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { ProjectSidebarItem } from './ProjectSidebarItem';
 import { PastSessions } from './PastSessions';
+import { Button } from '../ui';
 
 export function Sidebar() {
   const projects = useAppStore(s => s.projects);
@@ -22,6 +23,7 @@ export function Sidebar() {
 
   return (
     <div
+      className="mt-scroll"
       style={{
         width: 300,
         flexShrink: 0,
@@ -33,28 +35,29 @@ export function Sidebar() {
         height: '100%',
       }}
     >
-      <button
-        onClick={goToDashboard}
-        title="View all projects"
+      <div
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '10px 12px',
-          background: onDashboard ? 'var(--bg-hover, rgba(255,255,255,0.05))' : 'transparent',
-          border: 'none',
+          padding: 8,
           borderBottom: '1px solid var(--border)',
-          color: onDashboard ? 'var(--text-primary)' : 'var(--text-secondary)',
-          cursor: 'pointer',
-          fontSize: 13,
-          fontWeight: 500,
-          textAlign: 'left',
           flexShrink: 0,
         }}
       >
-        <LayoutGrid size={14} />
-        <span>Dashboard</span>
-      </button>
+        <Button
+          variant="ghost"
+          size="md"
+          block
+          leftIcon={<LayoutGrid size={14} />}
+          onClick={goToDashboard}
+          title="View all projects"
+          style={{
+            justifyContent: 'flex-start',
+            backgroundColor: onDashboard ? 'var(--bg-hover)' : undefined,
+            color: onDashboard ? 'var(--text-primary)' : 'var(--text-secondary)',
+          }}
+        >
+          Dashboard
+        </Button>
+      </div>
 
       {projects.length === 0 ? (
         <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 14 }}>

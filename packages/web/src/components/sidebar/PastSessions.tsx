@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronDown, ChevronRight, Search, X } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
+import { Input, Select, Spinner, IconButton } from '../ui';
 
 interface TranscriptSession {
   sessionId: string;
@@ -232,9 +233,9 @@ export function PastSessions() {
   return (
     <div
       style={{
-        borderTop: '2px solid var(--border)',
+        borderTop: '1px solid var(--border)',
         paddingBottom: 8,
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'color-mix(in srgb, var(--bg-primary) 60%, transparent)',
       }}
     >
       {/* Header */}
@@ -243,18 +244,28 @@ export function PastSessions() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '8px 16px',
+          padding: '8px 12px',
           cursor: 'pointer',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          transition: 'background-color var(--dur-fast) var(--ease-out)',
         }}
       >
-        {sectionCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+        <ChevronRight
+          size={12}
+          style={{
+            color: 'var(--text-muted)',
+            transform: sectionCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
+            transition: 'transform var(--dur-fast) var(--ease-out)',
+          }}
+        />
         <span
           style={{
-            fontSize: 11,
-            fontWeight: 600,
+            fontSize: 10.5,
+            fontWeight: 700,
             color: 'var(--text-muted)',
-            letterSpacing: '0.05em',
-            marginLeft: 4,
+            letterSpacing: '0.08em',
+            marginLeft: 6,
           }}
         >
           PAST SESSIONS
@@ -266,59 +277,28 @@ export function PastSessions() {
         <>
           {/* Search input */}
           <div style={{ padding: '4px 12px 6px' }}>
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border)',
-                borderRadius: 4,
-                padding: '4px 6px',
-              }}
-            >
-              <Search size={12} style={{ color: 'var(--text-muted)', marginRight: 4 }} />
-              <input
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={'Search past sessions\u2026'}
-                style={{
-                  flex: 1,
-                  background: 'transparent',
-                  border: 'none',
-                  outline: 'none',
-                  color: 'var(--text-primary)',
-                  fontSize: 12,
-                  minWidth: 0,
-                }}
-              />
-              {query && (
-                <button
-                  onClick={() => setQuery('')}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 0, display: 'flex' }}
-                  aria-label="Clear search"
-                >
-                  <X size={12} />
-                </button>
-              )}
-            </div>
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={'Search past sessions\u2026'}
+              leftIcon={<Search size={12} />}
+              rightIcon={
+                query ? (
+                  <IconButton size="sm" onClick={() => setQuery('')} label="Clear search">
+                    <X size={12} />
+                  </IconButton>
+                ) : undefined
+              }
+              style={{ fontSize: 12, padding: '5px 0' }}
+            />
           </div>
 
           {/* Project filter */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px 6px' }}>
-            <select
+            <Select
               value={scopeCwd}
               onChange={(e) => setScopeCwd(e.target.value)}
-              style={{
-                flex: 1,
-                fontSize: 11,
-                padding: '2px 4px',
-                background: 'var(--bg-primary)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-primary)',
-                borderRadius: 3,
-                minWidth: 0,
-              }}
+              style={{ fontSize: 11, padding: '5px 28px 5px 10px', flex: 1 }}
             >
               <option value="">All projects</option>
               {data?.projects.map((p) => (
@@ -326,12 +306,14 @@ export function PastSessions() {
                   {p.projectName} ({p.sessionCount})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           {/* Status / errors */}
           {loading && !data && (
-            <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--text-muted)' }}>{'Scanning\u2026'}</div>
+            <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Spinner size="sm" /> Scanning{'\u2026'}
+            </div>
           )}
           {error && (
             <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--danger, #f55)' }}>{error}</div>
@@ -358,16 +340,26 @@ export function PastSessions() {
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    padding: '4px 16px',
+                    padding: '4px 14px',
                     cursor: 'pointer',
+                    userSelect: 'none',
+                    WebkitUserSelect: 'none',
                     fontSize: 12,
                     color: 'var(--text-secondary)',
+                    borderRadius: 'var(--radius-sm)',
                   }}
                   title={group.cwd}
                 >
-                  {expanded ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                  <ChevronRight
+                    size={11}
+                    style={{
+                      color: 'var(--text-muted)',
+                      transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+                      transition: 'transform var(--dur-fast) var(--ease-out)',
+                    }}
+                  />
                   <span style={{ marginLeft: 4, fontWeight: 500 }}>{group.projectName}</span>
-                  <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)' }}>
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums' }}>
                     {group.totalCount}
                   </span>
                 </div>

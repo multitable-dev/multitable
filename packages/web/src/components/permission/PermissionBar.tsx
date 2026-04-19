@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { wsClient } from '../../lib/ws';
 import type { PermissionPrompt } from '../../lib/types';
+import { Button } from '../ui';
 
 function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
   const removePermission = useAppStore(s => s.removePermission);
@@ -26,97 +27,74 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
   return (
     <div
       style={{
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--bg-elevated)',
         border: '1px solid var(--border)',
-        borderRadius: 8,
-        padding: 12,
+        borderRadius: 'var(--radius-lg)',
+        padding: 14,
         marginBottom: 8,
+        boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <span style={{ fontWeight: 600, fontSize: 13 }}>{prompt.toolName}</span>
-        <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 8, userSelect: 'none', WebkitUserSelect: 'none' }}>
+        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>
+          {prompt.toolName}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
           from {prompt.sessionId}
         </span>
-        <div style={{ flex: 1 }} />
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
           {Math.ceil(timeoutSecs - elapsed)}s
         </span>
       </div>
       {/* Countdown bar */}
       <div
         style={{
-          height: 2,
+          height: 3,
           backgroundColor: 'var(--border)',
-          borderRadius: 1,
-          marginBottom: 8,
+          borderRadius: 'var(--radius-pill)',
+          marginBottom: 10,
+          overflow: 'hidden',
         }}
       >
         <div
           style={{
             height: '100%',
             backgroundColor: 'var(--accent-blue)',
-            borderRadius: 1,
+            borderRadius: 'var(--radius-pill)',
             width: `${progress * 100}%`,
+            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.35)',
             transition: 'width 0.1s linear',
           }}
         />
       </div>
       <pre
+        className="mt-scroll"
         style={{
           fontSize: 11,
           color: 'var(--text-secondary)',
-          margin: '0 0 8px',
+          margin: '0 0 10px',
           overflow: 'auto',
-          maxHeight: 80,
-          fontFamily: 'monospace',
+          maxHeight: 90,
+          padding: '8px 10px',
+          backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 60%, transparent)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-md)',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         }}
       >
         {JSON.stringify(prompt.toolInput, null, 2)}
       </pre>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button
-          onClick={() => respond('allow')}
-          style={{
-            padding: '4px 12px',
-            borderRadius: 4,
-            border: 'none',
-            backgroundColor: 'var(--status-running)',
-            color: 'white',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
+      <div style={{ display: 'flex', gap: 6 }}>
+        <Button size="sm" variant="primary" onClick={() => respond('allow')}>
           Allow
-        </button>
-        <button
-          onClick={() => respond('deny')}
-          style={{
-            padding: '4px 12px',
-            borderRadius: 4,
-            border: 'none',
-            backgroundColor: 'var(--status-error)',
-            color: 'white',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
-          Deny
-        </button>
-        <button
-          onClick={() => respond('always-allow')}
-          style={{
-            padding: '4px 12px',
-            borderRadius: 4,
-            border: 'none',
-            backgroundColor: 'var(--accent-blue)',
-            color: 'white',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => respond('always-allow')}>
           Always Allow
-        </button>
+        </Button>
+        <div style={{ flex: 1 }} />
+        <Button size="sm" variant="danger" onClick={() => respond('deny')}>
+          Deny
+        </Button>
       </div>
     </div>
   );
@@ -134,19 +112,23 @@ export function PermissionBar({ sessionId }: PermissionBarProps = {}) {
   if (filtered.length === 0) return null;
   return (
     <div
+      className="mt-scroll"
       style={{
         position: 'absolute',
         left: 12,
         right: 12,
         bottom: 12,
         padding: 12,
-        borderRadius: 8,
+        borderRadius: 'var(--radius-xl)',
         border: '1px solid var(--border)',
-        backgroundColor: 'var(--bg-statusbar)',
-        boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+        backgroundColor: 'color-mix(in srgb, var(--bg-statusbar) 95%, transparent)',
+        backdropFilter: 'blur(12px) saturate(1.1)',
+        WebkitBackdropFilter: 'blur(12px) saturate(1.1)',
+        boxShadow: 'var(--shadow-lg)',
         zIndex: 10,
         maxHeight: '60%',
         overflowY: 'auto',
+        animation: 'mt-slide-up var(--dur-med) var(--ease-out)',
       }}
     >
       {filtered.map(prompt => (

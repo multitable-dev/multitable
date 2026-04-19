@@ -1,47 +1,43 @@
 import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { AddProjectModal } from '../modals/AddProjectModal';
+import { Button, Card, Input, Badge } from '../ui';
+import { getProjectColor } from '../../lib/projectColor';
+import { useIsDark } from '../../hooks/useIsDark';
 
 export function DashboardView() {
   const { projects, sessions, commands, expandProject, setProjectOverviewOpen } = useAppStore();
   const [search, setSearch] = useState('');
   const [showAddProject, setShowAddProject] = useState(false);
+  const dark = useIsDark();
 
   const filteredProjects = projects.filter(p =>
     search.trim() === '' || p.name.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
-    <div style={{ padding: 32, height: '100%', overflowY: 'auto' }}>
+    <div
+      className="mt-scroll"
+      style={{ padding: 32, height: '100%', overflowY: 'auto', animation: 'mt-fade-in var(--dur-med) var(--ease-out)' }}
+    >
       {showAddProject && <AddProjectModal onClose={() => setShowAddProject(false)} />}
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 24 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1, letterSpacing: -0.3 }}>
           Dashboard
         </h1>
-        <button
-          onClick={() => setShowAddProject(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 6, border: 'none', backgroundColor: 'var(--accent-blue)', color: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 500 }}
-        >
-          <Plus size={14} /> Add Project
-        </button>
+        <Button variant="primary" leftIcon={<Plus size={14} />} onClick={() => setShowAddProject(true)}>
+          Add Project
+        </Button>
       </div>
-      <input
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        placeholder="Search projects..."
-        style={{
-          width: '100%',
-          padding: '8px 12px',
-          borderRadius: 6,
-          border: '1px solid var(--border)',
-          backgroundColor: 'var(--bg-primary)',
-          color: 'var(--text-primary)',
-          fontSize: 14,
-          marginBottom: 24,
-          outline: 'none',
-        }}
-      />
+      <div style={{ marginBottom: 24, maxWidth: 420 }}>
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search projects..."
+          leftIcon={<Search size={14} />}
+        />
+      </div>
       <div
         style={{
           display: 'grid',
@@ -59,36 +55,38 @@ export function DashboardView() {
           const allProcs = [...projSessions, ...projCommands];
           const runningCount = allProcs.filter(p => p.state === 'running').length;
           const errorCount = allProcs.filter(p => p.state === 'errored').length;
+          const color = getProjectColor(project.id, dark);
 
           return (
-            <div
+            <Card
               key={project.id}
+              interactive
               onClick={() => {
                 expandProject(project.id);
                 setProjectOverviewOpen(true);
               }}
               style={{
-                backgroundColor: 'var(--bg-sidebar)',
-                border: '1px solid var(--border)',
-                borderRadius: 8,
-                padding: 20,
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
+                position: 'relative',
+                overflow: 'hidden',
+                paddingTop: 22,
               }}
-              onMouseEnter={e =>
-                ((e.currentTarget as HTMLDivElement).style.borderColor =
-                  'var(--accent-blue)')
-              }
-              onMouseLeave={e =>
-                ((e.currentTarget as HTMLDivElement).style.borderColor =
-                  'var(--border)')
-              }
             >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 3,
+                  background: `linear-gradient(90deg, ${color.stripe}, color-mix(in srgb, ${color.stripe} 40%, transparent))`,
+                }}
+              />
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   marginBottom: 12,
+                  gap: 8,
                 }}
               >
                 <span
@@ -96,55 +94,59 @@ export function DashboardView() {
                     fontSize: 16,
                     fontWeight: 600,
                     color: 'var(--text-primary)',
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   {project.name}
                 </span>
                 {errorCount > 0 && (
-                  <span
-                    style={{
-                      marginLeft: 'auto',
-                      fontSize: 11,
-                      backgroundColor: 'var(--status-error)',
-                      color: 'white',
-                      borderRadius: 999,
-                      padding: '2px 6px',
-                    }}
-                  >
+                  <Badge variant="error" solid>
                     {errorCount} error{errorCount > 1 ? 's' : ''}
-                  </span>
+                  </Badge>
                 )}
               </div>
               <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
                 {projSessions.length} session{projSessions.length !== 1 ? 's' : ''} ·{' '}
                 {projCommands.length} command{projCommands.length !== 1 ? 's' : ''}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                {runningCount} running
+              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+                {runningCount > 0 && (
+                  <Badge variant="running">{runningCount} running</Badge>
+                )}
+                {runningCount === 0 && allProcs.length > 0 && (
+                  <Badge variant="muted">Idle</Badge>
+                )}
               </div>
               <div
                 style={{
                   fontSize: 11,
                   color: 'var(--text-muted)',
-                  marginTop: 8,
-                  fontFamily: 'monospace',
+                  marginTop: 10,
+                  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
                 }}
+                title={project.path}
               >
                 {project.path}
               </div>
-            </div>
+            </Card>
           );
         })}
       </div>
       {filteredProjects.length === 0 && (
-        <div style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+        <div style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 16 }}>
           {projects.length === 0 ? (
             <span>
               No projects yet.{' '}
-              <button onClick={() => setShowAddProject(true)} style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', fontSize: 14, padding: 0, textDecoration: 'underline' }}>
+              <button
+                onClick={() => setShowAddProject(true)}
+                style={{ background: 'none', border: 'none', color: 'var(--accent-blue)', cursor: 'pointer', fontSize: 14, padding: 0, textDecoration: 'underline' }}
+              >
                 Add a project
               </button>{' '}
               to get started.

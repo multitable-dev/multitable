@@ -12,6 +12,7 @@ import {
   cloneTheme,
 } from '../../lib/themes';
 import { Check, Copy, Pencil, Trash2, Plus } from 'lucide-react';
+import { Modal, Input, Button, IconButton, Divider, Badge } from '../ui';
 
 interface Props {
   onClose: () => void;
@@ -38,7 +39,6 @@ export function GlobalSettingsModal({ onClose }: Props) {
   }, [onClose]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSave();
   };
 
@@ -87,90 +87,45 @@ export function GlobalSettingsModal({ onClose }: Props) {
 
   if (!config) return null;
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: '8px 12px',
-    borderRadius: 6,
-    border: '1px solid var(--border)',
-    backgroundColor: 'var(--bg-primary)',
-    color: 'var(--text-primary)',
-    fontSize: 14,
-    outline: 'none',
-    boxSizing: 'border-box',
-  };
-
   const labelStyle: React.CSSProperties = {
     fontSize: 13,
     color: 'var(--text-secondary)',
     display: 'block',
-    marginBottom: 4,
+    marginBottom: 6,
+    fontWeight: 500,
   };
 
   const sectionTitleStyle: React.CSSProperties = {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 600,
     color: 'var(--text-primary)',
-    margin: '0 0 12px',
+    margin: '0 0 10px',
   };
 
   const fieldStyle: React.CSSProperties = {
-    marginBottom: 16,
-  };
-
-  const iconButtonStyle: React.CSSProperties = {
-    background: 'none',
-    border: 'none',
-    cursor: 'pointer',
-    color: 'var(--text-secondary)',
-    padding: 4,
-    display: 'flex',
-    alignItems: 'center',
+    marginBottom: 14,
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title="Global Settings"
+      width={700}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={handleSave} loading={loading}>
+            {loading ? 'Saving...' : 'Save Settings'}
+          </Button>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-        style={{
-          backgroundColor: 'var(--bg-primary)',
-          borderRadius: 12,
-          padding: 32,
-          width: '100%',
-          maxWidth: 680,
-          border: '1px solid var(--border)',
-          maxHeight: '85vh',
-          overflowY: 'auto',
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            marginBottom: 24,
-            marginTop: 0,
-            color: 'var(--text-primary)',
-          }}
-        >
-          Global Settings
-        </h2>
-
-        {/* Appearance / Themes */}
+      <div onKeyDown={handleKeyDown}>
+        {/* Themes */}
         <h3 style={sectionTitleStyle}>Themes</h3>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
-          Pick a default theme, or create your own. Custom themes are saved to this
-          browser.
+          Pick a default theme, or create your own. Custom themes are saved to this browser.
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
@@ -184,10 +139,12 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  padding: '8px 10px',
+                  padding: '10px 12px',
                   border: `1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border)'}`,
-                  borderRadius: 6,
-                  backgroundColor: isActive ? 'var(--bg-hover)' : 'transparent',
+                  borderRadius: 'var(--radius-md)',
+                  backgroundColor: isActive ? 'color-mix(in srgb, var(--accent-blue) 10%, transparent)' : 'var(--bg-sidebar)',
+                  boxShadow: isActive ? 'var(--shadow-sm), 0 0 0 1px var(--accent-blue)' : 'var(--shadow-sm)',
+                  transition: 'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
                 }}
               >
                 <button
@@ -196,7 +153,7 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   style={{
                     width: 20,
                     height: 20,
-                    borderRadius: 10,
+                    borderRadius: '50%',
                     border: '2px solid var(--accent-blue)',
                     background: isActive ? 'var(--accent-blue)' : 'transparent',
                     cursor: 'pointer',
@@ -214,14 +171,14 @@ export function GlobalSettingsModal({ onClose }: Props) {
                     flex: 1,
                     fontSize: 14,
                     color: 'var(--text-primary)',
-                    fontWeight: isActive ? 500 : 400,
+                    fontWeight: isActive ? 600 : 500,
                   }}
                 >
                   {t.name}
                   {t.builtIn && (
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 8 }}>
+                    <Badge variant="muted" size="sm" style={{ marginLeft: 8 }}>
                       built-in
-                    </span>
+                    </Badge>
                   )}
                 </span>
                 <div style={{ display: 'flex', gap: 4, marginRight: 6 }}>
@@ -240,7 +197,7 @@ export function GlobalSettingsModal({ onClose }: Props) {
                       style={{
                         width: 14,
                         height: 14,
-                        borderRadius: 3,
+                        borderRadius: 'var(--radius-sm)',
                         backgroundColor: c,
                         border: '1px solid var(--border)',
                       }}
@@ -248,31 +205,32 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   ))}
                 </div>
                 {isCustom && (
-                  <button
+                  <IconButton
+                    size="sm"
                     onClick={() =>
                       setEditingThemeId(editingThemeId === t.id ? null : t.id)
                     }
-                    title="Edit"
-                    style={iconButtonStyle}
+                    label="Edit theme"
                   >
-                    <Pencil size={14} />
-                  </button>
+                    <Pencil size={13} />
+                  </IconButton>
                 )}
-                <button
+                <IconButton
+                  size="sm"
                   onClick={() => handleDuplicate(t)}
-                  title="Duplicate"
-                  style={iconButtonStyle}
+                  label="Duplicate"
                 >
-                  <Copy size={14} />
-                </button>
+                  <Copy size={13} />
+                </IconButton>
                 {isCustom && (
-                  <button
+                  <IconButton
+                    size="sm"
+                    variant="danger"
                     onClick={() => handleDelete(t.id)}
-                    title="Delete"
-                    style={{ ...iconButtonStyle, color: 'var(--status-error)' }}
+                    label="Delete theme"
                   >
-                    <Trash2 size={14} />
-                  </button>
+                    <Trash2 size={13} />
+                  </IconButton>
                 )}
               </div>
             );
@@ -280,40 +238,12 @@ export function GlobalSettingsModal({ onClose }: Props) {
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          <button
-            onClick={() => handleNewTheme(false)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            <Plus size={12} /> New from Light
-          </button>
-          <button
-            onClick={() => handleNewTheme(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '6px 10px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 12,
-            }}
-          >
-            <Plus size={12} /> New from Dark
-          </button>
+          <Button size="sm" variant="secondary" leftIcon={<Plus size={12} />} onClick={() => handleNewTheme(false)}>
+            New from Light
+          </Button>
+          <Button size="sm" variant="secondary" leftIcon={<Plus size={12} />} onClick={() => handleNewTheme(true)}>
+            New from Dark
+          </Button>
         </div>
 
         {editingTheme && (
@@ -324,36 +254,36 @@ export function GlobalSettingsModal({ onClose }: Props) {
           />
         )}
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+        <Divider margin={18} />
 
-        {/* Appearance (non-theme) */}
+        {/* Appearance */}
         <h3 style={sectionTitleStyle}>Appearance</h3>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Terminal font size</label>
-          <input
+          <Input
             type="number"
             min={8}
             max={24}
             value={config.terminalFontSize}
             onChange={(e) => setConfig({ ...config, terminalFontSize: Number(e.target.value) })}
-            style={{ ...inputStyle, maxWidth: 120 }}
+            wrapperStyle={{ maxWidth: 140 }}
           />
         </div>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Terminal scrollback</label>
-          <input
+          <Input
             type="number"
             min={1000}
             max={100000}
             value={config.terminalScrollback}
             onChange={(e) => setConfig({ ...config, terminalScrollback: Number(e.target.value) })}
-            style={{ ...inputStyle, maxWidth: 180 }}
+            wrapperStyle={{ maxWidth: 200 }}
           />
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+        <Divider margin={18} />
 
         {/* Behavior */}
         <h3 style={sectionTitleStyle}>Behavior</h3>
@@ -380,95 +310,54 @@ export function GlobalSettingsModal({ onClose }: Props) {
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Default editor</label>
-          <input
+          <Input
             value={config.defaultEditor}
             onChange={(e) => setConfig({ ...config, defaultEditor: e.target.value })}
             placeholder="code"
-            style={{ ...inputStyle, maxWidth: 240 }}
+            wrapperStyle={{ maxWidth: 260 }}
           />
         </div>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Default shell</label>
-          <input
+          <Input
             value={config.defaultShell}
             onChange={(e) => setConfig({ ...config, defaultShell: e.target.value })}
             placeholder="auto-detect"
-            style={{ ...inputStyle, maxWidth: 240 }}
+            wrapperStyle={{ maxWidth: 260 }}
           />
         </div>
 
-        <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '20px 0' }} />
+        <Divider margin={18} />
 
         {/* Network */}
         <h3 style={sectionTitleStyle}>Network</h3>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Daemon port</label>
-          <input
+          <Input
             type="number"
             value={config.port}
             onChange={(e) => setConfig({ ...config, port: Number(e.target.value) })}
-            style={{ ...inputStyle, maxWidth: 120 }}
+            wrapperStyle={{ maxWidth: 140 }}
           />
         </div>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Bind host</label>
-          <input
+          <Input
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
-            style={{ ...inputStyle, maxWidth: 240 }}
+            wrapperStyle={{ maxWidth: 260 }}
           />
         </div>
 
-        <div
-          style={{
-            fontSize: 12,
-            color: 'var(--text-muted)',
-            marginBottom: 20,
-          }}
-        >
-          Restart daemon for network changes to take effect
-        </div>
-
-        {/* Footer */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 14,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'var(--accent-blue)',
-              color: 'white',
-              cursor: loading ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-              opacity: loading ? 0.7 : 1,
-            }}
-          >
-            {loading ? 'Saving...' : 'Save Settings'}
-          </button>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+          Restart daemon for network changes to take effect.
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -483,27 +372,20 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
     <div
       style={{
         border: '1px solid var(--border)',
-        borderRadius: 8,
-        padding: 16,
+        borderRadius: 'var(--radius-lg)',
+        padding: 14,
         marginBottom: 16,
         backgroundColor: 'var(--bg-sidebar)',
+        boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
         <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Name</span>
-        <input
+        <Input
           value={theme.name}
           onChange={(e) => onChange({ name: e.target.value })}
-          style={{
-            flex: 1,
-            padding: '6px 10px',
-            borderRadius: 4,
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-            fontSize: 13,
-            outline: 'none',
-          }}
+          wrapperStyle={{ flex: 1 }}
+          style={{ fontSize: 13 }}
         />
         <label
           style={{
@@ -522,25 +404,12 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
           />
           Dark mode
         </label>
-        <button
-          onClick={onClose}
-          style={{
-            padding: '4px 10px',
-            borderRadius: 4,
-            border: '1px solid var(--border)',
-            backgroundColor: 'transparent',
-            color: 'var(--text-primary)',
-            cursor: 'pointer',
-            fontSize: 12,
-          }}
-        >
-          Done
-        </button>
+        <Button size="sm" variant="ghost" onClick={onClose}>Done</Button>
       </div>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))',
           gap: 8,
         }}
       >
@@ -557,13 +426,13 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
           >
             <input
               type="color"
-              value={theme.colors[key]}
+              value={(theme.colors[key] || '').startsWith('#') ? theme.colors[key] : '#000000'}
               onChange={(e) => onChange({ colors: { [key]: e.target.value } as Partial<ThemeColors> })}
               style={{
                 width: 32,
                 height: 26,
                 border: '1px solid var(--border)',
-                borderRadius: 4,
+                borderRadius: 'var(--radius-sm)',
                 padding: 0,
                 background: 'none',
                 cursor: 'pointer',
@@ -575,14 +444,14 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
               value={theme.colors[key]}
               onChange={(e) => onChange({ colors: { [key]: e.target.value } as Partial<ThemeColors> })}
               style={{
-                width: 76,
+                width: 90,
                 padding: '2px 6px',
-                borderRadius: 3,
+                borderRadius: 'var(--radius-sm)',
                 border: '1px solid var(--border)',
                 backgroundColor: 'var(--bg-primary)',
                 color: 'var(--text-primary)',
                 fontSize: 11,
-                fontFamily: 'monospace',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                 outline: 'none',
               }}
             />

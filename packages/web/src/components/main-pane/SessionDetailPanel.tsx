@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Folder, File, ChevronDown, ChevronRight, FileText, Plus, Minus } from 'lucide-react';
+import { X, Folder, File, ChevronRight, FileText, Plus, Minus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
 import type { Session } from '../../lib/types';
+import { IconButton, Badge, Spinner } from '../ui';
 
 interface Props {
   session: Session;
@@ -91,8 +92,12 @@ function FilesTab({ projectId }: { projectId: string }) {
               padding: '4px 8px',
               paddingLeft: 8 + depth * 16,
               cursor: 'pointer',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
               fontSize: 13,
               color: 'var(--text-primary)',
+              borderRadius: 'var(--radius-sm)',
+              transition: 'background-color var(--dur-fast) var(--ease-out)',
             }}
             onMouseEnter={(e) =>
               ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-hover)')
@@ -127,8 +132,8 @@ function FilesTab({ projectId }: { projectId: string }) {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 13, padding: 24 }}>
-        Loading files...
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, color: 'var(--text-muted)', fontSize: 13, padding: 24, gap: 8 }}>
+        <Spinner size="sm" /> Loading files...
       </div>
     );
   }
@@ -151,7 +156,7 @@ function FilesTab({ projectId }: { projectId: string }) {
     );
   }
 
-  return <div style={{ padding: 8 }}>{renderEntries(files, 0)}</div>;
+  return <div className="mt-scroll" style={{ padding: 8, overflowY: 'auto', flex: 1 }}>{renderEntries(files, 0)}</div>;
 }
 
 // --- Diff parsing and rendering utilities ---
@@ -434,20 +439,26 @@ function DiffFileSection({ file, defaultExpanded }: { file: DiffFile; defaultExp
           backgroundColor: 'var(--bg-sidebar)',
           cursor: 'pointer',
           userSelect: 'none',
+          WebkitUserSelect: 'none',
           position: 'sticky',
           top: 0,
           zIndex: 1,
           borderBottom: expanded ? '1px solid var(--border)' : 'none',
         }}
       >
-        {expanded
-          ? <ChevronDown size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          : <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-        }
+        <ChevronRight
+          size={14}
+          style={{
+            color: 'var(--text-muted)',
+            flexShrink: 0,
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform var(--dur-fast) var(--ease-out)',
+          }}
+        />
         <FileText size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
         <span style={{
           fontSize: 13,
-          fontFamily: 'monospace',
+          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           color: 'var(--text-primary)',
           flex: 1,
           overflow: 'hidden',
@@ -456,26 +467,8 @@ function DiffFileSection({ file, defaultExpanded }: { file: DiffFile; defaultExp
         }}>
           {displayPath}
         </span>
-        {isNew && (
-          <span style={{
-            fontSize: 11,
-            padding: '1px 6px',
-            borderRadius: 3,
-            backgroundColor: 'rgba(34, 197, 94, 0.15)',
-            color: 'var(--status-running)',
-            fontWeight: 600,
-          }}>NEW</span>
-        )}
-        {isDeleted && (
-          <span style={{
-            fontSize: 11,
-            padding: '1px 6px',
-            borderRadius: 3,
-            backgroundColor: 'rgba(239, 68, 68, 0.15)',
-            color: 'var(--status-error)',
-            fontWeight: 600,
-          }}>DELETED</span>
-        )}
+        {isNew && <Badge variant="running" size="sm">NEW</Badge>}
+        {isDeleted && <Badge variant="error" size="sm">DELETED</Badge>}
         <span style={{ fontSize: 12, color: 'var(--status-running)', fontWeight: 600, marginLeft: 4 }}>
           +{file.additions}
         </span>
@@ -909,55 +902,68 @@ export function SessionDetailPanel({ session, projectId }: Props) {
       {/* Tab bar */}
       <div
         style={{
-          height: 36,
+          height: 38,
           display: 'flex',
           alignItems: 'center',
           backgroundColor: 'var(--bg-sidebar)',
           borderTop: '1px solid var(--border)',
           flexShrink: 0,
           paddingLeft: 8,
+          paddingRight: 6,
+          position: 'relative',
         }}
       >
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setDetailPanelTab(tab.id)}
-            style={{
-              background: 'none',
-              border: 'none',
-              borderBottom:
-                detailPanelTab === tab.id ? '2px solid var(--accent-blue)' : '2px solid transparent',
-              color:
-                detailPanelTab === tab.id ? 'var(--text-primary)' : 'var(--text-secondary)',
-              fontSize: 13,
-              padding: '0 12px',
-              height: '100%',
-              cursor: 'pointer',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {TABS.map((tab) => {
+          const active = detailPanelTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setDetailPanelTab(tab.id)}
+              style={{
+                position: 'relative',
+                background: 'none',
+                border: 'none',
+                color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontSize: 13,
+                fontWeight: active ? 600 : 500,
+                padding: '0 14px',
+                height: '100%',
+                cursor: 'pointer',
+                transition: 'color var(--dur-fast) var(--ease-out)',
+              }}
+              onMouseEnter={(e) => {
+                if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+              }}
+              onMouseLeave={(e) => {
+                if (!active) (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
+              }}
+            >
+              {tab.label}
+              <span
+                style={{
+                  position: 'absolute',
+                  left: 12,
+                  right: 12,
+                  bottom: 0,
+                  height: 2,
+                  backgroundColor: 'var(--accent-blue)',
+                  borderRadius: '2px 2px 0 0',
+                  transform: active ? 'scaleX(1)' : 'scaleX(0)',
+                  transformOrigin: 'center',
+                  transition: 'transform var(--dur-med) var(--ease-out)',
+                }}
+              />
+            </button>
+          );
+        })}
         <div style={{ flex: 1 }} />
-        <button
-          onClick={() => setDetailPanelOpen(false)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: 'var(--text-secondary)',
-            cursor: 'pointer',
-            padding: '0 8px',
-            display: 'flex',
-            alignItems: 'center',
-            height: '100%',
-          }}
-        >
-          <X size={14} />
-        </button>
+        <IconButton size="sm" onClick={() => setDetailPanelOpen(false)} label="Close detail panel">
+          <X size={13} />
+        </IconButton>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
+      <div className="mt-scroll" style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
         {detailPanelTab === 'files' && <FilesTab projectId={projectId} />}
         {detailPanelTab === 'diff' && <DiffTab projectId={projectId} />}
         {detailPanelTab === 'cost' && <CostTab session={session} />}

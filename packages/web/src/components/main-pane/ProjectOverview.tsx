@@ -8,20 +8,21 @@ import {
   Play,
   Square,
   ChevronRight,
-  ChevronDown,
+  Plus,
 } from 'lucide-react';
 import type { Session, Command, Terminal, ManagedProcess } from '../../lib/types';
+import { Button, Card, IconButton, Badge, Divider } from '../ui';
 
 interface Props {
   projectId: string;
 }
 
-const stateColors: Record<string, string> = {
-  running: 'var(--status-running)',
-  idle: 'var(--status-idle)',
-  stopped: 'var(--status-stopped)',
-  errored: 'var(--status-error)',
-};
+function stateBadgeVariant(state: string): 'running' | 'warning' | 'error' | 'muted' {
+  if (state === 'running' || state === 'idle') return 'running';
+  if (state === 'errored') return 'error';
+  if (state === 'stopped') return 'muted';
+  return 'warning';
+}
 
 function ProcessCard({ process }: { process: ManagedProcess }) {
   const [expanded, setExpanded] = useState(false);
@@ -35,8 +36,6 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
       <TerminalSquare size={14} />
     );
 
-  const stateLabel = process.state.toUpperCase();
-  const stateColor = stateColors[process.state] ?? 'var(--text-muted)';
   const isAutostart = process.config?.autostart;
 
   const handleStart = (e: React.MouseEvent) => {
@@ -80,32 +79,39 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
   };
 
   return (
-    <div
-      style={{
-        border: '1px solid var(--border)',
-        borderRadius: 6,
-        overflow: 'hidden',
-      }}
-    >
+    <Card padding={0} radius="md" style={{ overflow: 'hidden' }}>
       {/* Collapsed header */}
       <div
         onClick={() => setExpanded(!expanded)}
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 8,
-          padding: '0 12px',
-          height: 48,
+          gap: 10,
+          padding: '0 14px',
+          height: 46,
           cursor: 'pointer',
-          background: 'var(--bg-sidebar)',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          background: 'transparent',
+          transition: 'background-color var(--dur-fast) var(--ease-out)',
         }}
+        onMouseEnter={(e) =>
+          ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-hover)')
+        }
+        onMouseLeave={(e) =>
+          ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent')
+        }
       >
-        {expanded ? (
-          <ChevronDown size={14} color="var(--text-muted)" />
-        ) : (
-          <ChevronRight size={14} color="var(--text-muted)" />
-        )}
-        <span style={{ color: 'var(--text-secondary)' }}>{typeIcon}</span>
+        <ChevronRight
+          size={14}
+          style={{
+            color: 'var(--text-muted)',
+            flexShrink: 0,
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform var(--dur-fast) var(--ease-out)',
+          }}
+        />
+        <span style={{ color: 'var(--text-secondary)', display: 'flex' }}>{typeIcon}</span>
         <span
           style={{
             fontWeight: 500,
@@ -116,33 +122,13 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
           {process.name}
         </span>
         {isAutostart && (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 600,
-              padding: '2px 5px',
-              borderRadius: 3,
-              background: 'var(--accent-blue)',
-              color: '#fff',
-              lineHeight: 1,
-            }}
-          >
+          <Badge variant="accent" size="sm">
             AUTO
-          </span>
+          </Badge>
         )}
-        <span
-          style={{
-            fontSize: 10,
-            fontWeight: 600,
-            padding: '2px 5px',
-            borderRadius: 3,
-            background: stateColor + '20',
-            color: stateColor,
-            lineHeight: 1,
-          }}
-        >
-          {stateLabel}
-        </span>
+        <Badge variant={stateBadgeVariant(process.state)} size="sm">
+          {process.state.toUpperCase()}
+        </Badge>
         <span
           style={{
             flex: 1,
@@ -152,7 +138,7 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
             textAlign: 'right',
-            fontFamily: 'monospace',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           }}
         >
           {process.command}
@@ -163,47 +149,41 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
       {expanded && (
         <div
           style={{
-            padding: '12px 16px',
+            padding: '14px 16px',
             borderTop: '1px solid var(--border)',
             display: 'flex',
             flexDirection: 'column',
             gap: 10,
             fontSize: 13,
+            backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 40%, transparent)',
           }}
         >
           <div>
-            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>
-              Name:
-            </span>
-            <span style={{ color: 'var(--text-primary)' }}>
-              {process.name}
-            </span>
+            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>Name:</span>
+            <span style={{ color: 'var(--text-primary)' }}>{process.name}</span>
           </div>
           <div>
-            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>
-              Command:
-            </span>
+            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>Command:</span>
             <span
               style={{
                 color: 'var(--text-primary)',
-                fontFamily: 'monospace',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                 fontSize: 12,
                 background: 'var(--bg-sidebar)',
-                padding: '2px 6px',
-                borderRadius: 3,
+                padding: '2px 8px',
+                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--border)',
               }}
             >
               {process.command}
             </span>
           </div>
           <div>
-            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>
-              Working directory:
-            </span>
+            <span style={{ color: 'var(--text-muted)', marginRight: 8 }}>Working directory:</span>
             <span
               style={{
                 color: 'var(--text-primary)',
-                fontFamily: 'monospace',
+                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                 fontSize: 12,
               }}
             >
@@ -245,46 +225,16 @@ function ProcessCard({ process }: { process: ManagedProcess }) {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-            <button
-              onClick={handleStart}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 500,
-                color: '#fff',
-                background: 'var(--status-running)',
-                border: 'none',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <Play size={12} /> Start
-            </button>
-            <button
-              onClick={handleStop}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '5px 12px',
-                fontSize: 12,
-                fontWeight: 500,
-                color: '#fff',
-                background: 'var(--status-error)',
-                border: 'none',
-                borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <Square size={12} /> Stop
-            </button>
+            <Button size="sm" variant="primary" leftIcon={<Play size={12} />} onClick={handleStart}>
+              Start
+            </Button>
+            <Button size="sm" variant="danger" leftIcon={<Square size={12} />} onClick={handleStop}>
+              Stop
+            </Button>
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -292,24 +242,12 @@ export function ProjectOverview({ projectId }: Props) {
   const store = useAppStore();
   const project = store.projects.find(p => p.id === projectId);
 
-  const sessions = Object.values(store.sessions).filter(
-    s => s.projectId === projectId,
-  );
-  const commands = Object.values(store.commands).filter(
-    c => c.projectId === projectId,
-  );
-  const terminals = Object.values(store.terminals).filter(
-    t => t.projectId === projectId,
-  );
+  const sessions = Object.values(store.sessions).filter(s => s.projectId === projectId);
+  const commands = Object.values(store.commands).filter(c => c.projectId === projectId);
+  const terminals = Object.values(store.terminals).filter(t => t.projectId === projectId);
 
-  const allProcesses: ManagedProcess[] = [
-    ...sessions,
-    ...commands,
-    ...terminals,
-  ];
-  const runningCount = allProcesses.filter(
-    p => p.state === 'running' || p.state === 'idle',
-  ).length;
+  const allProcesses: ManagedProcess[] = [...sessions, ...commands, ...terminals];
+  const runningCount = allProcesses.filter(p => p.state === 'running' || p.state === 'idle').length;
 
   const handleAddTerminal = async () => {
     if (!projectId) return;
@@ -321,20 +259,11 @@ export function ProjectOverview({ projectId }: Props) {
     }
   };
 
-  const secondaryButtonStyle: React.CSSProperties = {
-    padding: '8px 16px',
-    fontSize: 13,
-    fontWeight: 500,
-    color: 'var(--text-secondary)',
-    background: 'transparent',
-    border: '1px solid var(--border)',
-    borderRadius: 6,
-    cursor: 'pointer',
-    flex: 1,
-  };
-
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 32 }}>
+    <div
+      className="mt-scroll"
+      style={{ flex: 1, overflow: 'auto', padding: 32, animation: 'mt-fade-in var(--dur-med) var(--ease-out)' }}
+    >
       {/* Header */}
       <div
         style={{
@@ -346,56 +275,33 @@ export function ProjectOverview({ projectId }: Props) {
       >
         <span
           style={{
-            fontSize: 20,
+            fontSize: 22,
             fontWeight: 700,
             color: 'var(--text-primary)',
             flex: 1,
+            letterSpacing: -0.3,
           }}
         >
           {project?.name ?? 'Project'}
         </span>
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 600,
-            padding: '3px 8px',
-            borderRadius: 10,
-            background: 'var(--status-running)' + '20',
-            color: 'var(--status-running)',
-          }}
-        >
-          {runningCount} running
-        </span>
-        <button
-          onClick={() => store.setProjectSettingsOpen(true)}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: 32,
-            height: 32,
-            background: 'transparent',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            cursor: 'pointer',
-            color: 'var(--text-secondary)',
-          }}
-        >
-          <Settings size={16} />
-        </button>
+        {runningCount > 0 ? (
+          <Badge variant="running" size="md">
+            {runningCount} running
+          </Badge>
+        ) : allProcesses.length > 0 ? (
+          <Badge variant="muted" size="md">
+            Idle
+          </Badge>
+        ) : null}
+        <IconButton label="Project settings" onClick={() => store.setProjectSettingsOpen(true)}>
+          <Settings size={15} />
+        </IconButton>
       </div>
 
-      {/* Separator */}
-      <div
-        style={{
-          height: 1,
-          background: 'var(--border)',
-          marginBottom: 20,
-        }}
-      />
+      <Divider margin={20} />
 
       {/* Process list */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {allProcesses.length === 0 && (
           <div
             style={{
@@ -403,10 +309,11 @@ export function ProjectOverview({ projectId }: Props) {
               textAlign: 'center',
               color: 'var(--text-muted)',
               fontSize: 13,
+              border: '1px dashed var(--border)',
+              borderRadius: 'var(--radius-lg)',
             }}
           >
-            No processes configured yet. Add a session, command, or terminal to
-            get started.
+            No processes configured yet. Add a session, command, or terminal to get started.
           </div>
         )}
         {allProcesses.map(p => (
@@ -422,21 +329,30 @@ export function ProjectOverview({ projectId }: Props) {
           marginTop: 24,
         }}
       >
-        <button
+        <Button
+          block
+          variant="secondary"
+          leftIcon={<Plus size={14} />}
           onClick={() => store.setAddAgentModalOpen(true)}
-          style={secondaryButtonStyle}
         >
-          + Add Session
-        </button>
-        <button
+          Add Session
+        </Button>
+        <Button
+          block
+          variant="secondary"
+          leftIcon={<Plus size={14} />}
           onClick={() => store.setAddProcessModalOpen(true)}
-          style={secondaryButtonStyle}
         >
-          + Add Command
-        </button>
-        <button onClick={handleAddTerminal} style={secondaryButtonStyle}>
-          + Add Terminal
-        </button>
+          Add Command
+        </Button>
+        <Button
+          block
+          variant="secondary"
+          leftIcon={<Plus size={14} />}
+          onClick={handleAddTerminal}
+        >
+          Add Terminal
+        </Button>
       </div>
     </div>
   );

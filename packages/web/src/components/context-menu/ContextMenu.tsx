@@ -38,7 +38,7 @@ export function ContextMenu({ items, position, onClose }: Props) {
   let left = position.x;
   let top = position.y;
   const menuWidth = 200;
-  const menuHeight = items.length * 32 + 8;
+  const menuHeight = items.length * 32 + 12;
   if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 8;
   if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 8;
   if (left < 0) left = 8;
@@ -52,12 +52,14 @@ export function ContextMenu({ items, position, onClose }: Props) {
         left,
         top,
         zIndex: 2000,
-        backgroundColor: 'var(--bg-primary)',
+        backgroundColor: 'var(--bg-elevated)',
         border: '1px solid var(--border)',
-        borderRadius: 8,
-        boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-        padding: '4px 0',
+        borderRadius: 'var(--radius-lg)',
+        boxShadow: 'var(--shadow-lg)',
+        padding: 6,
         minWidth: 180,
+        animation: 'mt-scale-in var(--dur-fast) var(--ease-out)',
+        transformOrigin: 'top left',
       }}
     >
       {items.map((item, i) => (
@@ -66,7 +68,7 @@ export function ContextMenu({ items, position, onClose }: Props) {
             <div
               style={{
                 borderTop: '1px solid var(--border)',
-                margin: '4px 0',
+                margin: '4px -2px',
               }}
             />
           )}
@@ -77,9 +79,11 @@ export function ContextMenu({ items, position, onClose }: Props) {
               onClose();
             }}
             style={{
-              padding: '8px 16px',
+              padding: '6px 12px',
               fontSize: 13,
               cursor: item.disabled ? 'default' : 'pointer',
+              userSelect: 'none',
+              WebkitUserSelect: 'none',
               color: item.danger
                 ? 'var(--status-error)'
                 : item.disabled
@@ -87,16 +91,18 @@ export function ContextMenu({ items, position, onClose }: Props) {
                   : 'var(--text-primary)',
               opacity: item.disabled ? 0.5 : 1,
               backgroundColor: 'transparent',
+              borderRadius: 'var(--radius-md)',
+              transition: 'background-color var(--dur-fast) var(--ease-out)',
             }}
             onMouseEnter={(e) => {
               if (!item.disabled) {
-                (e.currentTarget as HTMLDivElement).style.backgroundColor =
-                  'var(--bg-sidebar)';
+                (e.currentTarget as HTMLDivElement).style.backgroundColor = item.danger
+                  ? 'color-mix(in srgb, var(--status-error) 14%, transparent)'
+                  : 'var(--bg-hover)';
               }
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLDivElement).style.backgroundColor =
-                'transparent';
+              (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
             }}
           >
             {item.label}

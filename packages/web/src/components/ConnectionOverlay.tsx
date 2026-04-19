@@ -2,6 +2,7 @@ import React from 'react';
 import { useAppStore } from '../stores/appStore';
 import { WifiOff, RefreshCw } from 'lucide-react';
 import { wsClient } from '../lib/ws';
+import { Button } from './ui';
 
 export function ConnectionOverlay() {
   const connectionState = useAppStore(s => s.connectionState);
@@ -17,15 +18,21 @@ export function ConnectionOverlay() {
           left: 0,
           right: 0,
           height: 36,
-          zIndex: 1000,
-          background: '#f59e0b20',
-          borderBottom: '1px solid #f59e0b',
+          zIndex: 1100,
+          background: 'color-mix(in srgb, var(--status-warning) 15%, transparent)',
+          borderBottom: '1px solid var(--status-warning)',
+          color: 'var(--status-warning)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
           fontSize: 13,
-          color: '#f59e0b',
+          fontWeight: 500,
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          animation: 'mt-slide-up var(--dur-med) var(--ease-out)',
         }}
       >
         <RefreshCw
@@ -44,11 +51,13 @@ export function ConnectionOverlay() {
         position: 'fixed',
         inset: 0,
         zIndex: 1500,
-        background: 'rgba(0,0,0,0.7)',
-        backdropFilter: 'blur(4px)',
+        background: 'var(--bg-overlay)',
+        backdropFilter: 'blur(8px) saturate(1.1)',
+        WebkitBackdropFilter: 'blur(8px) saturate(1.1)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        animation: 'mt-fade-in var(--dur-med) var(--ease-out)',
       }}
     >
       <div
@@ -56,39 +65,34 @@ export function ConnectionOverlay() {
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 16,
+          gap: 14,
+          padding: 32,
+          backgroundColor: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-xl)',
+          animation: 'mt-scale-in var(--dur-med) var(--ease-out)',
+          minWidth: 320,
         }}
       >
-        <WifiOff size={48} color="var(--text-muted)" />
+        <WifiOff size={40} style={{ color: 'var(--text-muted)' }} />
         <span
           style={{
-            fontSize: 18,
+            fontSize: 17,
             color: 'var(--text-primary)',
             fontWeight: 600,
           }}
         >
           Cannot connect to daemon
         </span>
-        <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+        <span style={{ fontSize: 13, color: 'var(--text-muted)', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>
           localhost:3000
         </span>
-        <button
-          onClick={() => wsClient.connect()}
-          style={{
-            padding: '8px 24px',
-            fontSize: 14,
-            fontWeight: 500,
-            color: '#fff',
-            background: 'var(--accent-blue)',
-            border: 'none',
-            borderRadius: 6,
-            cursor: 'pointer',
-          }}
-        >
+        <Button variant="primary" onClick={() => wsClient.connect()}>
           Retry
-        </button>
+        </Button>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          Start it with: mt start
+          Start it with: <code style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}>mt start</code>
         </span>
       </div>
     </div>

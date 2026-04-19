@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
 import { wsClient } from '../../lib/ws';
+import { Button } from '../ui';
 
 export function OptionSelector() {
   const { currentOption, setOption } = useAppStore();
@@ -36,34 +37,31 @@ export function OptionSelector() {
   return (
     <div
       style={{
-        padding: '8px 12px',
+        padding: '10px 14px',
         borderTop: '1px solid var(--border)',
         backgroundColor: 'var(--bg-statusbar)',
+        animation: 'mt-slide-up var(--dur-med) var(--ease-out)',
       }}
     >
-      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8 }}>
+      <div style={{ fontSize: 13, color: 'var(--text-primary)', marginBottom: 8, fontWeight: 500, userSelect: 'none', WebkitUserSelect: 'none' }}>
         {currentOption.question}
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {currentOption.options.map((opt, i) => (
-          <button
+          <Button
             key={i}
+            size="sm"
+            variant={i === 0 ? 'primary' : 'secondary'}
             onClick={() => {
               wsClient.sendInput(currentOption.sessionId, `${i + 1}\r`);
               setOption(null);
             }}
-            style={{
-              padding: '4px 12px',
-              borderRadius: 4,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
           >
-            {i + 1}. {opt}
-          </button>
+            <span style={{ opacity: 0.7, marginRight: 4, fontVariantNumeric: 'tabular-nums' }}>
+              {i + 1}.
+            </span>
+            {opt}
+          </Button>
         ))}
       </div>
     </div>

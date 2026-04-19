@@ -5,11 +5,28 @@ import { api } from '../../lib/api';
 import { Square, Palette, Settings } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { BUILTIN_THEMES } from '../../lib/themes';
+import { IconButton } from '../ui';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+const chipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '2px 8px',
+  height: 20,
+  fontSize: 11,
+  fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  color: 'var(--text-secondary)',
+  backgroundColor: 'var(--bg-elevated)',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-pill)',
+  lineHeight: 1,
+  fontVariantNumeric: 'tabular-nums',
+};
 
 export function StatusBar() {
   const {
@@ -38,44 +55,38 @@ export function StatusBar() {
         borderTop: '1px solid var(--border)',
         display: 'flex',
         alignItems: 'center',
-        padding: '0 12px',
+        padding: '0 10px',
         flexShrink: 0,
         gap: 8,
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
       }}
     >
       {process && (
         <>
           {process.state === 'running' && (
-            <button
+            <IconButton
+              size="sm"
+              variant="danger"
+              label="Stop process"
               onClick={() => api.processes.stop(process.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                background: 'none',
-                border: 'none',
-                cursor: 'pointer',
-                color: 'var(--text-secondary)',
-                fontSize: 12,
-                padding: '2px 4px',
-              }}
             >
-              <Square size={12} /> Stop
-            </button>
+              <Square size={12} />
+            </IconButton>
           )}
 
           <div style={{ flex: 1 }} />
 
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          <span style={chipStyle}>
             CPU {process.metrics?.cpuPercent?.toFixed(1) ?? '0.0'}%
           </span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+          <span style={chipStyle}>
             MEM {formatBytes(process.metrics?.memoryBytes ?? 0)}
           </span>
           <span
             style={{
               fontSize: 12,
-              fontFamily: 'monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
               color: 'var(--text-primary)',
             }}
           >
@@ -95,7 +106,7 @@ export function StatusBar() {
       )}
       {!process && (
         <>
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>MultiTable</span>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>MultiTable</span>
           <div style={{ flex: 1 }} />
         </>
       )}
@@ -105,34 +116,32 @@ export function StatusBar() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
-          background: 'none',
-          border: 'none',
+          gap: 6,
+          background: 'transparent',
+          border: '1px solid transparent',
           cursor: 'pointer',
           color: 'var(--text-secondary)',
           fontSize: 12,
-          padding: '2px 6px',
-          borderRadius: 4,
+          padding: '2px 8px',
+          height: 22,
+          borderRadius: 'var(--radius-md)',
+          transition: 'background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-hover)';
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+          (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-secondary)';
         }}
       >
-        <Palette size={14} />
+        <Palette size={13} />
         {activeTheme?.name ?? 'Light'}
       </button>
-      <button
-        onClick={() => setGlobalSettingsOpen(true)}
-        title="Customize themes"
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: 'var(--text-secondary)',
-          padding: '2px 4px',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        <Settings size={14} />
-      </button>
+      <IconButton size="sm" onClick={() => setGlobalSettingsOpen(true)} label="Customize themes">
+        <Settings size={13} />
+      </IconButton>
     </div>
   );
 }

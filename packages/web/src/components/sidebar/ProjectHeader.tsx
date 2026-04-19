@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import type { Project } from '../../lib/types';
 
 interface Props {
@@ -7,7 +7,8 @@ interface Props {
   shortcut?: string;
   expanded: boolean;
   focused: boolean;
-  onClick: () => void;
+  onToggle: () => void;
+  onSelect: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
@@ -16,27 +17,70 @@ export function ProjectHeader({
   shortcut,
   expanded,
   focused,
-  onClick,
+  onToggle,
+  onSelect,
   onContextMenu,
 }: Props) {
+  const [hover, setHover] = React.useState(false);
+  const [toggleHover, setToggleHover] = React.useState(false);
   return (
     <div
-      onClick={onClick}
+      onClick={onSelect}
       onContextMenu={onContextMenu}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: '12px 16px',
+        padding: '8px 12px',
         borderBottom: '1px solid var(--border)',
         cursor: 'pointer',
-        backgroundColor: focused ? 'var(--bg-hover)' : 'transparent',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+        backgroundColor: focused
+          ? 'var(--bg-hover)'
+          : hover
+            ? 'color-mix(in srgb, var(--bg-hover) 55%, transparent)'
+            : 'transparent',
+        transition: 'background-color var(--dur-fast) var(--ease-out)',
       }}
     >
-      {expanded ? (
-        <ChevronDown size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginRight: 6 }} />
-      ) : (
-        <ChevronRight size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginRight: 6 }} />
-      )}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggle();
+        }}
+        onMouseEnter={() => setToggleHover(true)}
+        onMouseLeave={() => setToggleHover(false)}
+        title={expanded ? 'Collapse' : 'Expand'}
+        aria-label={expanded ? 'Collapse project' : 'Expand project'}
+        aria-expanded={expanded}
+        style={{
+          width: 22,
+          height: 22,
+          marginRight: 8,
+          flexShrink: 0,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: toggleHover ? 'var(--bg-hover)' : 'transparent',
+          border: '1px solid transparent',
+          borderRadius: 'var(--radius-sm)',
+          cursor: 'pointer',
+          color: toggleHover ? 'var(--text-primary)' : 'var(--text-muted)',
+          padding: 0,
+          transition:
+            'background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+        }}
+      >
+        <ChevronRight
+          size={14}
+          style={{
+            transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform var(--dur-fast) var(--ease-out)',
+          }}
+        />
+      </button>
       <span
         style={{
           fontSize: 15,

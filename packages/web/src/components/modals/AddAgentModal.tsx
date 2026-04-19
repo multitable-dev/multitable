@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
+import { Modal, Input, Button, Badge } from '../ui';
 
 const AGENTS = [
   { name: 'Claude Code', command: 'claude', recommended: true },
@@ -41,7 +42,6 @@ export function AddAgentModal({ onClose, projectId }: Props) {
       store.upsertSession(session);
       store.setSelectedProcess(session.id);
 
-      // Auto-spawn: start the process so the PTY is ready
       try {
         if (command.trim() === 'claude') {
           await api.sessions.spawnClaude(session.id);
@@ -64,55 +64,40 @@ export function AddAgentModal({ onClose, projectId }: Props) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
-    if (e.key === 'Escape') onClose();
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title="Add Session"
+      width={620}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={!command.trim()}
+            loading={loading}
+          >
+            {loading ? 'Adding...' : 'Add Session'}
+          </Button>
+        </>
+      }
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-        style={{
-          backgroundColor: 'var(--bg-primary)',
-          borderRadius: 12,
-          padding: 32,
-          width: '100%',
-          maxWidth: 600,
-          border: '1px solid var(--border)',
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            marginBottom: 24,
-            marginTop: 0,
-            color: 'var(--text-primary)',
-          }}
-        >
-          Add Session
-        </h2>
+      <div onKeyDown={handleKeyDown}>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
             gap: 8,
-            marginBottom: 24,
+            marginBottom: 20,
           }}
         >
           {AGENTS.map(agent => {
             const comingSoon = (agent as any).comingSoon;
+            const selected = selectedAgent === agent.name;
             return (
               <button
                 key={agent.name}
@@ -120,87 +105,62 @@ export function AddAgentModal({ onClose, projectId }: Props) {
                 disabled={comingSoon}
                 title={comingSoon ? 'Coming soon' : undefined}
                 style={{
-                  padding: '10px 12px',
-                  borderRadius: 8,
-                  border: `1px solid ${
-                    selectedAgent === agent.name
-                      ? 'var(--accent-blue)'
-                      : (agent as any).recommended
-                        ? 'rgba(59, 130, 246, 0.3)'
-                        : 'var(--border)'
-                  }`,
-                  backgroundColor:
-                    selectedAgent === agent.name
-                      ? 'rgba(59, 130, 246, 0.1)'
-                      : (agent as any).recommended
-                        ? 'rgba(59, 130, 246, 0.05)'
-                        : 'transparent',
+                  padding: '12px 10px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  backgroundColor: selected
+                    ? 'color-mix(in srgb, var(--accent-blue) 12%, transparent)'
+                    : 'var(--bg-sidebar)',
                   color: 'var(--text-primary)',
                   cursor: comingSoon ? 'not-allowed' : 'pointer',
                   fontSize: 13,
-                  fontWeight: selectedAgent === agent.name ? 600 : 400,
+                  fontWeight: selected ? 600 : 500,
                   textAlign: 'center',
-                  opacity: comingSoon ? 0.45 : 1,
+                  opacity: comingSoon ? 0.5 : 1,
                   display: 'flex',
                   flexDirection: 'column',
                   alignItems: 'center',
-                  gap: 2,
+                  gap: 4,
+                  boxShadow: selected ? 'var(--shadow-sm), 0 0 0 1px var(--accent-blue)' : 'none',
+                  transition: 'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
                 }}
               >
                 <span>{agent.name}</span>
-                {comingSoon && (
-                  <span
-                    style={{
-                      fontSize: 10,
-                      fontWeight: 500,
-                      color: 'var(--text-muted)',
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.4,
-                    }}
-                  >
-                    Coming soon
-                  </span>
-                )}
+                {comingSoon ? (
+                  <Badge variant="muted" size="sm">Coming soon</Badge>
+                ) : (agent as any).recommended ? (
+                  <Badge variant="accent" size="sm">Recommended</Badge>
+                ) : null}
               </button>
             );
           })}
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <label
             style={{
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               display: 'block',
-              marginBottom: 4,
+              marginBottom: 6,
               color: 'var(--text-primary)',
             }}
           >
             Name
           </label>
-          <input
+          <Input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g., Claude Code"
             autoFocus
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              fontSize: 14,
-              outline: 'none',
-            }}
           />
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <label
             style={{
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               display: 'block',
-              marginBottom: 4,
+              marginBottom: 6,
               color: 'var(--text-primary)',
             }}
           >
@@ -214,24 +174,26 @@ export function AddAgentModal({ onClose, projectId }: Props) {
             style={{
               width: '100%',
               padding: '8px 12px',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border)',
               backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
               fontSize: 13,
-              fontFamily: 'monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
               resize: 'vertical',
               outline: 'none',
+              boxSizing: 'border-box',
+              transition: 'border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
             }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 20 }}>
           <label
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              fontSize: 14,
+              fontSize: 13,
               cursor: 'pointer',
               color: 'var(--text-primary)',
             }}
@@ -244,40 +206,7 @@ export function AddAgentModal({ onClose, projectId }: Props) {
             Auto-start
           </label>
         </div>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 14,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !command.trim()}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'var(--accent-blue)',
-              color: 'white',
-              cursor: loading || !command.trim() ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-              opacity: loading || !command.trim() ? 0.7 : 1,
-            }}
-          >
-            {loading ? 'Adding...' : 'Add Session'}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

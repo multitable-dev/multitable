@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
-import { Palette } from 'lucide-react';
+import { Palette, Menu, Zap } from 'lucide-react';
 import { BUILTIN_THEMES } from './lib/themes';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { MainPane } from './components/main-pane/MainPane';
@@ -12,6 +12,7 @@ import { GlobalSettingsModal } from './components/modals/GlobalSettingsModal';
 import { ProjectSettingsModal } from './components/modals/ProjectSettingsModal';
 import { AddProjectModal } from './components/modals/AddProjectModal';
 import { TouchToolbar } from './components/mobile/TouchToolbar';
+import { IconButton } from './components/ui';
 import { useAppStore } from './stores/appStore';
 import { wsClient } from './lib/ws';
 import { api } from './lib/api';
@@ -223,26 +224,43 @@ function App() {
       {/* Mobile top bar */}
       {isMobile && (
         <div style={{
-          height: 48,
+          height: 52,
           display: 'flex',
           alignItems: 'center',
-          padding: '0 12px',
+          padding: '0 10px',
           backgroundColor: 'var(--bg-sidebar)',
           borderBottom: '1px solid var(--border)',
           flexShrink: 0,
-          gap: 12,
+          gap: 10,
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
         }}>
-          <button
+          <IconButton
+            size="lg"
             onClick={() => setMobileDrawerOpen(!mobileDrawerOpen)}
-            style={{ background: 'none', border: 'none', fontSize: 24, color: 'var(--text-primary)', cursor: 'pointer', padding: 4 }}
+            label="Open menu"
           >
-            &#9776;
-          </button>
-          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+            <Menu size={20} />
+          </IconButton>
+          <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {focusedProject?.name || 'MultiTable'}
           </span>
-          <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            &#9889; {runningCount}/{totalCount}
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              padding: '2px 8px',
+              fontSize: 11,
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontVariantNumeric: 'tabular-nums',
+              color: 'var(--text-secondary)',
+              backgroundColor: 'var(--bg-elevated)',
+              border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-pill)',
+            }}
+          >
+            <Zap size={10} /> {runningCount}/{totalCount}
           </span>
           {(() => {
             const allThemes = [...BUILTIN_THEMES, ...store.customThemes];
@@ -253,13 +271,9 @@ function App() {
             };
             const active = allThemes.find((t) => t.id === store.activeThemeId);
             return (
-              <button
-                onClick={cycle}
-                title={`Theme: ${active?.name ?? 'Light'}`}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', padding: 4, display: 'flex', alignItems: 'center' }}
-              >
+              <IconButton onClick={cycle} label={`Theme: ${active?.name ?? 'Light'}`} size="lg">
                 <Palette size={16} />
-              </button>
+              </IconButton>
             );
           })()}
         </div>
@@ -270,14 +284,27 @@ function App() {
         <>
           <div
             onClick={() => setMobileDrawerOpen(false)}
-            style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 900 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              backgroundColor: 'var(--bg-overlay)',
+              backdropFilter: 'blur(6px) saturate(1.1)',
+              WebkitBackdropFilter: 'blur(6px) saturate(1.1)',
+              zIndex: 900,
+              animation: 'mt-fade-in var(--dur-fast) var(--ease-out)',
+            }}
           />
-          <div style={{
-            position: 'fixed', top: 0, left: 0, bottom: 0, width: 300,
-            zIndex: 901, backgroundColor: 'var(--bg-sidebar)',
-            transform: 'translateX(0)', transition: 'transform 0.2s ease',
-            overflowY: 'auto',
-          }}>
+          <div
+            className="mt-scroll"
+            style={{
+              position: 'fixed', top: 0, left: 0, bottom: 0, width: 300,
+              zIndex: 901, backgroundColor: 'var(--bg-sidebar)',
+              boxShadow: 'var(--shadow-xl)',
+              transform: 'translateX(0)',
+              animation: 'mt-slide-up var(--dur-med) var(--ease-out)',
+              overflowY: 'auto',
+            }}
+          >
             <Sidebar />
           </div>
         </>
@@ -294,7 +321,31 @@ function App() {
       {isMobile && <TouchToolbar />}
       <CommandPalette />
       <ConnectionOverlay />
-      <Toaster position="top-right" />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'var(--bg-elevated)',
+            color: 'var(--text-primary)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            fontSize: 13,
+            boxShadow: 'var(--shadow-lg)',
+          },
+          success: {
+            iconTheme: {
+              primary: 'var(--status-running)',
+              secondary: 'var(--bg-elevated)',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: 'var(--status-error)',
+              secondary: 'var(--bg-elevated)',
+            },
+          },
+        }}
+      />
       {store.addAgentModalOpen && store.focusedProjectId && (
         <AddAgentModal
           projectId={store.focusedProjectId}

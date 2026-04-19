@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
+import { Modal, Input, Button } from '../ui';
 
 interface Props {
   onClose: () => void;
@@ -30,81 +31,55 @@ export function AddProcessModal({ onClose, projectId }: Props) {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
-    if (e.key === 'Escape') onClose();
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: 'rgba(0,0,0,0.5)',
-      }}
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      title="Add Process"
+      width={620}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={handleSubmit}
+            disabled={!command.trim()}
+            loading={loading}
+          >
+            {loading ? 'Adding...' : 'Add Process'}
+          </Button>
+        </>
+      }
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        onKeyDown={handleKeyDown}
-        style={{
-          backgroundColor: 'var(--bg-primary)',
-          borderRadius: 12,
-          padding: 32,
-          width: '100%',
-          maxWidth: 600,
-          border: '1px solid var(--border)',
-        }}
-      >
-        <h2
-          style={{
-            fontSize: 18,
-            fontWeight: 600,
-            marginBottom: 24,
-            marginTop: 0,
-            color: 'var(--text-primary)',
-          }}
-        >
-          Add Process
-        </h2>
-        <div style={{ marginBottom: 16 }}>
+      <div onKeyDown={handleKeyDown}>
+        <div style={{ marginBottom: 14 }}>
           <label
             style={{
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               display: 'block',
-              marginBottom: 4,
+              marginBottom: 6,
               color: 'var(--text-primary)',
             }}
           >
             Name
           </label>
-          <input
+          <Input
             value={name}
             onChange={e => setName(e.target.value)}
             placeholder="e.g., npm:dev"
             autoFocus
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              fontSize: 14,
-              outline: 'none',
-            }}
           />
         </div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 14 }}>
           <label
             style={{
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: 600,
               display: 'block',
-              marginBottom: 4,
+              marginBottom: 6,
               color: 'var(--text-primary)',
             }}
           >
@@ -118,24 +93,25 @@ export function AddProcessModal({ onClose, projectId }: Props) {
             style={{
               width: '100%',
               padding: '8px 12px',
-              borderRadius: 6,
+              borderRadius: 'var(--radius-md)',
               border: '1px solid var(--border)',
               backgroundColor: 'var(--bg-primary)',
               color: 'var(--text-primary)',
               fontSize: 13,
-              fontFamily: 'monospace',
+              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
               resize: 'vertical',
               outline: 'none',
+              boxSizing: 'border-box',
             }}
           />
         </div>
-        <div style={{ display: 'flex', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 20 }}>
           <label
             style={{
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              fontSize: 14,
+              fontSize: 13,
               cursor: 'pointer',
               color: 'var(--text-primary)',
             }}
@@ -152,7 +128,7 @@ export function AddProcessModal({ onClose, projectId }: Props) {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              fontSize: 14,
+              fontSize: 13,
               cursor: 'pointer',
               color: 'var(--text-primary)',
             }}
@@ -165,40 +141,7 @@ export function AddProcessModal({ onClose, projectId }: Props) {
             Auto-restart
           </label>
         </div>
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-              fontSize: 14,
-            }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={loading || !command.trim()}
-            style={{
-              padding: '8px 16px',
-              borderRadius: 6,
-              border: 'none',
-              backgroundColor: 'var(--accent-blue)',
-              color: 'white',
-              cursor: loading || !command.trim() ? 'not-allowed' : 'pointer',
-              fontWeight: 500,
-              fontSize: 14,
-              opacity: loading || !command.trim() ? 0.7 : 1,
-            }}
-          >
-            {loading ? 'Adding...' : 'Add Process'}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

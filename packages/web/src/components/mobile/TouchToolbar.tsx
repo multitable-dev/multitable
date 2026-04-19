@@ -25,33 +25,47 @@ export function TouchToolbar() {
   };
 
   return (
-    <div style={{
-      display: 'flex',
-      height: 48,
-      backgroundColor: 'var(--bg-statusbar)',
-      borderTop: '1px solid var(--border)',
-      alignItems: 'center',
-      gap: 2,
-      padding: '0 4px',
-      overflowX: 'auto',
-      flexShrink: 0,
-    }}>
+    <div
+      className="mt-scroll"
+      style={{
+        display: 'flex',
+        height: 52,
+        backgroundColor: 'var(--bg-statusbar)',
+        borderTop: '1px solid var(--border)',
+        alignItems: 'center',
+        gap: 4,
+        padding: '0 6px',
+        overflowX: 'auto',
+        flexShrink: 0,
+      }}
+    >
       {KEYS.map(k => (
         <button
           key={k.label}
           onClick={() => sendKey(k.input)}
           style={{
             minWidth: 44,
-            height: 36,
-            borderRadius: 6,
+            height: 40,
+            padding: '0 10px',
+            borderRadius: 'var(--radius-md)',
             border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg-primary)',
+            backgroundColor: 'var(--bg-elevated)',
             color: 'var(--text-primary)',
             fontSize: 12,
-            fontWeight: 500,
+            fontWeight: 600,
             cursor: 'pointer',
             flexShrink: 0,
             touchAction: 'manipulation',
+            boxShadow: 'var(--shadow-sm), var(--shadow-inset)',
+            transition: 'background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out)',
+          }}
+          onTouchStart={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(1px)';
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-hover)';
+          }}
+          onTouchEnd={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)';
+            (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-elevated)';
           }}
         >
           {k.label}

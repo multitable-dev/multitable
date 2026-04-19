@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { Command } from 'cmdk';
+import { Search } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
 import toast from 'react-hot-toast';
 import { BUILTIN_THEMES } from '../../lib/themes';
+import { Kbd } from '../ui';
 
 interface CommandItem {
   id: string;
@@ -11,6 +13,7 @@ interface CommandItem {
   subtitle?: string;
   category: string;
   action: () => void;
+  shortcut?: string[];
 }
 
 export function CommandPalette() {
@@ -52,16 +55,13 @@ export function CommandPalette() {
     const projectName = (pid: string) =>
       projects.find((p) => p.id === pid)?.name ?? '';
 
-    // --- Processes: sessions + commands + terminals from ALL projects ---
     for (const s of Object.values(sessions)) {
       result.push({
         id: s.id,
         name: s.name,
         subtitle: projectName(s.projectId),
         category: 'Processes',
-        action: () => {
-          setSelectedProcess(s.id);
-        },
+        action: () => setSelectedProcess(s.id),
       });
     }
     for (const c of Object.values(commands)) {
@@ -70,9 +70,7 @@ export function CommandPalette() {
         name: c.name,
         subtitle: projectName(c.projectId),
         category: 'Processes',
-        action: () => {
-          setSelectedProcess(c.id);
-        },
+        action: () => setSelectedProcess(c.id),
       });
     }
     for (const t of Object.values(terminals)) {
@@ -81,13 +79,10 @@ export function CommandPalette() {
         name: t.name || 'Terminal',
         subtitle: projectName(t.projectId),
         category: 'Processes',
-        action: () => {
-          setSelectedProcess(t.id);
-        },
+        action: () => setSelectedProcess(t.id),
       });
     }
 
-    // --- Projects: toggle expand + focus ---
     for (const p of projects) {
       result.push({
         id: `project-${p.id}`,
@@ -102,7 +97,6 @@ export function CommandPalette() {
       });
     }
 
-    // --- Actions ---
     if (focusedProjectId) {
       result.push({
         id: 'action-start-all',
@@ -130,7 +124,6 @@ export function CommandPalette() {
       });
     }
 
-    // --- Navigation ---
     result.push({
       id: 'nav-dashboard',
       name: 'Go to Dashboard',
@@ -141,12 +134,12 @@ export function CommandPalette() {
       },
     });
 
-    // --- Creation ---
     result.push({
       id: 'create-terminal',
       name: 'New terminal',
       subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
       category: 'Create',
+      shortcut: ['Ctrl', 'T'],
       action: () => {
         const pid = requireFocused();
         if (!pid) return;
@@ -185,19 +178,15 @@ export function CommandPalette() {
       id: 'create-project',
       name: 'Add project...',
       category: 'Create',
-      action: () => {
-        setAddProjectModalOpen(true);
-      },
+      action: () => setAddProjectModalOpen(true),
     });
 
-    // --- Settings ---
     result.push({
       id: 'settings-global',
       name: 'Open global settings',
       category: 'Settings',
-      action: () => {
-        setGlobalSettingsOpen(true);
-      },
+      shortcut: ['Ctrl', ','],
+      action: () => setGlobalSettingsOpen(true),
     });
     result.push({
       id: 'settings-project',
@@ -245,7 +234,6 @@ export function CommandPalette() {
     setActiveTheme,
   ]);
 
-  // Group items by category
   const grouped = useMemo(() => {
     const map = new Map<string, CommandItem[]>();
     for (const item of items) {
@@ -263,46 +251,63 @@ export function CommandPalette() {
       style={{
         position: 'fixed',
         inset: 0,
-        zIndex: 1000,
+        zIndex: 1200,
         display: 'flex',
         alignItems: 'flex-start',
         justifyContent: 'center',
         paddingTop: 80,
-        backgroundColor: 'rgba(0,0,0,0.4)',
+        backgroundColor: 'var(--bg-overlay)',
+        backdropFilter: 'blur(12px) saturate(1.1)',
+        WebkitBackdropFilter: 'blur(12px) saturate(1.1)',
+        animation: 'mt-fade-in var(--dur-fast) var(--ease-out)',
       }}
       onClick={close}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          backgroundColor: 'var(--bg-primary)',
+          backgroundColor: 'var(--bg-elevated)',
           border: '1px solid var(--border)',
-          borderRadius: 12,
+          borderRadius: 'var(--radius-xl)',
           width: '100%',
-          maxWidth: 600,
-          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          maxWidth: 620,
+          boxShadow: 'var(--shadow-xl)',
           overflow: 'hidden',
+          animation: 'mt-scale-in var(--dur-med) var(--ease-out)',
         }}
       >
-        <Command>
-          <Command.Input
-            placeholder="Search commands..."
-            autoFocus
+        <Command label="Command palette">
+          <div
             style={{
-              width: '100%',
-              padding: '12px 16px',
-              fontSize: 15,
-              border: 'none',
-              outline: 'none',
-              backgroundColor: 'transparent',
-              color: 'var(--text-primary)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              padding: '0 16px',
               borderBottom: '1px solid var(--border)',
             }}
-          />
-          <Command.List style={{ maxHeight: 400, overflowY: 'auto', padding: 8 }}>
+          >
+            <Search size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            <Command.Input
+              placeholder="Search commands..."
+              autoFocus
+              style={{
+                flex: 1,
+                padding: '14px 0',
+                fontSize: 15,
+                border: 'none',
+                outline: 'none',
+                backgroundColor: 'transparent',
+                color: 'var(--text-primary)',
+              }}
+            />
+          </div>
+          <Command.List
+            className="mt-scroll"
+            style={{ maxHeight: 420, overflowY: 'auto', padding: 8 }}
+          >
             <Command.Empty
               style={{
-                padding: 16,
+                padding: 24,
                 color: 'var(--text-muted)',
                 textAlign: 'center',
                 fontSize: 13,
@@ -311,7 +316,11 @@ export function CommandPalette() {
               No results
             </Command.Empty>
             {Array.from(grouped.entries()).map(([category, groupItems]) => (
-              <Command.Group key={category} heading={category}>
+              <Command.Group
+                key={category}
+                heading={category}
+                style={{ marginBottom: 4 }}
+              >
                 {groupItems.map((item) => (
                   <Command.Item
                     key={item.id}
@@ -322,19 +331,28 @@ export function CommandPalette() {
                     }}
                     style={{
                       padding: '8px 12px',
-                      borderRadius: 6,
+                      borderRadius: 'var(--radius-md)',
                       cursor: 'pointer',
                       fontSize: 14,
                       color: 'var(--text-primary)',
                       display: 'flex',
-                      justifyContent: 'space-between',
                       alignItems: 'center',
+                      gap: 8,
                     }}
                   >
-                    <span>{item.name}</span>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {item.name}
+                    </span>
                     {item.subtitle && (
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 8 }}>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
                         {item.subtitle}
+                      </span>
+                    )}
+                    {item.shortcut && (
+                      <span style={{ display: 'inline-flex', gap: 3, flexShrink: 0 }}>
+                        {item.shortcut.map((k, i) => (
+                          <Kbd key={i}>{k}</Kbd>
+                        ))}
                       </span>
                     )}
                   </Command.Item>
@@ -343,6 +361,20 @@ export function CommandPalette() {
             ))}
           </Command.List>
         </Command>
+        <style>{`
+          [cmdk-group-heading] {
+            padding: 6px 12px 4px;
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--text-muted);
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+          }
+          [cmdk-item][data-selected="true"] {
+            background-color: color-mix(in srgb, var(--accent-blue) 14%, transparent);
+            box-shadow: inset 2px 0 0 var(--accent-blue);
+          }
+        `}</style>
       </div>
     </div>
   );

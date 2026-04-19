@@ -57,11 +57,14 @@ export function ProjectSidebarItem({ project }: Props) {
   const runningCommands = projectCommands.filter((c) => c.state === 'running').length;
   const runningTerminals = projectTerminals.filter((t) => t.state === 'running').length;
 
-  const handleHeaderClick = () => {
-    store.toggleProjectExpanded(project.id);
+  const handleSelectProject = () => {
     store.setFocusedProject(project.id);
     store.setSelectedProcess(null);
     store.setProjectOverviewOpen(true);
+  };
+
+  const handleToggleExpand = () => {
+    store.toggleProjectExpanded(project.id);
   };
 
   const handleSelectProcess = (proc: ManagedProcess) => {
@@ -290,18 +293,59 @@ export function ProjectSidebarItem({ project }: Props) {
   return (
     <div
       style={{
-        border: `2px solid ${color.stripe}`,
-        borderRadius: 8,
-        margin: '6px 8px',
-        overflow: 'hidden',
-        boxShadow: focused ? `0 0 0 1px ${color.stripe}` : undefined,
+        position: 'relative',
+        margin: '14px 8px 2px',
       }}
     >
+      {/* Folder tab — protruding colored chip anchoring the card to the project's color */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -5,
+          left: 16,
+          width: 44,
+          height: 7,
+          backgroundColor: color.stripe,
+          borderRadius: '4px 4px 0 0',
+          boxShadow: focused
+            ? `0 -2px 6px color-mix(in srgb, ${color.stripe} 55%, transparent)`
+            : `0 -1px 2px color-mix(in srgb, ${color.stripe} 30%, transparent)`,
+          transition: 'box-shadow var(--dur-med) var(--ease-out), top var(--dur-med) var(--ease-out)',
+        }}
+      />
+      {/* Second tab, slightly offset — adds depth like stacked folder tabs */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute',
+          top: -3,
+          left: 68,
+          width: 18,
+          height: 5,
+          backgroundColor: `color-mix(in srgb, ${color.stripe} 55%, transparent)`,
+          borderRadius: '3px 3px 0 0',
+        }}
+      />
+      {/* Card body */}
+      <div
+        style={{
+          position: 'relative',
+          borderRadius: 'var(--radius-lg)',
+          overflow: 'hidden',
+          backgroundColor: 'color-mix(in srgb, var(--bg-elevated) 58%, transparent)',
+          boxShadow: focused
+            ? `var(--shadow-md), inset 4px 0 0 ${color.stripe}, inset 0 0 0 1px color-mix(in srgb, ${color.stripe} 40%, transparent), 0 0 0 2px color-mix(in srgb, ${color.stripe} 16%, transparent)`
+            : `var(--shadow-sm), inset 4px 0 0 ${color.stripe}, inset 0 0 0 1px color-mix(in srgb, ${color.stripe} 22%, var(--border))`,
+          transition: 'box-shadow var(--dur-med) var(--ease-out)',
+        }}
+      >
       <ProjectHeader
         project={project}
         expanded={expanded}
         focused={focused}
-        onClick={handleHeaderClick}
+        onSelect={handleSelectProject}
+        onToggle={handleToggleExpand}
         onContextMenu={(e) => {
           e.preventDefault();
           setContextMenu({ type: 'project-header', id: project.id, x: e.clientX, y: e.clientY });
@@ -334,7 +378,7 @@ export function ProjectSidebarItem({ project }: Props) {
                 />
               ))
             ) : (
-              <div style={{ padding: '4px 16px 4px 42px', fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ padding: '6px 16px 8px 34px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 No sessions yet
               </div>
             )}
@@ -360,7 +404,7 @@ export function ProjectSidebarItem({ project }: Props) {
                 />
               ))
             ) : (
-              <div style={{ padding: '4px 16px 4px 42px', fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ padding: '6px 16px 8px 34px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 No terminals yet
               </div>
             )}
@@ -387,13 +431,14 @@ export function ProjectSidebarItem({ project }: Props) {
                 />
               ))
             ) : (
-              <div style={{ padding: '4px 16px 4px 42px', fontSize: 12, color: 'var(--text-muted)' }}>
+              <div style={{ padding: '6px 16px 8px 34px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
                 No commands yet
               </div>
             )}
           </SidebarSection>
         </>
       )}
+      </div>
 
       {showAddCommand && (
         <AddProcessModal
