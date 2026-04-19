@@ -38,6 +38,7 @@ export const api = {
     list: () => get<Project[]>('/api/projects'),
     get: (id: string) => get<Project>(`/api/projects/${id}`),
     create: (data: { path: string }) => post<Project>('/api/projects', data),
+    browse: () => post<{ path: string | null }>('/api/projects/browse'),
     update: (id: string, data: Partial<Project>) => put<Project>(`/api/projects/${id}`, data),
     delete: (id: string) => del(`/api/projects/${id}`),
     setActive: (id: string) => put<Project>(`/api/projects/${id}/active`),

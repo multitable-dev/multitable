@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutGrid } from 'lucide-react';
+import { LayoutGrid, Plus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { ProjectSidebarItem } from './ProjectSidebarItem';
 import { PastSessions } from './PastSessions';
@@ -13,6 +13,7 @@ export function Sidebar() {
   const setSelectedProcess = useAppStore(s => s.setSelectedProcess);
   const setProjectOverviewOpen = useAppStore(s => s.setProjectOverviewOpen);
   const setFocusedProject = useAppStore(s => s.setFocusedProject);
+  const setAddProjectModalOpen = useAppStore(s => s.setAddProjectModalOpen);
 
   const onDashboard = !selectedProcessId && !projectOverviewOpen;
 
@@ -81,7 +82,7 @@ export function Sidebar() {
           </div>
         </div>
         {/* Dashboard button */}
-        <div style={{ padding: '0 8px 8px' }}>
+        <div style={{ padding: '0 8px 4px' }}>
           <Button
             variant="ghost"
             size="md"
@@ -96,6 +97,23 @@ export function Sidebar() {
             }}
           >
             Dashboard
+          </Button>
+        </div>
+        {/* Add Project button */}
+        <div style={{ padding: '0 8px 8px' }}>
+          <Button
+            variant="ghost"
+            size="md"
+            block
+            leftIcon={<Plus size={14} />}
+            onClick={() => setAddProjectModalOpen(true)}
+            title="Add a new project"
+            style={{
+              justifyContent: 'flex-start',
+              color: 'var(--text-secondary)',
+            }}
+          >
+            Add Project
           </Button>
         </div>
       </div>

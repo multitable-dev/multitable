@@ -24,6 +24,88 @@ import { HookManager } from '../hooks/installer.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
+// Ubuntu's VS Code snap injects GTK_PATH / LOCPATH / LD_LIBRARY_PATH that
+// point into /snap/code/... When we spawn GUI tools like zenity from the
+// daemon, they load a broken glibc from there and die with
+// `symbol lookup error: ... __libc_pthread_init, version GLIBC_PRIVATE`.
+// VS Code stashes the real values under `*_VSCODE_SNAP_ORIG` — restore them.
+function sanitizedEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (!key.endsWith('_VSCODE_SNAP_ORIG')) continue;
+    const target = key.slice(0, -'_VSCODE_SNAP_ORIG'.length);
+    const orig = env[key];
+    if (orig && orig.length > 0) env[target] = orig;
+    else delete env[target];
+    delete env[key];
+  }
+  for (const key of ['LD_LIBRARY_PATH', 'GTK_PATH', 'LOCPATH', 'GIO_MODULE_DIR']) {
+    const v = env[key];
+    if (v && v.includes('/snap/')) delete env[key];
+  }
+  return env;
+}
+
+function runDialog(cmd: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: sanitizedEnv(),
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (d) => { stdout += d.toString(); });
+    child.stderr.on('data', (d) => { stderr += d.toString(); });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      const out = stdout.trim();
+      if (!out && code && code !== 0 && code !== 1 && stderr.trim()) {
+        console.warn(`folder picker ${cmd} exited ${code}: ${stderr.trim()}`);
+      }
+      resolve(out || null);
+    });
+  });
+}
+
+async function pickFolderDialog(): Promise<string | null> {
+  const platform = process.platform;
+  if (platform === 'darwin') {
+    const script =
+      'try\n  POSIX path of (choose folder with prompt "Select Project Folder")\non error\n  return ""\nend try';
+    const p = await runDialog('osascript', ['-e', script]);
+    return p ? p.replace(/\/+$/, '') : null;
+  }
+  if (platform === 'win32') {
+    const ps =
+      "Add-Type -AssemblyName System.Windows.Forms | Out-Null; " +
+      "$f = New-Object System.Windows.Forms.FolderBrowserDialog; " +
+      "$f.Description = 'Select Project Folder'; " +
+      "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }";
+    return runDialog('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+  }
+  // linux / other unix
+  try {
+    return await runDialog('zenity', [
+      '--file-selection',
+      '--directory',
+      '--title=Select Project Folder',
+    ]);
+  } catch {
+    try {
+      return await runDialog('kdialog', [
+        '--getexistingdirectory',
+        process.env.HOME || '.',
+        '--title',
+        'Select Project Folder',
+      ]);
+    } catch {
+      throw new Error(
+        'No native folder picker available. Install zenity or kdialog, or paste the path manually.',
+      );
+    }
+  }
+}
+
 function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig {
   return {
     autostart: false,
@@ -56,6 +138,18 @@ export function createProjectsRouter(manager: PtyManager): Router {
     const project = getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
     res.json(project);
+  });
+
+  // POST /api/projects/browse — opens the OS native folder picker and
+  // returns the chosen absolute path. Returns `{ path: null }` if the
+  // user cancelled. Must be registered before `/:id`-style routes.
+  router.post('/browse', async (_req: Request, res: Response) => {
+    try {
+      const folder = await pickFolderDialog();
+      res.json({ path: folder });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message ?? 'Failed to open folder picker' });
+    }
   });
 
   // POST /api/projects
