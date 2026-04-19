@@ -74,8 +74,21 @@ CREATE TABLE IF NOT EXISTS cost_records (
   created_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS notes (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('session', 'project')),
+  title TEXT DEFAULT '',
+  content TEXT DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_commands_project ON commands(project_id);
 CREATE INDEX IF NOT EXISTS idx_terminals_project ON terminals(project_id);
 CREATE INDEX IF NOT EXISTS idx_cost_records_session ON cost_records(session_id);
+CREATE INDEX IF NOT EXISTS idx_notes_project ON notes(project_id);
+CREATE INDEX IF NOT EXISTS idx_notes_session ON notes(session_id);

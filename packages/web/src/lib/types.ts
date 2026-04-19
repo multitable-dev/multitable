@@ -73,6 +73,19 @@ export interface Project {
   terminals?: Terminal[];
 }
 
+export type NoteScope = 'session' | 'project';
+
+export interface Note {
+  id: string;
+  projectId: string;
+  sessionId: string | null;
+  scope: NoteScope;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AskQuestionOption {
   label: string;
   description?: string;

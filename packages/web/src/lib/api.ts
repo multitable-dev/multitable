@@ -1,4 +1,4 @@
-import type { Project, Session, Command, Terminal, GlobalConfig } from './types';
+import type { Project, Session, Command, Terminal, GlobalConfig, Note } from './types';
 
 const BASE = '';  // same origin
 
@@ -94,6 +94,18 @@ export const api = {
   config: {
     get: () => get<GlobalConfig>('/api/config'),
     update: (data: Partial<GlobalConfig>) => put<GlobalConfig>('/api/config', data),
+  },
+  notes: {
+    listForSession: (sessionId: string, projectId: string) =>
+      get<{ notes: Note[] }>(`/api/notes?sessionId=${encodeURIComponent(sessionId)}&projectId=${encodeURIComponent(projectId)}`),
+    listForProject: (projectId: string) =>
+      get<{ notes: Note[] }>(`/api/notes?projectId=${encodeURIComponent(projectId)}`),
+    create: (data: { projectId: string; sessionId?: string | null; scope: 'session' | 'project'; title?: string; content?: string }) =>
+      post<Note>('/api/notes', data),
+    update: (id: string, data: Partial<{ title: string; content: string; scope: 'session' | 'project'; sessionId: string | null }>) =>
+      put<Note>(`/api/notes/${id}`, data),
+    delete: (id: string) => del(`/api/notes/${id}`),
+    refine: (id: string) => post<{ refined: string; original: string }>(`/api/notes/${id}/refine`, {}),
   },
   search: (q: string) =>
     get<Array<{ sessionId: string; name: string; snippet: string }>>(

@@ -608,6 +608,141 @@ export function getCostRecordsBySession(sessionId: string): any[] {
   ).all(sessionId);
 }
 
+// ─── Notes ────────────────────────────────────────────────────────────────────
+
+export type NoteScope = 'session' | 'project';
+
+export interface Note {
+  id: string;
+  projectId: string;
+  sessionId: string | null;
+  scope: NoteScope;
+  title: string;
+  content: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface NoteRow {
+  id: string;
+  project_id: string;
+  session_id: string | null;
+  scope: NoteScope;
+  title: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToNote(row: NoteRow): Note {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    sessionId: row.session_id,
+    scope: row.scope,
+    title: row.title ?? '',
+    content: row.content ?? '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+// Notes relevant to a session: its own session-scoped notes plus every
+// project-scoped note in its project.
+export function listNotesForSession(sessionId: string, projectId: string): Note[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM notes
+       WHERE (scope = 'session' AND session_id = ?)
+          OR (scope = 'project' AND project_id = ?)
+       ORDER BY updated_at DESC`
+    )
+    .all(sessionId, projectId) as NoteRow[];
+  return rows.map(rowToNote);
+}
+
+export function listProjectNotes(projectId: string): Note[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM notes WHERE project_id = ? AND scope = 'project' ORDER BY updated_at DESC`
+    )
+    .all(projectId) as NoteRow[];
+  return rows.map(rowToNote);
+}
+
+export function getNote(id: string): Note | null {
+  const row = getDb().prepare('SELECT * FROM notes WHERE id = ?').get(id) as NoteRow | undefined;
+  return row ? rowToNote(row) : null;
+}
+
+export function createNote(input: {
+  projectId: string;
+  sessionId: string | null;
+  scope: NoteScope;
+  title?: string;
+  content?: string;
+}): Note {
+  const id = uuidv4();
+  const now = Date.now();
+  getDb()
+    .prepare(
+      `INSERT INTO notes (id, project_id, session_id, scope, title, content, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    )
+    .run(
+      id,
+      input.projectId,
+      input.scope === 'session' ? input.sessionId : null,
+      input.scope,
+      input.title ?? '',
+      input.content ?? '',
+      now,
+      now,
+    );
+  return getNote(id)!;
+}
+
+export function updateNote(
+  id: string,
+  patch: { title?: string; content?: string; scope?: NoteScope; sessionId?: string | null }
+): Note | null {
+  const existing = getNote(id);
+  if (!existing) return null;
+
+  const nextScope = patch.scope ?? existing.scope;
+  const nextSessionId =
+    patch.sessionId !== undefined
+      ? patch.sessionId
+      : nextScope === 'project'
+        ? null
+        : existing.sessionId;
+
+  getDb()
+    .prepare(
+      `UPDATE notes
+         SET title = COALESCE(?, title),
+             content = COALESCE(?, content),
+             scope = ?,
+             session_id = ?,
+             updated_at = ?
+       WHERE id = ?`
+    )
+    .run(
+      patch.title ?? null,
+      patch.content ?? null,
+      nextScope,
+      nextSessionId,
+      Date.now(),
+      id,
+    );
+
+  return getNote(id);
+}
+
+export function deleteNote(id: string): void {
+  getDb().prepare('DELETE FROM notes WHERE id = ?').run(id);
+}
+
 // ─── Search ───────────────────────────────────────────────────────────────────
 
 export function searchSessions(query: string): SessionRecord[] {

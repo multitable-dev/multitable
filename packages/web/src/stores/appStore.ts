@@ -66,7 +66,7 @@ interface AppState {
   globalSettingsOpen: boolean;
   projectSettingsOpen: boolean;
   detailPanelOpen: boolean;
-  detailPanelTab: 'files' | 'diff' | 'cost' | 'prompts' | 'notes';
+  detailPanelTab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm';
   connectionState: 'connected' | 'reconnecting' | 'disconnected';
   projectOverviewOpen: boolean;
   contextMenu: { type: string; id: string; x: number; y: number } | null;
@@ -83,7 +83,7 @@ interface AppState {
   setGlobalSettingsOpen: (open: boolean) => void;
   setProjectSettingsOpen: (open: boolean) => void;
   setDetailPanelOpen: (open: boolean) => void;
-  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'prompts' | 'notes') => void;
+  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm') => void;
   setConnectionState: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
   setProjectOverviewOpen: (open: boolean) => void;
   setContextMenu: (menu: { type: string; id: string; x: number; y: number } | null) => void;
@@ -223,7 +223,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   globalSettingsOpen: false,
   projectSettingsOpen: false,
   detailPanelOpen: false,
-  detailPanelTab: 'notes',
+  detailPanelTab: 'brainstorm',
   connectionState: 'disconnected',
   projectOverviewOpen: false,
   contextMenu: null,

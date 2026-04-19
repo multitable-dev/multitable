@@ -15,6 +15,7 @@ import { createTerminalsRouter } from './api/terminals.js';
 import { createConfigRouter } from './api/config.js';
 import { createSearchRouter } from './api/search.js';
 import { createTranscriptsRouter } from './api/transcripts.js';
+import { createNotesRouter } from './api/notes.js';
 import { createHooksRouter } from './hooks/receiver.js';
 
 export interface ServerInstance {
@@ -73,6 +74,7 @@ export function createServer(
   app.use('/api/config', createConfigRouter());
   app.use('/api/search', createSearchRouter(manager));
   app.use('/api/transcripts', createTranscriptsRouter(manager));
+  app.use('/api/notes', createNotesRouter());
 
   // Health check
   app.get('/api/health', (_req, res) => {
