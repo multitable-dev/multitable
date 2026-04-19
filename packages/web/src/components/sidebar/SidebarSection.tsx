@@ -13,7 +13,6 @@ interface Props {
 
 export function SidebarSection({ title, running, total, shortcut, onAdd, children }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   return (
     <div>
@@ -29,8 +28,6 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
           transition: 'background-color var(--dur-fast) var(--ease-out)',
         }}
         onClick={() => setCollapsed(!collapsed)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
       >
         <ChevronRight
           size={12}
@@ -72,9 +69,6 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
             label={`Add ${title.toLowerCase()}`}
             style={{
               marginLeft: 4,
-              opacity: hovered ? 1 : 0,
-              pointerEvents: hovered ? 'auto' : 'none',
-              transition: 'opacity var(--dur-fast) var(--ease-out)',
             }}
           >
             <Plus size={12} />

@@ -113,33 +113,59 @@ export function SidebarItem({
               {pendingCount}
             </span>
           )}
-          {metrics && !hovered && (
-            <span
-              style={{
-                fontSize: 11.5,
-                color: 'var(--text-muted)',
-                marginLeft: 8,
-                flexShrink: 0,
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {metrics}
-            </span>
-          )}
-          {hovered && process.state === 'running' && (
-            <div style={{ display: 'flex', gap: 2, marginLeft: 6 }}>
-              <IconButton
-                size="sm"
-                label="Stop"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  api.processes.stop(process.id);
+          {/* Right-side slot: always 22px tall so hover doesn't change row
+              height and cause jitter as items reflow below. Metrics and the
+              Stop button share the slot and cross-fade via opacity. */}
+          <div
+            style={{
+              position: 'relative',
+              height: 22,
+              marginLeft: 6,
+              display: 'flex',
+              alignItems: 'center',
+              flexShrink: 0,
+            }}
+          >
+            {metrics && (
+              <span
+                style={{
+                  fontSize: 11.5,
+                  color: 'var(--text-muted)',
+                  fontVariantNumeric: 'tabular-nums',
+                  opacity: hovered && process.state === 'running' ? 0 : 1,
+                  transition: 'opacity var(--dur-fast) var(--ease-out)',
+                  pointerEvents: 'none',
                 }}
               >
-                <Square size={11} />
-              </IconButton>
-            </div>
-          )}
+                {metrics}
+              </span>
+            )}
+            {process.state === 'running' && (
+              <div
+                style={{
+                  position: 'absolute',
+                  right: 0,
+                  top: 0,
+                  display: 'flex',
+                  gap: 2,
+                  opacity: hovered ? 1 : 0,
+                  pointerEvents: hovered ? 'auto' : 'none',
+                  transition: 'opacity var(--dur-fast) var(--ease-out)',
+                }}
+              >
+                <IconButton
+                  size="sm"
+                  label="Stop"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    api.processes.stop(process.id);
+                  }}
+                >
+                  <Square size={11} />
+                </IconButton>
+              </div>
+            )}
+          </div>
         </div>
         {subtitle && (
           <div

@@ -7,22 +7,36 @@ import { saveScrollback, getSessionById, updateSession } from '../db/store.js';
 import { addPid, removePid } from '../pids.js';
 import type { ManagedProcess, ProcessConfig, ProcessMetrics, ProcessState, SpawnConfig } from '../types.js';
 
-const PORT_PATTERNS = [
-  /localhost:(\d+)/,
-  /http:\/\/[^:]+:(\d+)/,
-  /listening on.*?(\d+)/i,
-  /port (\d+)/i,
-  /:\s*(\d{4,5})\b/,
+// URL-style patterns indicate the port a server actually bound to.
+// The bare "port N" pattern also matches warnings like "Port 3000 is in use,
+// using available port 3001 instead." — so it's kept at lower confidence and
+// a later high-confidence match is allowed to override it.
+const HIGH_CONFIDENCE_PORT_PATTERNS = [
+  /\blocalhost:(\d+)/gi,
+  /\bhttps?:\/\/[^\s:/]+:(\d+)/gi,
+  /\blistening on (?:port )?(\d+)/gi,
 ];
 
-function detectPort(text: string): number | null {
-  for (const pattern of PORT_PATTERNS) {
-    const m = text.match(pattern);
-    if (m) {
+const LOW_CONFIDENCE_PORT_PATTERNS = [
+  /\bport (\d+)/gi,
+];
+
+function lastMatchingPort(text: string, patterns: RegExp[]): number | null {
+  let last: number | null = null;
+  for (const pattern of patterns) {
+    for (const m of text.matchAll(pattern)) {
       const port = parseInt(m[1], 10);
-      if (port >= 1024 && port <= 65535) return port;
+      if (port >= 1024 && port <= 65535) last = port;
     }
   }
+  return last;
+}
+
+function detectPort(text: string): { port: number; confidence: 'high' | 'low' } | null {
+  const high = lastMatchingPort(text, HIGH_CONFIDENCE_PORT_PATTERNS);
+  if (high !== null) return { port: high, confidence: 'high' };
+  const low = lastMatchingPort(text, LOW_CONFIDENCE_PORT_PATTERNS);
+  if (low !== null) return { port: low, confidence: 'low' };
   return null;
 }
 
@@ -75,6 +89,7 @@ export class PtyManager extends EventEmitter {
   private metricsInterval: NodeJS.Timeout | null = null;
   private scrollbackInterval: NodeJS.Timeout | null = null;
   private restartTimers = new Map<string, NodeJS.Timeout>();
+  private portConfidence = new Map<string, 'high' | 'low'>();
 
   constructor() {
     super();
@@ -195,6 +210,7 @@ export class PtyManager extends EventEmitter {
     this.kill(id);
     this.processes.delete(id);
     this.cpuSamples.delete(id);
+    this.portConfidence.delete(id);
   }
 
   destroy(): void {
@@ -244,6 +260,10 @@ export class PtyManager extends EventEmitter {
     // screen buffer, so replaying raw PTY output produces garbage.  Instead,
     // session history is preserved by resuming with `--resume`.
     proc.outputBuffer.clear();
+
+    // Reset port detection so a restart re-learns the port from fresh output.
+    proc.metrics.detectedPort = null;
+    this.portConfidence.delete(proc.id);
 
     // For sessions, use --resume if a Claude session ID is known.
     // If resume fails ("No conversation found"), we stop and surface the error
@@ -319,12 +339,19 @@ export class PtyManager extends EventEmitter {
         return; // don't emit this data to the terminal
       }
 
-      // Detect port if not yet found
-      if (!proc.metrics.detectedPort) {
-        const port = detectPort(data);
-        if (port) {
-          proc.metrics.detectedPort = port;
+      // Detect port. High-confidence URL matches ("localhost:3001") may override
+      // a previous low-confidence match ("Port 3000 is in use..."); once a
+      // high-confidence port is stored we stop re-scanning to avoid flipping
+      // on later log noise.
+      const storedConfidence = this.portConfidence.get(proc.id);
+      if (storedConfidence !== 'high') {
+        const detected = detectPort(data);
+        if (detected && detected.port !== proc.metrics.detectedPort) {
+          proc.metrics.detectedPort = detected.port;
+          this.portConfidence.set(proc.id, detected.confidence);
           this.emit('metrics', { processId: proc.id, metrics: { ...proc.metrics } });
+        } else if (detected && !storedConfidence) {
+          this.portConfidence.set(proc.id, detected.confidence);
         }
       }
 

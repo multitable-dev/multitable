@@ -191,26 +191,43 @@ export function ProjectSidebarItem({ project }: Props) {
     ];
   };
 
-  const getTerminalMenuItems = (process: ManagedProcess): MenuItem[] => [
-    {
-      label: 'Close terminal',
-      action: async () => {
-        try {
-          await api.terminals.delete(process.id);
-          store.removeTerminal(process.id);
-          routeAwayIfSelected(process.id);
-          toast.success('Terminal closed');
-        } catch {
-          toast.error('Failed to close terminal');
-        }
+  const getTerminalMenuItems = (process: ManagedProcess): MenuItem[] => {
+    const isRunning = process.state === 'running';
+    return [
+      isRunning
+        ? {
+            label: 'Restart',
+            action: () =>
+              api.processes.restart(process.id).catch(() => toast.error('Failed to restart')),
+          }
+        : {
+            label: 'Start',
+            action: () =>
+              api.processes.start(process.id).catch(() => toast.error('Failed to start')),
+          },
+      {
+        label: 'Clear output',
+        action: () =>
+          api.processes.clearScrollback(process.id).catch(() => toast.error('Failed to clear')),
+        divider: true,
       },
-    },
-    {
-      label: 'Clear output',
-      action: () => api.processes.clearScrollback(process.id).catch(() => toast.error('Failed to clear')),
-      divider: true,
-    },
-  ];
+      {
+        label: 'Close terminal',
+        action: async () => {
+          try {
+            await api.terminals.delete(process.id);
+            store.removeTerminal(process.id);
+            routeAwayIfSelected(process.id);
+            toast.success('Terminal closed');
+          } catch {
+            toast.error('Failed to close terminal');
+          }
+        },
+        divider: true,
+        danger: true,
+      },
+    ];
+  };
 
   const getProjectHeaderMenuItems = (): MenuItem[] => [
     {
