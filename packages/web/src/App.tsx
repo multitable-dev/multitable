@@ -8,6 +8,7 @@ import { StatusBar } from './components/status-bar/StatusBar';
 import { CommandPalette } from './components/command-palette/CommandPalette';
 import { OptionSelector } from './components/option/OptionSelector';
 import { AddAgentModal } from './components/modals/AddAgentModal';
+import { AddProcessModal } from './components/modals/AddProcessModal';
 import { GlobalSettingsModal } from './components/modals/GlobalSettingsModal';
 import { ProjectSettingsModal } from './components/modals/ProjectSettingsModal';
 import { AddProjectModal } from './components/modals/AddProjectModal';
@@ -350,6 +351,12 @@ function App() {
         <AddAgentModal
           projectId={store.focusedProjectId}
           onClose={() => store.setAddAgentModalOpen(false)}
+        />
+      )}
+      {store.addProcessModalOpen && store.focusedProjectId && (
+        <AddProcessModal
+          projectId={store.focusedProjectId}
+          onClose={() => store.setAddProcessModalOpen(false)}
         />
       )}
       {store.globalSettingsOpen && (
