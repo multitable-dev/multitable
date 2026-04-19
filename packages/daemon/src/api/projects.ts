@@ -59,21 +59,36 @@ export function createProjectsRouter(manager: PtyManager): Router {
   });
 
   // POST /api/projects
-  router.post('/', (req: Request, res: Response) => {
+  router.post('/', async (req: Request, res: Response) => {
     const { path: projectPath, shortcut, icon } = req.body || {};
     if (!projectPath) {
       return res.status(400).json({ error: 'path is required' });
     }
     const name = req.body.name || path.basename(projectPath.replace(/\/+$/, ''));
+    let project;
     try {
-      const project = createProject({ name, path: projectPath, shortcut, icon });
-      res.status(201).json(project);
+      project = createProject({ name, path: projectPath, shortcut, icon });
     } catch (err: any) {
       if (err.message?.includes('UNIQUE')) {
         return res.status(409).json({ error: 'A project with this path already exists' });
       }
-      res.status(500).json({ error: 'Failed to create project' });
+      return res.status(500).json({ error: 'Failed to create project' });
     }
+
+    // Install Claude Code hooks before responding, so the first session
+    // the user spawns in this project sees the permission UI, cost
+    // tracking, labels, etc. Otherwise hooks would only land on the
+    // next daemon restart. Best-effort: a hook-install failure must
+    // not block project creation.
+    try {
+      const config = loadGlobalConfig();
+      const hookManager = new HookManager();
+      await hookManager.installForProject(project.path, config.port);
+    } catch (err) {
+      console.warn(`Failed to install hooks for new project ${project.path}:`, err);
+    }
+
+    res.status(201).json(project);
   });
 
   // PUT /api/projects/:id
