@@ -15,6 +15,13 @@ class WsClient {
   private hasConnectedBefore = false;
 
   connect(): void {
+    // Idempotent: if a socket is already open or connecting, do nothing.
+    // Prevents StrictMode's double-mount from opening two sockets that both
+    // deliver every broadcast to the shared handler list.
+    if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}/ws`;
 

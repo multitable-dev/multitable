@@ -287,7 +287,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Permissions
   pendingPermissions: [],
   addPermission: (prompt) =>
-    set((s) => ({ pendingPermissions: [...s.pendingPermissions, prompt] })),
+    set((s) =>
+      s.pendingPermissions.some(p => p.id === prompt.id)
+        ? s
+        : { pendingPermissions: [...s.pendingPermissions, prompt] }
+    ),
   removePermission: (id) =>
     set((s) => ({ pendingPermissions: s.pendingPermissions.filter(p => p.id !== id) })),
 
