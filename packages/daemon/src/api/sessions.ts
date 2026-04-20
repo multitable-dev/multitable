@@ -14,6 +14,7 @@ import {
 import { parseSessionCost } from '../hooks/costParser.js';
 import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
 import { getClaudeState } from '../hooks/receiver.js';
+import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -40,6 +41,13 @@ function buildClaudeCommand(workingDir: string, resume?: string): string {
 
 export function createSessionsRouter(manager: PtyManager): Router {
   const router = Router();
+
+  const attachmentHandler = createAttachmentHandler({
+    resolve: (id) => (getSessionById(id) ? id : null),
+  });
+
+  // POST /api/sessions/:id/attachments — upload a single image as raw body.
+  router.post('/:id/attachments', rawAttachmentBody, attachmentHandler);
 
   // GET /api/sessions
   router.get('/', (_req: Request, res: Response) => {
@@ -121,6 +129,7 @@ export function createSessionsRouter(manager: PtyManager): Router {
     if (proc) manager.kill(req.params.id);
 
     deleteSession(req.params.id);
+    removeAttachmentDir(req.params.id);
     res.status(204).send();
   });
 

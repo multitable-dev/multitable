@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import { useAppStore } from '../stores/appStore';
 import { terminalManager } from '../lib/terminalManager';
-import { BUILTIN_THEMES, BUILTIN_LIGHT, applyThemeToDocument } from '../lib/themes';
+import { BUILTIN_THEMES, BUILTIN_DARK, applyThemeToDocument } from '../lib/themes';
 
 export function useTheme() {
   const activeThemeId = useAppStore((s) => s.activeThemeId);
@@ -9,7 +9,7 @@ export function useTheme() {
 
   const activeTheme = useMemo(() => {
     const all = [...BUILTIN_THEMES, ...customThemes];
-    return all.find((t) => t.id === activeThemeId) ?? BUILTIN_LIGHT;
+    return all.find((t) => t.id === activeThemeId) ?? BUILTIN_DARK;
   }, [activeThemeId, customThemes]);
 
   useEffect(() => {

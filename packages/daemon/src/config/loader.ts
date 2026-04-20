@@ -10,6 +10,10 @@ export function getConfigDir(): string {
   return paths.config;
 }
 
+export function getDataDir(): string {
+  return paths.data;
+}
+
 const DEFAULT_CONFIG: GlobalConfig = {
   theme: 'system',
   defaultEditor: 'code',

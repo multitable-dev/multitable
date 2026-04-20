@@ -1,13 +1,19 @@
 import React, { useState } from 'react';
 import { Plus, Search } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { useAppStore } from '../../stores/appStore';
 import { AddProjectModal } from '../modals/AddProjectModal';
 import { Button, Card, Input, Badge } from '../ui';
 import { getProjectColor } from '../../lib/projectColor';
 import { useIsDark } from '../../hooks/useIsDark';
+import { ProjectMonitor } from './ProjectMonitor';
+import { api } from '../../lib/api';
+import { terminalManager } from '../../lib/terminalManager';
+import type { ManagedProcess, Session, Command, Terminal } from '../../lib/types';
 
 export function DashboardView() {
-  const { projects, sessions, commands, expandProject, setProjectOverviewOpen } = useAppStore();
+  const store = useAppStore();
+  const { projects, sessions, commands, terminals, expandProject, setProjectOverviewOpen } = store;
   const [search, setSearch] = useState('');
   const [showAddProject, setShowAddProject] = useState(false);
   const dark = useIsDark();
@@ -16,14 +22,47 @@ export function DashboardView() {
     search.trim() === '' || p.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  // Mirrors ProjectOverview.selectProcess — select + auto-resume/start stopped procs.
+  const selectProcess = (proc: ManagedProcess) => {
+    store.setProjectOverviewOpen(false);
+    store.setSelectedProcess(proc.id);
+
+    if (proc.type === 'session' && proc.state === 'stopped') {
+      const s = proc as Session;
+      const hasPrior = !!(s.claudeSessionId || s.claudeState?.claudeSessionId);
+      if (hasPrior) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const dims = terminalManager.fit(proc.id);
+            api.sessions
+              .resumeClaude(proc.id, dims ?? undefined)
+              .catch(() => toast.error('Failed to resume session'));
+          });
+        });
+      } else {
+        api.processes.start(proc.id).catch(() => toast.error('Failed to start session'));
+      }
+    } else if (
+      (proc.type === 'command' || proc.type === 'terminal') &&
+      proc.state === 'stopped'
+    ) {
+      api.processes.start(proc.id).catch(() => toast.error('Failed to start'));
+    }
+  };
+
+  const openProjectOverview = (projectId: string) => {
+    expandProject(projectId);
+    setProjectOverviewOpen(true);
+  };
+
   return (
     <div
-      className="mt-scroll"
-      style={{ padding: 32, height: '100%', overflowY: 'auto', animation: 'mt-fade-in var(--dur-med) var(--ease-out)' }}
+      className="mt-scroll mt-dashboard"
+      style={{ height: '100%', overflowY: 'auto', animation: 'mt-fade-in var(--dur-med) var(--ease-out)' }}
     >
       {showAddProject && <AddProjectModal onClose={() => setShowAddProject(false)} />}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 20, gap: 12 }}>
-        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1, letterSpacing: -0.3 }}>
+        <h1 style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', margin: 0, flex: 1, letterSpacing: -0.3, minWidth: 0 }}>
           Dashboard
         </h1>
         <Button variant="primary" leftIcon={<Plus size={14} />} onClick={() => setShowAddProject(true)}>
@@ -41,34 +80,34 @@ export function DashboardView() {
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-          gap: 16,
+          gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))',
+          gap: 20,
         }}
       >
         {filteredProjects.map(project => {
-          const projSessions = Object.values(sessions).filter(
-            s => s.projectId === project.id
-          );
-          const projCommands = Object.values(commands).filter(
-            c => c.projectId === project.id
-          );
-          const allProcs = [...projSessions, ...projCommands];
-          const runningCount = allProcs.filter(p => p.state === 'running').length;
+          const projSessions = Object.values(sessions).filter(s => s.projectId === project.id);
+          const projCommands = Object.values(commands).filter(c => c.projectId === project.id);
+          const projTerminals = Object.values(terminals).filter(t => t.projectId === project.id);
+          const allProcs: (Session | Command | Terminal)[] = [
+            ...projSessions,
+            ...projCommands,
+            ...projTerminals,
+          ];
           const errorCount = allProcs.filter(p => p.state === 'errored').length;
+          const runningCount = allProcs.filter(p => p.state === 'running').length;
           const color = getProjectColor(project.id, dark);
 
           return (
             <Card
               key={project.id}
               interactive
-              onClick={() => {
-                expandProject(project.id);
-                setProjectOverviewOpen(true);
-              }}
+              onClick={() => openProjectOverview(project.id)}
+              padding={0}
               style={{
                 position: 'relative',
                 overflow: 'hidden',
-                paddingTop: 22,
+                display: 'flex',
+                flexDirection: 'column',
               }}
             >
               <span
@@ -79,14 +118,16 @@ export function DashboardView() {
                   right: 0,
                   height: 3,
                   background: `linear-gradient(90deg, ${color.stripe}, color-mix(in srgb, ${color.stripe} 40%, transparent))`,
+                  zIndex: 1,
                 }}
               />
+              {/* Header */}
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
-                  marginBottom: 12,
                   gap: 8,
+                  padding: '18px 16px 10px',
                 }}
               >
                 <span
@@ -107,32 +148,51 @@ export function DashboardView() {
                     {errorCount} error{errorCount > 1 ? 's' : ''}
                   </Badge>
                 )}
-              </div>
-              <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                {projSessions.length} session{projSessions.length !== 1 ? 's' : ''} ·{' '}
-                {projCommands.length} command{projCommands.length !== 1 ? 's' : ''}
-              </div>
-              <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                {runningCount > 0 && (
+                {runningCount > 0 && errorCount === 0 && (
                   <Badge variant="running">{runningCount} running</Badge>
                 )}
-                {runningCount === 0 && allProcs.length > 0 && (
-                  <Badge variant="muted">Idle</Badge>
-                )}
               </div>
+
+              {/* Monitor */}
+              <div style={{ padding: '0 16px 12px' }}>
+                <ProjectMonitor
+                  processes={allProcs}
+                  onSelectProcess={selectProcess}
+                  onOpenAll={() => openProjectOverview(project.id)}
+                />
+              </div>
+
+              {/* Status bar footer */}
               <div
                 style={{
+                  marginTop: 'auto',
+                  borderTop: '1px solid var(--border)',
+                  background: 'var(--bg-statusbar)',
+                  padding: '6px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
                   fontSize: 11,
-                  color: 'var(--text-muted)',
-                  marginTop: 10,
                   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
+                  color: 'var(--text-muted)',
                 }}
-                title={project.path}
               >
-                {project.path}
+                <span style={{ color: 'var(--text-secondary)' }}>
+                  {projSessions.length}s · {projCommands.length}c
+                  {projTerminals.length > 0 ? ` · ${projTerminals.length}t` : ''}
+                </span>
+                <span
+                  style={{
+                    flex: 1,
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                    textAlign: 'right',
+                  }}
+                  title={project.path}
+                >
+                  {project.path}
+                </span>
               </div>
             </Card>
           );

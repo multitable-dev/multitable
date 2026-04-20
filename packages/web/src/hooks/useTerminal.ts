@@ -1,9 +1,24 @@
 import { useEffect, useRef } from 'react';
+import toast from 'react-hot-toast';
 import { terminalManager } from '../lib/terminalManager';
 import { wsClient } from '../lib/ws';
+import { uploadAttachment, quotePath, type AttachmentKind } from '../lib/attachments';
 
-export function useTerminal(processId: string | null, disabled = false) {
+interface Options {
+  attachKind?: AttachmentKind | null;
+}
+
+export function useTerminal(
+  processId: string | null,
+  disabled = false,
+  options: Options = {},
+) {
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Stash the latest attach kind in a ref so the effect doesn't re-run when
+  // the parent re-renders (e.g. process state changes).
+  const attachKindRef = useRef<AttachmentKind | null | undefined>(options.attachKind);
+  attachKindRef.current = options.attachKind;
 
   useEffect(() => {
     if (!processId || !containerRef.current || disabled) return;
@@ -64,6 +79,134 @@ export function useTerminal(processId: string | null, disabled = false) {
     const handleClick = () => entry.terminal.focus();
     container.addEventListener('click', handleClick);
 
+    // ── Paste / drop image handling ─────────────────────────────────────────
+    // Pull image files off clipboard or drop, upload to the daemon, and inject
+    // the absolute path into the PTY. Non-image paste / drop is left alone so
+    // xterm can handle text paste itself.
+    async function ingestFiles(files: File[]): Promise<void> {
+      const kind = attachKindRef.current;
+      if (!kind || files.length === 0) return;
+
+      const paths: string[] = [];
+      for (const file of files) {
+        const toastId = toast.loading(`Uploading ${file.name || 'image'}…`);
+        try {
+          const result = await uploadAttachment(kind, processId!, file);
+          paths.push(quotePath(result.path));
+          toast.success(`Attached ${result.filename}`, { id: toastId });
+        } catch (err: any) {
+          toast.error(err?.message || 'Upload failed', { id: toastId });
+        }
+      }
+
+      if (paths.length > 0) {
+        // Trailing space lets the user keep typing without committing the prompt.
+        wsClient.sendInput(processId!, paths.join(' ') + ' ');
+      }
+    }
+
+    const handlePaste = (e: ClipboardEvent) => {
+      const dt = e.clipboardData;
+      if (!dt) return;
+      const files: File[] = [];
+      for (let i = 0; i < dt.items.length; i++) {
+        const item = dt.items[i];
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+      if (files.length === 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      void ingestFiles(files);
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer) return;
+      const hasFiles = Array.from(e.dataTransfer.types || []).includes('Files');
+      if (!hasFiles) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    };
+
+    const handleDrop = (e: DragEvent) => {
+      const dt = e.dataTransfer;
+      if (!dt || !dt.files || dt.files.length === 0) return;
+      // Always preventDefault once we know files were dropped — otherwise the
+      // browser navigates away from the app to open the dropped file.
+      e.preventDefault();
+      e.stopPropagation();
+      const files = Array.from(dt.files).filter((f) => f.type.startsWith('image/'));
+      if (files.length === 0) {
+        toast.error('Only image files can be attached');
+        return;
+      }
+      void ingestFiles(files);
+    };
+
+    container.addEventListener('paste', handlePaste);
+    container.addEventListener('dragover', handleDragOver);
+    container.addEventListener('drop', handleDrop);
+
+    // ── Mobile touch scrolling ──────────────────────────────────────────────
+    // xterm.js doesn't translate touch-drag into scrollback navigation on its
+    // own, so on touch devices the terminal feels "stuck". Track single-finger
+    // vertical drags and forward them to terminal.scrollLines(). Short taps
+    // fall through untouched so xterm's focus/selection keep working.
+    let touchActive = false;
+    let touchStartY = 0;
+    let lastTouchY = 0;
+    let isScrolling = false;
+    let scrollAccumulator = 0;
+
+    const getLineHeight = () => {
+      const rows = entry.terminal.rows;
+      const h = container.clientHeight;
+      return rows > 0 ? h / rows : 17;
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 1) {
+        touchActive = false;
+        return;
+      }
+      touchActive = true;
+      isScrolling = false;
+      touchStartY = e.touches[0].clientY;
+      lastTouchY = touchStartY;
+      scrollAccumulator = 0;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (!touchActive || e.touches.length !== 1) return;
+      const y = e.touches[0].clientY;
+      if (!isScrolling && Math.abs(y - touchStartY) > 8) {
+        isScrolling = true;
+      }
+      if (!isScrolling) return;
+      const deltaY = lastTouchY - y;
+      scrollAccumulator += deltaY;
+      const lineHeight = getLineHeight();
+      const lines = Math.trunc(scrollAccumulator / lineHeight);
+      if (lines !== 0) {
+        entry.terminal.scrollLines(lines);
+        scrollAccumulator -= lines * lineHeight;
+      }
+      lastTouchY = y;
+      e.preventDefault();
+    };
+
+    const onTouchEnd = () => {
+      touchActive = false;
+      isScrolling = false;
+    };
+
+    container.addEventListener('touchstart', onTouchStart, { passive: true });
+    container.addEventListener('touchmove', onTouchMove, { passive: false });
+    container.addEventListener('touchend', onTouchEnd, { passive: true });
+    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
+
     // Auto-fit on container resize (including detail panel open/close).
     // Debounce the PTY resize to avoid a resize storm — rapid resizes cause the
     // shell program (e.g. Claude Code) to redraw dozens of times, and the
@@ -90,6 +233,13 @@ export function useTerminal(processId: string | null, disabled = false) {
       offOutput();
       disposeInput.dispose();
       container.removeEventListener('click', handleClick);
+      container.removeEventListener('paste', handlePaste);
+      container.removeEventListener('dragover', handleDragOver);
+      container.removeEventListener('drop', handleDrop);
+      container.removeEventListener('touchstart', onTouchStart);
+      container.removeEventListener('touchmove', onTouchMove);
+      container.removeEventListener('touchend', onTouchEnd);
+      container.removeEventListener('touchcancel', onTouchEnd);
       resizeObserver.disconnect();
       terminalManager.detach(processId);
       wsClient.unsubscribe(processId);

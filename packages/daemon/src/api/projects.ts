@@ -21,6 +21,7 @@ import {
 } from '../db/store.js';
 import { loadProjectConfig, loadGlobalConfig } from '../config/loader.js';
 import { HookManager } from '../hooks/installer.js';
+import { removeAttachmentDir } from './attachments.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -205,6 +206,12 @@ export function createProjectsRouter(manager: PtyManager): Router {
     const terminals = getTerminalsByProject(req.params.id);
     for (const child of [...sessions, ...commands, ...terminals]) {
       try { manager.remove(child.id); } catch { /* best effort */ }
+    }
+
+    // Clean up attachments dirs for the children. Only sessions/terminals can
+    // have attachments, but removeAttachmentDir is a no-op for missing dirs.
+    for (const child of [...sessions, ...terminals]) {
+      removeAttachmentDir(child.id);
     }
 
     // Uninstall claude hooks from the project's .claude/settings.json.

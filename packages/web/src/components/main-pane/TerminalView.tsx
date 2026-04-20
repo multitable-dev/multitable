@@ -20,7 +20,9 @@ export function TerminalView({ processId, process }: Props) {
   // Stopped sessions keep the terminal visible with scrollback.
   const terminalDisabled = isSession && session?.state === 'errored';
 
-  const containerRef = useTerminal(processId, !!terminalDisabled);
+  const attachKind =
+    process?.type === 'session' ? 'session' : process?.type === 'terminal' ? 'terminal' : null;
+  const containerRef = useTerminal(processId, !!terminalDisabled, { attachKind });
   const { detailPanelOpen, setDetailPanelOpen } = useAppStore();
 
   const showBanner =

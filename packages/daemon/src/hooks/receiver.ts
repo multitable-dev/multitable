@@ -92,12 +92,23 @@ export function createHooksRouter(
     });
   }
 
+  // Resolve the cwd for a multitable session. Claude Code's own `cwd` field on
+  // the hook payload is authoritative when present; otherwise fall back to the
+  // session's persisted workingDirectory. Empty string means "unknown" — the
+  // permission manager treats that as "skip the cwd check, just auto-defer".
+  function resolveCwd(sessionId: string, hookCwd: unknown): string {
+    if (typeof hookCwd === 'string' && hookCwd.length > 0) return hookCwd;
+    if (!sessionId) return '';
+    const session = getSessionById(sessionId);
+    return session?.workingDirectory ?? '';
+  }
+
   // PreToolUse — hold response open for permission gate
   router.post('/pre-tool-use', (req: Request, res: Response) => {
     broadcastHook('PreToolUse', req.body);
-    const { tool_name, tool_input, session_id } = req.body || {};
+    const { tool_name, tool_input, session_id, cwd } = req.body || {};
     if (!tool_name) {
-      res.json({ approved: true });
+      res.json({});
       return;
     }
 
@@ -114,7 +125,30 @@ export function createHooksRouter(
     permManager.handlePreToolUse(
       { tool_name, tool_input: tool_input || {}, session_id: session_id || '' },
       res,
-      sessionId
+      sessionId,
+      resolveCwd(sessionId, cwd)
+    );
+  });
+
+  // PermissionRequest — fires when Claude Code is about to show its built-in
+  // permission dialog (e.g. for paths outside cwd that PreToolUse approved
+  // but Claude's filesystem-scope check still wants to confirm). Hold the
+  // response open and surface the prompt to the web UI exactly like
+  // PreToolUse — the response shape differs but PermissionManager handles it.
+  router.post('/permission-request', (req: Request, res: Response) => {
+    broadcastHook('PermissionRequest', req.body);
+    const { tool_name, tool_input, session_id, cwd } = req.body || {};
+    if (!tool_name) {
+      // Nothing to gate on — let Claude proceed with its own dialog.
+      res.json({});
+      return;
+    }
+    const sessionId = findSessionByClaudeId(session_id) || '';
+    permManager.handlePermissionRequest(
+      { tool_name, tool_input: tool_input || {}, session_id: session_id || '' },
+      res,
+      sessionId,
+      resolveCwd(sessionId, cwd)
     );
   });
 

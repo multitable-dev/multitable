@@ -12,27 +12,48 @@ function getCtx(): AudioContext | null {
   }
 }
 
-export function playPermissionChime(): void {
+function playTones(tones: { freq: number; start: number; dur: number; peak: number }[]): void {
   const ctx = getCtx();
   if (!ctx) return;
   try {
     if (ctx.state === 'suspended') ctx.resume().catch(() => {});
     const now = ctx.currentTime;
-    const play = (freq: number, start: number, dur: number, peak: number) => {
+    for (const t of tones) {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.type = 'sine';
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0, now + start);
-      gain.gain.linearRampToValueAtTime(peak, now + start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+      osc.frequency.value = t.freq;
+      gain.gain.setValueAtTime(0, now + t.start);
+      gain.gain.linearRampToValueAtTime(t.peak, now + t.start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + t.start + t.dur);
       osc.connect(gain).connect(ctx.destination);
-      osc.start(now + start);
-      osc.stop(now + start + dur + 0.02);
-    };
-    play(880, 0, 0.14, 0.05);
-    play(1320, 0.09, 0.22, 0.04);
+      osc.start(now + t.start);
+      osc.stop(now + t.start + t.dur + 0.02);
+    }
   } catch {
     // ignore audio errors
   }
+}
+
+export function playPermissionChime(): void {
+  playTones([
+    { freq: 880, start: 0, dur: 0.14, peak: 0.05 },
+    { freq: 1320, start: 0.09, dur: 0.22, peak: 0.04 },
+  ]);
+}
+
+// Rising two-tone — Claude is waiting on the user.
+export function playAttentionChime(): void {
+  playTones([
+    { freq: 660, start: 0, dur: 0.14, peak: 0.05 },
+    { freq: 990, start: 0.1, dur: 0.2, peak: 0.05 },
+  ]);
+}
+
+// Soft descending two-tone — Claude finished its turn.
+export function playDoneChime(): void {
+  playTones([
+    { freq: 784, start: 0, dur: 0.12, peak: 0.04 },
+    { freq: 523, start: 0.09, dur: 0.22, peak: 0.04 },
+  ]);
 }

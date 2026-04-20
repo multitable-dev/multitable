@@ -8,6 +8,7 @@ import {
   getAllTerminals,
   getTerminalsByProject,
 } from '../db/store.js';
+import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
 
@@ -27,6 +28,13 @@ function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig
 
 export function createTerminalsRouter(manager: PtyManager): Router {
   const router = Router();
+
+  const attachmentHandler = createAttachmentHandler({
+    resolve: (id) => (getTerminalById(id) ? id : null),
+  });
+
+  // POST /api/terminals/:id/attachments — upload a single image as raw body.
+  router.post('/:id/attachments', rawAttachmentBody, attachmentHandler);
 
   // GET /api/terminals
   router.get('/', (_req: Request, res: Response) => {
@@ -111,6 +119,7 @@ export function createTerminalsRouter(manager: PtyManager): Router {
     if (proc) manager.kill(req.params.id);
 
     deleteTerminal(req.params.id);
+    removeAttachmentDir(req.params.id);
     res.status(204).send();
   });
 

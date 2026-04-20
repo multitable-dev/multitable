@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type { Response } from 'express';
 import type { PermissionPrompt, AskQuestion } from '../types.js';
@@ -16,11 +17,38 @@ const AUTO_DEFER_TOOLS = new Set([
   'WebSearch',
 ]);
 
+// Tool inputs whose path argument we check against cwd before auto-deferring.
+// If the path resolves outside cwd, we surface a card to the web UI instead of
+// silently allowing — this is the path that attachments take, since they live
+// in the multitable data dir, not under the project working directory.
+const PATH_FIELDS_BY_TOOL: Record<string, string> = {
+  Read: 'file_path',
+  Grep: 'path',
+  Glob: 'path',
+  LS: 'path',
+};
+
+function pathInsideCwd(toolName: string, toolInput: Record<string, any>, cwd: string): boolean {
+  const field = PATH_FIELDS_BY_TOOL[toolName];
+  if (!field) return true; // tool has no path arg → nothing to gate
+  const raw = toolInput?.[field];
+  if (typeof raw !== 'string' || raw.length === 0) return true; // path arg absent
+  if (!cwd) return true; // we don't know the cwd → fall back to auto-defer
+  const abs = path.resolve(cwd, raw);
+  const rel = path.relative(cwd, abs);
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+type HookEventName = 'PreToolUse' | 'PermissionRequest';
+
 interface PendingPermission {
   prompt: PermissionPrompt;
   // Multiple held-open HTTP responses can attach to the same prompt when
   // Claude Code retries the hook (or parallel agents request the same tool).
-  responders: Response[];
+  // Each responder carries the event name it arrived from, because PreToolUse
+  // and PermissionRequest expect different response shapes — even when they
+  // describe the same underlying tool call we coalesced via dedup.
+  responders: Array<{ res: Response; eventName: HookEventName }>;
   timer: NodeJS.Timeout;
   sessionId: string;
   dedupKey: string;
@@ -36,9 +64,58 @@ function makeDedupKey(sessionId: string, toolName: string, toolInput: Record<str
   return `${sessionId}|${toolName}|${inputPart}`;
 }
 
-function sendAll(entry: PendingPermission, body: Record<string, any>): void {
+// Claude Code's PreToolUse and PermissionRequest hooks use different response
+// shapes. PreToolUse expects `hookSpecificOutput.permissionDecision`, while
+// PermissionRequest expects `hookSpecificOutput.decision.behavior`. Both fields
+// are nested under `hookSpecificOutput.hookEventName` matching the source event.
+function buildAllowBody(eventName: HookEventName, updatedInput?: Record<string, any>): Record<string, any> {
+  if (eventName === 'PermissionRequest') {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        decision: {
+          behavior: 'allow',
+          ...(updatedInput ? { updatedInput } : {}),
+        },
+      },
+    };
+  }
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'allow',
+      ...(updatedInput ? { updatedInput } : {}),
+    },
+  };
+}
+
+function buildDenyBody(eventName: HookEventName, reason?: string): Record<string, any> {
+  if (eventName === 'PermissionRequest') {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PermissionRequest',
+        decision: {
+          behavior: 'deny',
+          ...(reason ? { message: reason } : {}),
+        },
+      },
+    };
+  }
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: 'deny',
+      ...(reason ? { permissionDecisionReason: reason } : {}),
+    },
+  };
+}
+
+function sendAll(
+  entry: PendingPermission,
+  build: (eventName: HookEventName) => Record<string, any>
+): void {
   for (const r of entry.responders) {
-    try { r.json(body); } catch {}
+    try { r.res.json(build(r.eventName)); } catch {}
   }
 }
 
@@ -61,11 +138,12 @@ function parseAskQuestions(toolInput: Record<string, any> | undefined): AskQuest
     }));
 }
 
-// Format the user's AskUserQuestion answers into a hook response. We use
-// the PreToolUse `permissionDecision: "deny"` path with a descriptive
-// reason — Claude Code cancels the native AskUserQuestion tool (we don't
-// want its in-terminal UI to run) and feeds the reason back to Claude as
-// text. Claude reads this as the user's answer and proceeds.
+// Format the user's AskUserQuestion answers into a hook response. We deny
+// the tool call and feed the answer back as the deny reason — Claude Code
+// cancels the native AskUserQuestion tool (we don't want its in-terminal UI
+// to run) and Claude reads the reason as the user's answer and proceeds.
+// Only PreToolUse fires for AskUserQuestion (it's a tool call, not a
+// permission dialog), so we always emit the PreToolUse shape.
 function buildAskQuestionResponse(
   prompt: PermissionPrompt,
   answers: string[][]
@@ -85,14 +163,7 @@ function buildAskQuestionResponse(
   });
 
   const reason = `User answered AskUserQuestion in web UI:\n${lines.join('\n')}`;
-
-  return {
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      permissionDecision: 'deny',
-      permissionDecisionReason: reason,
-    },
-  };
+  return buildDenyBody('PreToolUse', reason);
 }
 
 export type PermissionDecision = 'allow' | 'deny' | 'always-allow';
@@ -122,33 +193,68 @@ export class PermissionManager extends EventEmitter {
   handlePreToolUse(
     hookData: { tool_name: string; tool_input: Record<string, any>; session_id: string },
     res: Response,
-    sessionId: string
+    sessionId: string,
+    cwd: string
+  ): void {
+    this.handleHook('PreToolUse', hookData, res, sessionId, cwd);
+  }
+
+  /**
+   * Handle a PermissionRequest hook call. This fires when Claude Code is about
+   * to show its built-in permission dialog (e.g. for paths outside cwd) —
+   * sometimes for tool calls that PreToolUse already approved. We surface the
+   * same Allow/Deny card to the web UI and reply with the PermissionRequest
+   * response shape (`hookSpecificOutput.decision.behavior`) when the user picks.
+   */
+  handlePermissionRequest(
+    hookData: { tool_name: string; tool_input: Record<string, any>; session_id: string },
+    res: Response,
+    sessionId: string,
+    cwd: string
+  ): void {
+    this.handleHook('PermissionRequest', hookData, res, sessionId, cwd);
+  }
+
+  private handleHook(
+    eventName: HookEventName,
+    hookData: { tool_name: string; tool_input: Record<string, any>; session_id: string },
+    res: Response,
+    sessionId: string,
+    cwd: string
   ): void {
     const { tool_name, tool_input, session_id: claudeSessionId } = hookData;
+    const input = tool_input || {};
 
     // AskUserQuestion is a structured question payload, not a permission
     // gate. Don't auto-defer or auto-allow it — always surface to the web UI
-    // so we can render a proper radio/checkbox interface.
+    // so we can render a proper radio/checkbox interface. (Only meaningful
+    // for PreToolUse; PermissionRequest never fires for AskUserQuestion.)
     const isAskQuestion = tool_name === 'AskUserQuestion';
 
-    // Auto-defer safe read-only tools
-    if (!isAskQuestion && this.autoDeferTools.has(tool_name)) {
-      res.json({ approved: true });
+    // Auto-defer safe read-only tools — but only when the path argument
+    // (if any) resolves inside the session cwd. Paths outside cwd (e.g.
+    // attachment uploads in ~/.local/share/multitable/...) get surfaced to
+    // the web UI so the user can explicitly approve them.
+    const insideCwd = pathInsideCwd(tool_name, input, cwd);
+
+    if (!isAskQuestion && this.autoDeferTools.has(tool_name) && insideCwd) {
+      res.json(buildAllowBody(eventName));
       return;
     }
 
-    // Honor prior "always allow" decisions for this session + tool
+    // Honor prior "always allow" decisions for this session + tool. These
+    // ignore the cwd check — the user explicitly opted in for this tool.
     if (!isAskQuestion && this.sessionAllowList.get(sessionId)?.has(tool_name)) {
-      res.json({ approved: true });
+      res.json(buildAllowBody(eventName));
       return;
     }
 
     // Dedup: if an identical prompt is already pending for this session,
     // attach this HTTP response to it instead of creating a second card.
-    const dedupKey = makeDedupKey(sessionId, tool_name, tool_input || {});
+    const dedupKey = makeDedupKey(sessionId, tool_name, input);
     for (const entry of this.pending.values()) {
       if (entry.dedupKey === dedupKey) {
-        entry.responders.push(res);
+        entry.responders.push({ res, eventName });
         return;
       }
     }
@@ -159,13 +265,13 @@ export class PermissionManager extends EventEmitter {
       sessionId,
       claudeSessionId: claudeSessionId || '',
       toolName: tool_name,
-      toolInput: tool_input || {},
+      toolInput: input,
       createdAt: Date.now(),
       timeoutMs: TIMEOUT_MS,
       ...(isAskQuestion
         ? {
             kind: 'ask-question' as const,
-            questions: parseAskQuestions(tool_input),
+            questions: parseAskQuestions(input),
           }
         : { kind: 'permission' as const }),
     };
@@ -174,7 +280,13 @@ export class PermissionManager extends EventEmitter {
       this.expire(id);
     }, TIMEOUT_MS);
 
-    this.pending.set(id, { prompt, responders: [res], timer, sessionId, dedupKey });
+    this.pending.set(id, {
+      prompt,
+      responders: [{ res, eventName }],
+      timer,
+      sessionId,
+      dedupKey,
+    });
     this.emit('permission:prompt', prompt);
   }
 
@@ -199,9 +311,9 @@ export class PermissionManager extends EventEmitter {
 
     const approved = decision === 'allow' || decision === 'always-allow';
     if (approved) {
-      sendAll(entry, { approved: true, ...(updatedInput ? { tool_input: updatedInput } : {}) });
+      sendAll(entry, (eventName) => buildAllowBody(eventName, updatedInput));
     } else {
-      sendAll(entry, { approved: false });
+      sendAll(entry, (eventName) => buildDenyBody(eventName));
     }
 
     this.emit('permission:resolved', id);
@@ -224,7 +336,8 @@ export class PermissionManager extends EventEmitter {
     clearTimeout(entry.timer);
     this.pending.delete(id);
 
-    sendAll(entry, buildAskQuestionResponse(entry.prompt, answers));
+    const body = buildAskQuestionResponse(entry.prompt, answers);
+    sendAll(entry, () => body);
     this.emit('permission:resolved', id);
   }
 
@@ -234,7 +347,7 @@ export class PermissionManager extends EventEmitter {
 
     this.pending.delete(id);
     // On timeout, auto-approve to not block Claude
-    sendAll(entry, { approved: true });
+    sendAll(entry, (eventName) => buildAllowBody(eventName));
 
     this.emit('permission:expired', id);
   }
@@ -258,7 +371,7 @@ export class PermissionManager extends EventEmitter {
     for (const [id, entry] of this.pending) {
       if (entry.sessionId === sessionId) {
         clearTimeout(entry.timer);
-        sendAll(entry, { approved: true });
+        sendAll(entry, (eventName) => buildAllowBody(eventName));
         this.pending.delete(id);
         this.emit('permission:resolved', id);
       }

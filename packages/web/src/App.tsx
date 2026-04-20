@@ -17,7 +17,7 @@ import { IconButton } from './components/ui';
 import { useAppStore } from './stores/appStore';
 import { wsClient } from './lib/ws';
 import { api } from './lib/api';
-import { playPermissionChime } from './lib/sound';
+import { playPermissionChime, playAttentionChime, playDoneChime } from './lib/sound';
 import { useTheme } from './hooks/useTheme';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
 import type { Session } from './lib/types';
@@ -180,6 +180,21 @@ function App() {
         });
         // Update session state to errored in the store
         if (processId) store.updateProcessState(processId, 'errored');
+      }),
+      wsClient.on('hook:Notification', (msg: any) => {
+        const { sessionId, payload } = msg.payload || {};
+        const session = sessionId ? store.sessions[sessionId] : null;
+        const name = session?.name ?? 'Claude';
+        const message = payload?.message || 'Needs your attention';
+        toast(`${name}: ${message}`, { duration: 5000 });
+        playAttentionChime();
+      }),
+      wsClient.on('hook:Stop', (msg: any) => {
+        const { sessionId } = msg.payload || {};
+        const session = sessionId ? store.sessions[sessionId] : null;
+        const name = session?.name ?? 'Claude';
+        toast.success(`${name} is done`, { duration: 4000 });
+        playDoneChime();
       }),
       wsClient.on('session:label-updated', (msg: any) => {
         const { sessionId, label } = msg.payload;

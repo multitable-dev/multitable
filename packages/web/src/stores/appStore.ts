@@ -12,7 +12,7 @@ import type {
 import type { Theme, ThemeColors } from '../lib/themes';
 import {
   BUILTIN_THEMES,
-  BUILTIN_LIGHT,
+  BUILTIN_DARK,
   loadCustomThemesFromStorage,
   loadActiveThemeIdFromStorage,
   saveCustomThemesToStorage,
@@ -219,7 +219,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const customs = loadCustomThemesFromStorage();
     const all = [...BUILTIN_THEMES, ...customs];
     if (stored && all.some((t) => t.id === stored)) return stored;
-    return BUILTIN_LIGHT.id;
+    return BUILTIN_DARK.id;
   })(),
   commandPaletteOpen: false,
   addAgentModalOpen: false,
@@ -273,7 +273,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const next = s.customThemes.filter((t) => t.id !== id);
       saveCustomThemesToStorage(next);
-      const activeId = s.activeThemeId === id ? BUILTIN_LIGHT.id : s.activeThemeId;
+      const activeId = s.activeThemeId === id ? BUILTIN_DARK.id : s.activeThemeId;
       if (activeId !== s.activeThemeId) saveActiveThemeIdToStorage(activeId);
       return { customThemes: next, activeThemeId: activeId };
     }),

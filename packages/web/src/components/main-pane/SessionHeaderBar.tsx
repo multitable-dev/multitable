@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PanelBottom, Copy, Check } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
+import { AttachButton } from './AttachButton';
 import type { Session } from '../../lib/types';
 import { IconButton } from '../ui';
 
@@ -87,6 +88,7 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          <AttachButton processId={session.id} kind="session" />
           <IconButton size="sm" onClick={onToggleDetailPanel} label="Toggle detail panel">
             <PanelBottom size={14} />
           </IconButton>
