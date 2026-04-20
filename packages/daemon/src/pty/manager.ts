@@ -415,6 +415,25 @@ export class PtyManager extends EventEmitter {
     if (parts.length === 0) {
       return [detectShell()];
     }
+
+    // On Windows, node-pty uses CreateProcess, which does NOT walk PATHEXT for
+    // bare names like `claude` — npm shims are `.cmd`/`.ps1` so the spawn fails
+    // with "File not found". Run through cmd.exe so the shell resolves PATHEXT.
+    if (process.platform === 'win32') {
+      const first = parts[0].toLowerCase();
+      const alreadyShell =
+        first.endsWith('cmd.exe') ||
+        first.endsWith('powershell.exe') ||
+        first.endsWith('pwsh.exe') ||
+        first === 'cmd' ||
+        first === 'powershell' ||
+        first === 'pwsh';
+      if (!alreadyShell) {
+        const comspec = process.env.ComSpec || 'cmd.exe';
+        return [comspec, '/d', '/s', '/c', command];
+      }
+    }
+
     return parts;
   }
 
