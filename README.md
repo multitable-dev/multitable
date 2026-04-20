@@ -13,7 +13,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Platforms: macOS, Linux, Windows" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-informational">
-  <img alt="Node >=18" src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen">
+  <img alt="Node &gt;=18" src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange">
   <a href="https://github.com/multitable-dev/multitable/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/multitable-dev/multitable/ci.yml?branch=master"></a>
 </p>
