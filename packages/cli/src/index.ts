@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { execSync } from 'child_process';
+import { execSync, execFileSync } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 import os from 'os';
@@ -33,8 +33,6 @@ program
   .option('--host <host>', 'Host to bind to', '127.0.0.1')
   .action((options) => {
     console.log(`Starting MultiTable daemon on ${options.host}:${options.port}...`);
-    // Launch the daemon process
-    const { execFileSync } = require('child_process');
     execFileSync('node', [join(__dirname, '../../daemon/dist/index.js')], { stdio: 'inherit' });
   });
 

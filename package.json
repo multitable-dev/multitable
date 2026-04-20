@@ -26,14 +26,15 @@
   "scripts": {
     "dev": "concurrently -n daemon,web -c blue,magenta \"npm run dev -w @multitable/daemon\" \"npm run dev -w @multitable/web\"",
     "build": "npm run build --workspaces --if-present",
-    "lint": "eslint packages/*/src --ext .ts,.tsx",
-    "format": "prettier --write packages/*/src"
+    "lint": "eslint \"packages/*/src/**/*.{ts,tsx}\"",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx}\""
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
     "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
     "prettier": "^3.2.0",
     "typescript": "^5.4.0"
   },
