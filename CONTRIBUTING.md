@@ -13,7 +13,7 @@ Thanks for your interest in contributing! MultiTable is fully open source and we
 ### Setup
 
 ```bash
-git clone https://github.com/multitable-dev/multitable.git
+git clone https://github.com/erickalfaro/multitable.git
 cd multitable
 npm install
 ```

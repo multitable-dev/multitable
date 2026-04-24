@@ -16,7 +16,7 @@
   <img alt="Node &gt;=18" src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen">
   <img alt="100% local" src="https://img.shields.io/badge/runs-100%25%20local-success">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange">
-  <a href="https://github.com/multitable-dev/multitable/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/multitable-dev/multitable/ci.yml?branch=master"></a>
+  <a href="https://github.com/erickalfaro/multitable/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/erickalfaro/multitable/ci.yml?branch=master"></a>
 </p>
 
 <p align="center">
@@ -183,7 +183,7 @@ MultiTable is pre-npm-publish — you install it from source. All three platform
 xcode-select --install
 
 # 2. Clone, install, build
-git clone https://github.com/multitable-dev/multitable.git
+git clone https://github.com/erickalfaro/multitable.git
 cd multitable
 npm install
 npm run build
@@ -200,7 +200,7 @@ sudo apt-get update
 sudo apt-get install -y build-essential python3 git
 
 # 2. Clone, install, build
-git clone https://github.com/multitable-dev/multitable.git
+git clone https://github.com/erickalfaro/multitable.git
 cd multitable
 npm install
 npm run build
@@ -222,7 +222,7 @@ On **Arch**: `sudo pacman -S --needed base-devel python git`.
 #    (That pulls Visual Studio Build Tools + Python 3 via Chocolatey.)
 
 # 2. Clone, install, build
-git clone https://github.com/multitable-dev/multitable.git
+git clone https://github.com/erickalfaro/multitable.git
 cd multitable
 npm install
 npm run build

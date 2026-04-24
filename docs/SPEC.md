@@ -2861,7 +2861,7 @@ All major open questions have been resolved:
 | Channel | Name |
 |---|---|
 | Website | `multitable.dev` |
-| GitHub | `github.com/multitable-dev/multitable` |
+| GitHub | `github.com/erickalfaro/multitable` |
 | npm | `multitable` |
 | CLI binary | `mt` |
 | Tagline | *"Stop single-tabling your code."* |
