@@ -6,14 +6,15 @@
 <h1 align="center">MultiTable</h1>
 
 <p align="center">
-  <em>One cockpit for every AI agent, dev server, and terminal in your workflow.</em><br/>
-  <sub>Because <code>tmux</code> wasn't built for the day Claude, Codex, and <code>npm run dev</code> all need your attention at once.</sub>
+  <em>One cockpit for every AI coding agent, dev server, and terminal in your workflow.</em><br/>
+  <sub>Because <code>tmux</code> wasn't built for the day Claude, Codex, Aider, and <code>npm run dev</code> all need your attention at once.</sub>
 </p>
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
   <img alt="Platforms: macOS, Linux, Windows" src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20Windows-informational">
   <img alt="Node &gt;=18" src="https://img.shields.io/badge/node-%E2%89%A518-brightgreen">
+  <img alt="100% local" src="https://img.shields.io/badge/runs-100%25%20local-success">
   <img alt="Status: MVP" src="https://img.shields.io/badge/status-MVP-orange">
   <a href="https://github.com/multitable-dev/multitable/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/multitable-dev/multitable/ci.yml?branch=master"></a>
 </p>
@@ -28,6 +29,10 @@
 ## What is this?
 
 MultiTable is a **local, browser-based dashboard** for the chaos of agentic coding. A small Node.js daemon on your machine spawns your processes via real PTYs (thanks, [`node-pty`](https://github.com/microsoft/node-pty)), persists state in SQLite, and serves a React UI at `http://localhost:3000`. One tab. Every project. Every agent. Every dev server.
+
+It's **agent-agnostic** — Claude Code, Codex, Aider, Cursor's CLI, your own scripts. Anything you'd run in a terminal runs in MultiTable. Claude Code gets first-class hooks integration (in-UI permission prompts, cost tracking, "done" notifications), but nothing about the rest of the app cares which model is on the other end of the PTY.
+
+**Privacy:** the daemon runs entirely on your machine. No accounts, no telemetry, no outbound calls. The only network traffic is between your browser and `localhost` (or your tailnet, if you turn that on).
 
 ```
 Before MultiTable                      After MultiTable
@@ -50,18 +55,59 @@ Before MultiTable                      After MultiTable
 - You want to check on a running agent from your **iPad in the kitchen** over Tailscale.
 - You want **cost and token usage** per session without scraping logs.
 
+## Why I built this
+
+I wanted to vibe-code from my phone.
+
+Not "SSH into a box and squint at vim" — Termux has done that for years and it's miserable. I wanted the real thing: a proper file explorer, real terminals, status at a glance for every running agent and dev server, and the ability to approve a Claude Code permission prompt from the couch without losing context. I wanted to kick off half a dozen experiments across different repos in the morning and check on each one between meetings.
+
+Nothing existed that did all that, so I built MultiTable.
+
 ## Features
 
-- **One sidebar, every process.** Sessions (AI agents), commands (dev servers, workers), and terminals (ad‑hoc shells) in a single tree.
-- **Permission prompts surface in the UI.** No more missed Claude Code "Allow / Deny / Always Allow" prompts buried in a pane.
+- **One sidebar, every process.** Sessions (AI agents), commands (dev servers, workers), and terminals (ad‑hoc shells) in a single tree, grouped by project.
+- **Permission prompts surface in the UI.** No more missed Claude Code "Allow / Deny / Always Allow" prompts buried in a pane — accept from any device on your tailnet.
+- **Browser notifications + sound chimes** when an agent finishes, needs attention, or asks a permission question. Walk away, hear when it's your turn.
 - **Auto-restart with backoff.** Configurable `autorestartMax`, `autorestartDelayMs`, and windowed reset — crashes don't mean silence.
 - **File-watch restart** for dev servers — edit `src/**/*.ts`, the watcher restarts the right process.
 - **Cost & token tracking** per Claude Code session, parsed from hook events.
 - **Git diffs** per session, via `simple-git`, so you can see what an agent actually changed.
-- **Session resume** — a Claude Code session remembers its `claudeSessionId`, and on daemon startup you decide whether to resume or start fresh.
+- **Session resume.** A Claude Code session remembers its `claudeSessionId`, and on daemon startup you decide whether to resume or start fresh.
+- **Command palette** (`cmdk`) for fuzzy-jumping between projects, processes, and actions.
 - **SQLite persistence.** Projects, sessions, commands, scrollback — all survive restarts.
-- **LAN / Tailscale access.** Bind the daemon to `0.0.0.0`, open the UI from your phone, iPad, another laptop — same dashboard.
+- **LAN / Tailscale / mobile.** Bind the daemon to `0.0.0.0`, open the UI from your phone or iPad — same dashboard, with a touch toolbar.
+- **Themeable.** Built-in light/dark themes plus user-defined themes via CSS variables.
 - **Config-as-code.** Drop an `mt.yml` in a project and everything autostarts the way you described.
+
+## How it compares
+
+|                       | tmux / zellij | Warp / Wave | **MultiTable** |
+|-----------------------|---------------|-------------|----------------|
+| Multiple PTYs         | ✅            | ✅          | ✅             |
+| Survives reboot       | ⚠️ session files | ❌       | ✅ SQLite     |
+| Per-process auto-restart | ❌         | ❌          | ✅             |
+| File-watch restart    | ❌            | ❌          | ✅             |
+| Agent permission prompts in UI | ❌   | ❌          | ✅ (Claude Code) |
+| Cost / token tracking | ❌            | ❌          | ✅ (Claude Code) |
+| Git diff per session  | ❌            | ❌          | ✅             |
+| Use from your phone   | ❌            | ❌          | ✅             |
+| 100% local, no account | ✅           | ❌          | ✅             |
+
+## "Isn't this just OpenClaw?"
+
+No — different tool, different problem. The two are genuinely complementary.
+
+[OpenClaw](https://github.com/openclaw/openclaw) is a personal AI agent you talk to through messaging apps (WhatsApp, Telegram, Slack…) that runs skills on your behalf. One of its many skills can delegate work to Claude Code or Codex.
+
+MultiTable is the cockpit for those coding agents. You're watching the actual PTY, scrubbing the scrollback, approving the permission prompts in-line, reading the git diff per session. OpenClaw dispatches work to an agent; MultiTable lets you sit in front of the agent and steer it.
+
+Use OpenClaw when you want to message an assistant from your phone and have it go do things. Use MultiTable when you want to *be* the operator — see every running session, every prompt, every line of output — just from a browser instead of a wall of terminals. There's no reason you can't run both.
+
+A few deliberate scope choices that follow from this framing:
+
+- **Localhost-only by default** (`127.0.0.1`). LAN / Tailscale access is one config line away, but the default is not a public bind.
+- **No plugin or skill registry.** MultiTable runs the processes you explicitly spawn. There's no marketplace of community code that auto-loads into your daemon.
+- **Coding-loop only.** No messaging bridges, no smart-home control, no general-purpose skill catalog. Every screen is built around dev-loop primitives: sessions, dev servers, terminals, diffs.
 
 ## Screenshots
 
@@ -295,33 +341,24 @@ packages/
 docs/       Product spec and overview diagrams
 ```
 
-## Keyboard shortcuts
-
-| Shortcut        | Action                         |
-| --------------- | ------------------------------ |
-| `Ctrl+K`        | Command palette                |
-| `Ctrl+T`        | New terminal                   |
-| `Ctrl+W`        | Close terminal                 |
-| `Alt+1..9`      | Switch project                 |
-| `Alt+S/T/C`     | Jump to Sessions/Terms/Cmds    |
-| `Ctrl+Shift+R`  | Restart selected process       |
-| `Ctrl+Shift+S`  | Start all processes            |
-| `Ctrl+Shift+X`  | Stop all processes             |
-
 ## Roadmap
 
 - [x] **v0.1** Foundation — daemon + React + single terminal + projects
 - [x] **v0.2** Persistence — SQLite + dashboard + status indicators
-- [ ] **v0.3** Git tools — diff viewer, rollback, file explorer
-- [ ] **v0.4** Claude Code polish — hooks, permissions, options, resume, respawn
-- [ ] **v0.5** Intelligence — cost tracking, timeline, search, scratchpad
-- [ ] **v0.6** Polish — conflict detection, CLI ergonomics, notifications
+- [x] **v0.3** Git tools — diff viewer per session
+- [x] **v0.4** Claude Code integration — hooks, in-UI permissions, options, resume, cost & token tracking
+- [ ] **v0.5** Global keyboard shortcuts (`Ctrl+K` palette, process jumps) and richer search
+- [ ] **v0.6** Polish — conflict detection improvements, CLI ergonomics, more themes, packaged binaries
 
 ## Contributing
 
 Contributions of all sizes welcome — bug reports, docs fixes, entire features. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Good first issues are labelled `good first issue`.
+Good first issues are labelled `good first issue`. The most useful early PRs would be:
+
+- **Global keyboard shortcuts** (the command palette opens, but nothing has bound `Ctrl+K` yet).
+- **Windows per-process CPU %** (the metrics poller currently relies on Unix `ps`).
+- **Adapters for additional agents** beyond Claude Code (Codex, Aider, etc. work as raw PTYs today; deeper hook-style integration is wide open).
 
 ## Security
 
