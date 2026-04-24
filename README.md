@@ -63,6 +63,19 @@ Not "SSH into a box and squint at vim" — Termux has done that for years and it
 
 Nothing existed that did all that, so I built MultiTable.
 
+## Code from anywhere
+
+The daemon runs on your dev machine. The UI runs in any browser. Stretch one over [Tailscale](https://tailscale.com) and your dev environment goes wherever you do — phone on the train, iPad on the couch, borrowed laptop at a coffee shop. Same projects, same agents, same scrollback, same git diffs. You can kick off a Claude Code session from your desktop, leave the house, approve its permission prompts from your phone, and read the diff it produced on your iPad while you make dinner.
+
+Nothing leaves your machine. Tailscale handles the encrypted tunnel; MultiTable just listens on a port. No cloud sync, no relay server, no account.
+
+```yaml
+# ~/.config/multitable/config.yml
+host: 0.0.0.0   # bind to your tailnet, not the public internet
+```
+
+Then open `http://<your-tailscale-hostname>:3000` from any device on the tailnet. That's it.
+
 ## Features
 
 - **One sidebar, every process.** Sessions (AI agents), commands (dev servers, workers), and terminals (ad‑hoc shells) in a single tree, grouped by project.
@@ -288,11 +301,19 @@ port: 3000
 host: 127.0.0.1   # change to 0.0.0.0 to accept LAN / Tailscale connections
 ```
 
-## Remote access (iPad in the kitchen, etc.)
+## Remote access setup
 
-1. Set `host: 0.0.0.0` in the config above.
-2. Make sure your dev machine is reachable — easiest is [Tailscale](https://tailscale.com).
-3. Open `http://<tailscale-hostname>:3000` from any device on the tailnet. Same UI. Full control. Yes you can approve Claude Code permissions from your phone.
+See [Code from anywhere](#code-from-anywhere) above for the why. The full recipe:
+
+1. Install [Tailscale](https://tailscale.com) on your dev machine and on every device you want to reach it from. Sign in to the same tailnet on each.
+2. Set `host: 0.0.0.0` in `~/.config/multitable/config.yml` and restart the daemon.
+3. Find your dev machine's tailnet name (`tailscale status` shows it) and open `http://<tailscale-hostname>:3000` from any device on the tailnet.
+
+A few things worth noting:
+
+- **Don't bind to `0.0.0.0` without Tailscale** unless you know what you're doing. The daemon has no auth — anything on your network can reach it.
+- **Mobile UI is responsive** — there's a touch toolbar and a swipe-out sidebar built specifically for phone-sized screens.
+- **WebSocket reconnects automatically** when you switch networks (Wi-Fi → cellular and back), so you can walk out the door mid-session.
 
 ---
 
