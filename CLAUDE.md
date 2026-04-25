@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-MultiTable is a local, browser-based dashboard for managing AI coding agents and dev processes. A Node.js daemon spawns PTYs via `node-pty`, persists state in SQLite, and serves a React UI over REST + WebSocket on `localhost:3000`. See `docs/OVERVIEW.md` and `docs/SPEC.md` for the product concept; this file is about working in the code.
+MultiTable is a local, browser-based dashboard for managing AI coding agents and dev processes. A Node.js daemon drives Claude Code sessions through the **`@anthropic-ai/claude-agent-sdk`** (no PTY for sessions), spawns commands and terminals via `node-pty`, persists state in SQLite, and serves a React UI over REST + WebSocket on `localhost:3000`. See `docs/OVERVIEW.md`, `docs/SPEC.md`, and `docs/SDK_MIGRATION_PLAN.md` for the product concept and the migration history; this file is about working in the code.
 
 ## Monorepo layout
 
 npm workspaces under `packages/*`:
 
-- `packages/daemon` — Node.js + Express + `ws` + `node-pty` + `better-sqlite3`. The entire backend.
-- `packages/web` — React + Vite + xterm.js + Zustand + TailwindCSS. Builds into `packages/daemon/dist/public` so the daemon serves the SPA.
+- `packages/daemon` — Node.js + Express + `ws` + `node-pty` + `better-sqlite3` + `@anthropic-ai/claude-agent-sdk`. The entire backend.
+- `packages/web` — React + Vite + xterm.js (commands/terminals only) + CodeMirror 6 (composer) + react-markdown + shiki + Zustand + TailwindCSS. Builds into `packages/daemon/dist/public` so the daemon serves the SPA.
 - `packages/cli` — the `mt` CLI entrypoint (commander).
 
 ## Commands
@@ -46,6 +46,15 @@ The daemon listens on `http://127.0.0.1:3000` and exposes `ws://127.0.0.1:3000/w
 
 No test framework is configured yet — do not invent `npm test` incantations.
 
+## Auth
+
+Sessions go through the Claude Agent SDK, which reads credentials from the same place the `claude` CLI does:
+
+- `ANTHROPIC_API_KEY` env var (preferred for daemons), or
+- `~/.claude/auth.json` (populated by `claude login`).
+
+If neither is present, the first turn fails with a 401-style error. Surface it via the `session:turn-error` toast.
+
 ## Build gotcha: schema.sql
 
 `tsc` does not copy non-TS assets. The daemon's `build` script already runs `cp src/db/schema.sql dist/db/schema.sql`, but if you ever invoke `tsc` directly (e.g. `npx tsc` inside `packages/daemon`), you must also copy the schema or the daemon will crash on startup when it tries to init the DB.
@@ -59,52 +68,99 @@ Startup sequence lives in `index.ts` and is load-bearing — read it before chan
 1. Load global config (`config/loader.ts`, reads `~/.config/multitable/config.yml` via `env-paths`).
 2. Check `pids.json` for orphaned processes from prior runs (`pids.ts`).
 3. Init SQLite (`db/store.ts` — schema from `db/schema.sql`).
-4. Create `PtyManager` and `PermissionManager`.
-5. Install Claude Code hooks into each project's `.claude/settings.json` (`hooks/installer.ts`).
-6. Build Express + WS server (`server.ts`).
-7. Autostart sessions/commands from the DB; attach file watchers.
-8. Listen on `host:port`.
+4. Create `PtyManager`, `PermissionManager`, and `AgentSessionManager`.
+5. Build Express + WS server (`server.ts`).
+6. Load DB sessions and `agentManager.register(...)` each one (no PTY spawn). Autostart commands; attach file watchers for commands.
+7. Listen on `host:port`.
 
 Key modules:
 
-- `pty/manager.ts` — the single source of truth for live processes. Holds an in-memory `ManagedProcess` map keyed by process id, handles spawn / restart / exit / auto-restart backoff, emits events (`state-changed`, `metrics`, `exit`, `resume-failed`) consumed by `server.ts`.
-- `pty/ringBuffer.ts` — per-process scrollback buffer replayed to new WS subscribers.
-- `pty/stream.ts` — the WS message router (`handleWsMessage`), translates `pty-input`, `subscribe`, `unsubscribe`, resize, etc. into manager calls.
-- `db/store.ts` — better-sqlite3, synchronous. Exported functions are the DB API; routers call them directly rather than going through a service layer.
-- `api/*.ts` — one router per resource (`projects`, `sessions`, `commands`, `terminals`, `processes`, `config`, `search`, `transcripts`, `notes`). Each is a factory that receives the `PtyManager` and returns an `express.Router`.
-- `hooks/` — Claude Code integration. `installer.ts` writes hook entries into project `.claude/settings.json` so Claude Code calls back into `/api/hooks/*`. `receiver.ts` is the HTTP receiver. `permissionManager.ts` holds pending permission prompts until the UI resolves them; `costParser.ts`, `labeler.ts`, `optionDetector.ts`, `promptsParser.ts` parse hook payloads.
-- `watcher/index.ts` — chokidar-based file watcher for `mt.yml` changes and per-process `fileWatchPatterns` restart triggers.
-- `tracker/`, `git/`, `conflict/` — cost tracking, git diff via `simple-git`, and process-conflict detection.
-- `types.ts` — shared types (`ManagedProcess`, `ProcessState`, `WsMessage`, `PermissionPrompt`, `Project`, `GlobalConfig`, `ProjectConfig`, `SpawnConfig`). Import types from here rather than redefining.
+- **`agent/manager.ts` — `AgentSessionManager`**. Owns every Claude Code session. Holds an in-memory `Map<sessionId, AgentSession>` (state, claudeSessionId, cost/token totals, in-flight turn). `sendTurn()` calls SDK `query()` with `resume`, `canUseTool`, and `hooks`; `handleSdkMessage` routes the SDK's async-iterable events through `sdkAdapter` to typed `Message[]`. Emits `state-changed`, `session-updated`, `assistant-message`, `tool-event`, `user-message`, `turn-result`, `turn-error`, `turn-complete`, `state-snapshot`, `options-detected`, `label-updated`, `notification`, `session-ended` — all consumed by `server.ts` and rebroadcast over WS.
+- **`agent/sdkAdapter.ts`** — pure converters from SDK message shapes to MultiTable's `Message` union (the same shape `transcripts/parser.ts` produces from the on-disk JSONL, so the frontend treats both identically).
+- **`agent/types.ts`** — `AgentSession`, `AgentMessageOut`, `SendTurnInput`.
+- **`pty/manager.ts`** — `PtyManager`, the source of truth for **commands and terminals only** (sessions never go through it). Spawn / restart / metrics / ring-buffer scrollback. Emits `state-changed`, `metrics`, `exit`. The `--resume` / zombie / crash-detection branches are gone — that was the PTY-era session path.
+- **`pty/ringBuffer.ts`** — per-process scrollback buffer replayed to new WS subscribers (commands and terminals).
+- **`pty/stream.ts`** — the WS message router (`handleWsMessage`). Routes `subscribe`/`unsubscribe`/`pty-input`/`pty-resize` for commands and terminals; routes `session:send` to `agentManager.sendTurn`. For session subscribes, it auto-registers the session from the DB if missing and emits `process-state-changed`; sessions never trigger PTY spawn.
+- **`db/store.ts`** — better-sqlite3, synchronous. Exported functions are the DB API; routers call them directly rather than going through a service layer.
+- **`api/*.ts`** — one router per resource (`projects`, `sessions`, `commands`, `terminals`, `processes`, `config`, `search`, `transcripts`, `notes`). Each is a factory; `sessions` and `processes` receive both `manager` (PtyManager, for command/terminal lifecycle) and `agentManager` where needed. Sessions auto-register from the DB on `_internal/agent/turn` and on `session:send` so newly-created or post-boot rows always work.
+- **`hooks/permissionManager.ts`** — holds pending permission prompts until the UI resolves them. Exposes `requestFromSdk(sessionId, ..., signal, extras)` that the SDK's `canUseTool` callback awaits. Reuses the existing dedup, allowlist (`always-allow`), auto-defer, and 110s timeout. The HTTP `/api/hooks/*` receiver is **gone** — Phase 6 retired it.
+- **`hooks/costParser.ts`, `labeler.ts`, `optionDetector.ts`, `promptsParser.ts`** — JSONL-driven utilities still used by the `/cost`, `/prompts`, label generation, and option detection paths. They read the same `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` files the SDK writes.
+- **`transcripts/parser.ts`** — JSONL → `Message[]` parser, used by `/api/sessions/:id/messages` and the transcript browser.
+- **`watcher/index.ts`** — chokidar-based file watcher for `mt.yml` changes and per-command `fileWatchPatterns` restart triggers (commands only; sessions don't have a "restart on file change" concept).
+- **`tracker/`, `git/`, `conflict/`** — cost tracking, git diff via `simple-git`, and process-conflict detection.
+- **`types.ts`** — shared types (`ManagedProcess`, `ProcessState`, `WsMessage`, `PermissionPrompt`, `Project`, `GlobalConfig`, `ProjectConfig`, `SpawnConfig`). The `PermissionPrompt` carries optional `title`/`displayName`/`subtitle`/`blockedPath` fields surfaced from the SDK's `canUseTool` options bag.
 
 ### API routing quirk
 
 Creation endpoints `POST /api/projects/:id/{sessions,commands,terminals}` live on the **projects router**, not the resource routers. The projects router calls DB store functions directly. The per-resource routers (`/api/sessions`, `/api/commands`, `/api/terminals`) handle mutations on an existing id (`PUT`, `DELETE`, lifecycle actions). If you're adding a creation route, put it on the projects router to stay consistent.
 
+### Session vs Command vs Terminal
+
+Three process types, modeled separately and managed by **different** owners:
+
+- **Session** — AI agent. Owned by `AgentSessionManager`. No PTY child. Conversation history persists at `~/.claude/projects/<encoded-cwd>/<claudeSessionId>.jsonl` (the same file the `claude` CLI uses — full interop). Sending a message auto-starts the SDK turn; if a `claudeSessionId` is on file the SDK resumes, otherwise it creates a fresh conversation. There is **no separate "Resume" or "Start" action**.
+- **Command** — long-running dev process (dev server, worker). PTY child. Has autorestart + file-watch-restart.
+- **Terminal** — ad-hoc shell. PTY child.
+
+Process state machine (the `state` field):
+
+- For commands/terminals: `running` (PTY alive) / `idle` / `stopped` (no PTY) / `errored` (auto-restart exhausted).
+- For sessions: `stopped` (resting; ready for next turn) / `running` (turn in flight) / `errored` (last turn threw, see `session:turn-error`). There's no `idle` distinction for sessions — they sit at `stopped` until you send something.
+
+Auto-restart respects `autorestartMax`, `autorestartDelayMs`, and resets count after `autorestartWindowSecs`. Sessions ignore all autorestart fields — those columns are kept in the DB schema for backward compatibility but are commands-only in practice.
+
 ### WebSocket
 
-Single endpoint: `/ws`. Messages are JSON `{ type, processId?, payload }`. One client subscribes to at most one process at a time (`WsClientState.subscribedProcess`); `pty-output` is sent **only** to that subscriber from `pty/stream.ts`. State/metrics/exit/permission events are broadcast to all clients. **Do not also broadcast `pty-output` from `server.ts`** — there is an explicit comment warning against the double-delivery bug this caused before.
+Single endpoint: `/ws`. Messages are JSON `{ type, processId?, payload }`. One client subscribes to at most one process at a time (`WsClientState.subscribedProcess`). State / permission / agent events are broadcast to subscribers (`sendToSubscribers`) or all clients (`broadcast`). Heartbeat: 30s ping/pong, terminate on missed pong.
 
-Heartbeat: 30s ping/pong, terminate on missed pong.
+**Inbound (client → server):**
+
+- `subscribe` / `unsubscribe` — bind/release the client's `subscribedProcess` for per-process events.
+- `session:send` `{ processId, payload: { text } }` — dispatch a user turn to `agentManager.sendTurn`. Auto-registers the session from the DB if needed.
+- `pty-input` / `pty-resize` — commands and terminals only; silently dropped for session ids.
+- `permission:respond` / `permission:answer-question` — UI's response to a permission prompt; resolves the SDK's `canUseTool` Promise.
+
+**Outbound (server → client):**
+
+- `process-state-changed` / `process-metrics` / `process-exited` — for any process type. Sessions emit `process-state-changed` from the agent manager with the same payload shape.
+- `session:assistant-message` `{ messages: Message[] }` — text + tool_use blocks for one assistant turn.
+- `session:tool-event` `{ messages: Message[] }` — tool_result blocks; rendered by `ToolCallCard`.
+- `session:user-message` `{ messages: Message[] }` — confirms the user's recorded turn; dedupe by `Message.id`.
+- `session:turn-result` `{ subtype, totalCostUsd, usage, text }` — fires when the SDK's `result` message arrives.
+- `session:turn-error` `{ message }` — surfaced as a toast.
+- `session:turn-complete` `{}` — fires after `turn-result` regardless of success/error.
+- `session:state-updated` `{ sessionId, state }` — live cost / token / currentTool snapshot. Mirrored onto `Session.claudeState` in the store.
+- `session:notification` `{ sessionId, payload }` — replaces the old `hook:Notification`; surfaces a toast + chime.
+- `session:updated` / `session:created` / `session:deleted` — DB-row events.
+- `session:options-detected` / `session:label-updated` — Stop-time JSONL parses for option detection and the labeler.
+- `permission:prompt` / `permission:resolved` / `permission:expired` — permission flow.
+- `pty-output` / `scrollback` — commands and terminals only.
+
+Single-delivery rule: `pty-output` is sent directly to the subscribed client in `pty/stream.ts`'s `handleSubscribe` data listener. Do **not** also broadcast it from `server.ts` — there's a load-bearing comment about the double-delivery bug this caused.
+
+### Slash commands
+
+The composer's `/`-autocomplete merges:
+
+1. Custom commands from `<project>/.claude/commands/*.md` (project-scoped, ranked highest) — discovered via `GET /api/projects/:id/slash-commands` which parses YAML frontmatter.
+2. Custom commands from `~/.claude/commands/*.md` (user-global).
+3. **MultiTable-native built-ins** that are intercepted client-side in `ChatInputCM`'s `handleNativeSlash`. Currently only `/clear` (calls `POST /api/sessions/:id/reset`, nulls `claudeSessionId`, clears messages) and `/cost` (renders cost as an inline system message via `appendMessages`).
+
+Custom commands flow through `wsClient.sendTurn` → SDK `query()`; the SDK reads the `.md` file and substitutes `$ARGUMENTS`. Built-in TUI commands like `/model`, `/compact`, `/init` are deliberately NOT surfaced — the SDK doesn't intercept them, so they'd land as plain text. To add one, intercept in `handleNativeSlash` and add it to `BUILTIN_SLASH_COMMANDS` in `cm-completions.ts`.
 
 ### Web (`packages/web/src`)
 
-- `main.tsx` → `App.tsx` — single root. `App.tsx` wires WebSocket events to the Zustand store; re-fetches everything on `ws:reconnected`.
-- `stores/appStore.ts` — the single Zustand store. Projects, processes (sessions/commands/terminals keyed by id), permissions, options, themes, modal state, selection.
-- `lib/ws.ts`, `lib/api.ts` — WS client (with reconnect) and fetch wrapper. UI code talks to these, not `fetch` directly.
-- `components/` — organized by area: `sidebar/`, `main-pane/` (Terminal / Dashboard / ProjectOverview / SessionDetailPanel), `modals/`, `command-palette/`, `permission/`, `option/`, `status-bar/`, `mobile/`, `ui/` (primitives).
+- `main.tsx` → `App.tsx` — single root. `App.tsx` wires WebSocket events to the Zustand store; re-fetches everything on `ws:reconnected`. Uses `useAppStore.getState()` inside WS handlers (not the closure's stale `store`) so updates always read live state.
+- `stores/appStore.ts` — the single Zustand store. Projects, processes (sessions/commands/terminals keyed by id), permissions, options, themes, modal state, selection, **per-session message lists** (`messagesBySession`).
+- `lib/ws.ts`, `lib/api.ts` — WS client (with reconnect) and fetch wrapper. UI code talks to these, not `fetch` directly. `wsClient.sendTurn(processId, text)` is the only way to send a session message; commands and terminals still use `wsClient.sendInput`.
+- `lib/cm-completions.ts` — CodeMirror autocompletion sources for `@` file mentions (fuzzy-matched against the project file index, `filter: false` because labels don't share the `@` prefix) and `/` slash commands.
+- `lib/cm-theme.ts` — CM6 theme bound to live CSS variables via `getComputedStyle`. Tooltip styles (autocomplete popup) live in `globals.css` because fixed-position tooltips mount on `document.body` and don't inherit the editor's themed class scope.
+- `lib/shiki.ts` — lazy singleton highlighter for assistant code blocks.
+- `components/main-pane/chat/` — `SessionChat`, `MessageList`, `AssistantMessage` (react-markdown + shiki), `UserMessage`, `ToolCallCard` (collapsible), `CodeBlock`, `ChatInputCM` (CodeMirror 6 composer). Sessions render here; commands and terminals still render through `TerminalView` (xterm).
+- `components/main-pane/MainPane.tsx` — branches on `process.type === 'session'` to mount `SessionChat`; everything else mounts `TerminalView`.
+- `components/sidebar/`, `components/main-pane/` (Dashboard / ProjectOverview / SessionDetailPanel), `components/modals/`, `components/command-palette/`, `components/permission/`, `components/option/`, `components/status-bar/`, `components/mobile/`, `components/ui/` (primitives) — organized by area.
 - `hooks/useTheme.ts`, `lib/themes.ts` — theme system; CSS variables on `:root` drive colors. Inline styles throughout the codebase use `var(--...)` tokens.
 - Styling: Tailwind is set up, but most components use inline `style={{ ... }}` with CSS variables. Follow the existing pattern in the file you're editing rather than mixing approaches.
-
-### Session vs Command vs Terminal
-
-Three process types, all managed by the same `PtyManager` but modeled separately in the DB and UI:
-
-- **Session** — AI agent (Claude, Codex, etc.). Tracks `claudeSessionId`, cost, tokens, labels. If a session has a prior `claudeSessionId` on startup, the daemon **registers but does not auto-spawn** it — the user must pick Resume or Start New (see `index.ts` autostart block).
-- **Command** — long-running dev process (dev server, worker). Has autorestart + file-watch-restart.
-- **Terminal** — ad-hoc shell, no config.
-
-Process state machine: `running` / `idle` / `stopped` / `errored`. Auto-restart respects `autorestartMax`, `autorestartDelayMs`, and resets count after `autorestartWindowSecs`.
 
 ## TypeScript / module system
 
@@ -116,3 +172,14 @@ Process state machine: `running` / `idle` / `stopped` / `errored`. Auto-restart 
 
 - Prettier: single quotes, trailing commas, semicolons, 100-char width, 2-space tabs.
 - ESLint extends `eslint:recommended` + `@typescript-eslint/recommended`. Unused vars prefixed with `_` are allowed.
+
+## Recently retired (don't reintroduce)
+
+These were part of the pre-SDK architecture and have been deleted. Rebuilding them would re-create bugs we already fixed:
+
+- `hooks/installer.ts` and `hooks/receiver.ts` — wrote curl-based webhook hooks into project `.claude/settings.json` and exposed `/api/hooks/*`. Replaced by SDK `options.hooks` callbacks in `agent/manager.ts:makeHooks`.
+- `transcripts/tail.ts` and `TranscriptTailerRegistry` — chokidar tail of session JSONL feeding `session:transcript-delta`. Replaced by the SDK's async-iterable event stream feeding `session:assistant-message` / `session:tool-event` / `session:user-message`.
+- `claude --resume <id>` PTY spawn, the `'No conversation found'` detector, the `/$bunfs/...` zombie/crash guard, the `resume-failed` event — sessions don't have a child process anymore.
+- `/api/sessions/:id/start`, `/restart`, `/spawn-claude`, `/resume-claude` — sessions auto-start on first turn; the only lifecycle endpoint is `/stop` (calls `agentManager.abortTurn`) and the new `/reset` (clears the conversation for `/clear`).
+- `hook:*` WS events — replaced by specific `session:*` events (notification, turn-complete, etc.).
+- The xterm `TerminalView` for sessions — now used only for commands and terminals.

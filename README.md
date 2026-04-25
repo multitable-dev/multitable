@@ -28,9 +28,9 @@
 
 ## What is this?
 
-MultiTable is a **local, browser-based dashboard** for the chaos of agentic coding. A small Node.js daemon on your machine spawns your processes via real PTYs (thanks, [`node-pty`](https://github.com/microsoft/node-pty)), persists state in SQLite, and serves a React UI at `http://localhost:3000`. One tab. Every project. Every agent. Every dev server.
+MultiTable is a **local, browser-based dashboard** for the chaos of agentic coding. A small Node.js daemon on your machine drives Claude Code through the [Claude Agent SDK](https://www.npmjs.com/package/@anthropic-ai/claude-agent-sdk), spawns dev servers and shells via real PTYs (thanks, [`node-pty`](https://github.com/microsoft/node-pty)), persists state in SQLite, and serves a React UI at `http://localhost:3000`. One tab. Every project. Every agent. Every dev server.
 
-It's **agent-agnostic** — Claude Code, Codex, Aider, Cursor's CLI, your own scripts. Anything you'd run in a terminal runs in MultiTable. Claude Code gets first-class hooks integration (in-UI permission prompts, cost tracking, "done" notifications), but nothing about the rest of the app cares which model is on the other end of the PTY.
+**Sessions are SDK-driven, not terminal-driven.** Claude Code conversations render as a sleek chat UI — markdown, syntax-highlighted code, collapsible tool calls, inline permission cards, `/` slash commands and `@file` mentions in the composer. No xterm screen-scraping. Commands (dev servers, queue workers) and terminals (ad-hoc shells) still run on real PTYs because that's the right model for them.
 
 **Privacy:** the daemon runs entirely on your machine. No accounts, no telemetry, no outbound calls. The only network traffic is between your browser and `localhost` (or your tailnet, if you turn that on).
 
@@ -78,16 +78,18 @@ Then open `http://<your-tailscale-hostname>:3000` from any device on the tailnet
 
 ## Features
 
-- **One sidebar, every process.** Sessions (AI agents), commands (dev servers, workers), and terminals (ad‑hoc shells) in a single tree, grouped by project.
-- **Permission prompts surface in the UI.** No more missed Claude Code "Allow / Deny / Always Allow" prompts buried in a pane — accept from any device on your tailnet.
+- **Sleek chat UI for AI sessions.** Claude Code runs as a CodeMirror-based composer + a chat history with markdown, shiki-highlighted code blocks, and collapsible tool-call cards. No more peering at a terminal pretending to be a chat.
+- **One sidebar, every process.** Sessions (AI agents, SDK-driven), commands (dev servers, workers, PTY-driven), and terminals (ad‑hoc shells, PTY-driven) in a single tree, grouped by project.
+- **Permission prompts surface in the UI.** No more missed Claude Code "Allow / Deny / Always Allow" prompts buried in a pane — accept from any device on your tailnet. Plumbed straight from the SDK's `canUseTool` callback.
+- **`@file` mentions and `/` slash commands** in the composer. Fuzzy file picker over your project tree; `/clear` and `/cost` are intercepted client-side; user-defined `.claude/commands/*.md` flow through the SDK as templated prompts.
 - **Browser notifications + sound chimes** when an agent finishes, needs attention, or asks a permission question. Walk away, hear when it's your turn.
-- **Auto-restart with backoff.** Configurable `autorestartMax`, `autorestartDelayMs`, and windowed reset — crashes don't mean silence.
+- **Auto-restart with backoff** for commands. Configurable `autorestartMax`, `autorestartDelayMs`, and windowed reset — crashes don't mean silence.
 - **File-watch restart** for dev servers — edit `src/**/*.ts`, the watcher restarts the right process.
-- **Cost & token tracking** per Claude Code session, parsed from hook events.
+- **Live cost & token tracking** per Claude Code session, surfaced from the SDK's `result` message — no log scraping.
 - **Git diffs** per session, via `simple-git`, so you can see what an agent actually changed.
-- **Session resume.** A Claude Code session remembers its `claudeSessionId`, and on daemon startup you decide whether to resume or start fresh.
+- **Session resume.** Conversations persist as JSONL at the same `~/.claude/projects/<encoded-cwd>/<id>.jsonl` location the `claude` CLI uses — full interop. The first turn after daemon restart resumes natively via the SDK.
 - **Command palette** (`cmdk`) for fuzzy-jumping between projects, processes, and actions.
-- **SQLite persistence.** Projects, sessions, commands, scrollback — all survive restarts.
+- **SQLite persistence.** Projects, sessions, commands, scrollback (commands/terminals only) — all survive restarts.
 - **LAN / Tailscale / mobile.** Bind the daemon to `0.0.0.0`, open the UI from your phone or iPad — same dashboard, with a touch toolbar.
 - **Themeable.** Built-in light/dark themes plus user-defined themes via CSS variables.
 - **Config-as-code.** Drop an `mt.yml` in a project and everything autostarts the way you described.
@@ -100,8 +102,10 @@ Then open `http://<your-tailscale-hostname>:3000` from any device on the tailnet
 | Survives reboot       | ⚠️ session files | ❌       | ✅ SQLite     |
 | Per-process auto-restart | ❌         | ❌          | ✅             |
 | File-watch restart    | ❌            | ❌          | ✅             |
-| Agent permission prompts in UI | ❌   | ❌          | ✅ (Claude Code) |
-| Cost / token tracking | ❌            | ❌          | ✅ (Claude Code) |
+| Agent in a chat UI (not a terminal) | ❌ | ❌      | ✅ (Claude Agent SDK) |
+| Agent permission prompts in UI | ❌   | ❌          | ✅             |
+| Live cost / token tracking | ❌       | ❌          | ✅             |
+| `@file` and `/` slash commands in composer | ❌ | ❌  | ✅             |
 | Git diff per session  | ❌            | ❌          | ✅             |
 | Use from your phone   | ❌            | ❌          | ✅             |
 | 100% local, no account | ✅           | ❌          | ✅             |
@@ -322,44 +326,59 @@ A few things worth noting:
 ```mermaid
 flowchart TB
     subgraph Browser["Browser (laptop, iPad, phone)"]
-        UI["React + xterm.js UI"]
+        UI["React UI<br/>chat (CodeMirror + react-markdown)<br/>+ xterm.js for cmds/terms"]
     end
 
     subgraph Daemon["mt daemon (Node.js on localhost)"]
         Express["Express<br/>REST API"]
         WS["ws<br/>WebSocket stream"]
-        PTY["node-pty<br/>ManagedProcess map"]
+        Agent["AgentSessionManager<br/>SDK query() + canUseTool + hooks"]
+        PTY["PtyManager<br/>node-pty (cmds, terminals)"]
         DB[("SQLite<br/>better-sqlite3")]
-        Watcher["chokidar<br/>file watcher"]
+        Watcher["chokidar<br/>file watcher (cmds)"]
         Git["simple-git<br/>diffs"]
-        Hooks["Claude Code<br/>hook receiver"]
+        Perms["PermissionManager"]
     end
 
-    UI -- "REST: CRUD" --> Express
-    UI <-- "WS: pty I/O, state, metrics, permissions" --> WS
+    UI -- "REST: CRUD, /messages, /cost" --> Express
+    UI <-- "WS: session:send, pty I/O, state, permissions" --> WS
 
     Express --> DB
+    Express --> Agent
     Express --> PTY
+    WS <--> Agent
     WS <--> PTY
     Watcher --> PTY
-    PTY --> DB
-    Hooks --> DB
-    Hooks --> WS
 
-    ClaudeCode["Claude Code<br/>(spawned session)"] -- "HTTP hooks" --> Hooks
-    PTY -- "spawns" --> ClaudeCode
+    Agent -- "query()" --> SDK["@anthropic-ai/<br/>claude-agent-sdk"]
+    Agent --> DB
+    Agent <--> Perms
+    SDK -- "canUseTool, hooks" --> Agent
+    SDK -- "writes JSONL" --> JSONL[("~/.claude/projects/<br/>&lt;cwd&gt;/&lt;id&gt;.jsonl")]
+    Express -- "reads JSONL<br/>(transcripts, /cost fallback)" --> JSONL
+
+    PTY --> DB
+    PTY <--> WS
 ```
 
-See [`docs/SPEC.md`](docs/SPEC.md) for the full product specification and [`docs/OVERVIEW.md`](docs/OVERVIEW.md) for a deeper visual walkthrough.
+See [`docs/SPEC.md`](docs/SPEC.md) for the full product specification, [`docs/OVERVIEW.md`](docs/OVERVIEW.md) for a deeper visual walkthrough, and [`docs/SDK_MIGRATION_PLAN.md`](docs/SDK_MIGRATION_PLAN.md) for the architectural rewrite that moved sessions from PTY to SDK.
 
 ## Repository layout
 
 ```
 packages/
-  daemon/   Node.js backend — Express + ws + node-pty + SQLite
-  web/      React frontend — xterm.js + Zustand + Tailwind
+  daemon/   Node.js backend — Express + ws + node-pty + claude-agent-sdk + SQLite
+    src/agent/        AgentSessionManager, sdkAdapter (SDK-driven sessions)
+    src/pty/          PtyManager (commands + terminals)
+    src/hooks/        permissionManager, costParser, labeler, optionDetector
+    src/transcripts/  parser.ts (JSONL → Message[])
+    src/api/          REST routers per resource
+  web/      React frontend
+    src/components/main-pane/chat/   SessionChat, MessageList, ChatInputCM (CodeMirror)
+    src/components/main-pane/        TerminalView (xterm) for commands/terminals
+    src/lib/                         ws client, api client, cm-completions, shiki
   cli/      `mt` command (commander)
-docs/       Product spec and overview diagrams
+docs/       Product spec, overview diagrams, SDK migration plan
 ```
 
 ## Roadmap
@@ -368,8 +387,10 @@ docs/       Product spec and overview diagrams
 - [x] **v0.2** Persistence — SQLite + dashboard + status indicators
 - [x] **v0.3** Git tools — diff viewer per session
 - [x] **v0.4** Claude Code integration — hooks, in-UI permissions, options, resume, cost & token tracking
-- [ ] **v0.5** Global keyboard shortcuts (`Ctrl+K` palette, process jumps) and richer search
-- [ ] **v0.6** Polish — conflict detection improvements, CLI ergonomics, more themes, packaged binaries
+- [x] **v0.5** Chat UI for sessions — CodeMirror composer, markdown + shiki rendering, collapsible tool cards
+- [x] **v0.6** SDK migration — sessions driven by `@anthropic-ai/claude-agent-sdk` (no PTY for sessions); `@file` mentions and `/` slash commands
+- [ ] **v0.7** Global keyboard shortcuts (`Ctrl+K` palette, process jumps) and richer search
+- [ ] **v0.8** Polish — conflict detection improvements, CLI ergonomics, more themes, packaged binaries
 
 ## Contributing
 
@@ -379,7 +400,8 @@ Good first issues are labelled `good first issue`. The most useful early PRs wou
 
 - **Global keyboard shortcuts** (the command palette opens, but nothing has bound `Ctrl+K` yet).
 - **Windows per-process CPU %** (the metrics poller currently relies on Unix `ps`).
-- **Adapters for additional agents** beyond Claude Code (Codex, Aider, etc. work as raw PTYs today; deeper hook-style integration is wide open).
+- **More native slash commands** (`/model`, `/compact`, `/init` etc. — currently only `/clear` and `/cost` are intercepted; the rest get sent to the SDK as plain text and don't do their CLI thing).
+- **Adapters for additional agents** beyond Claude Code (Codex, Aider, etc. still run as raw PTYs through commands today; an SDK-style integration for non-Claude agents is wide open).
 
 ## Security
 
@@ -391,4 +413,4 @@ MIT — see [`LICENSE`](LICENSE).
 
 ---
 
-<p align="center"><sub>Built with node-pty, React, SQLite, and a healthy refusal to tmux one more thing.</sub></p>
+<p align="center"><sub>Built with the Claude Agent SDK, node-pty, React, CodeMirror, SQLite, and a healthy refusal to tmux one more thing.</sub></p>
