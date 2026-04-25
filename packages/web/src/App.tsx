@@ -361,10 +361,10 @@ function App() {
 
   return (
     <div
+      className="mt-app-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
-        height: '100vh',
         overflow: 'hidden',
         backgroundColor: 'var(--bg-primary)',
       }}
