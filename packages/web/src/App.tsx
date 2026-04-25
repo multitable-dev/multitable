@@ -1,7 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { Toaster, toast } from 'react-hot-toast';
-import { Palette, Menu, Zap } from 'lucide-react';
-import { BUILTIN_THEMES } from './lib/themes';
+import { Menu } from 'lucide-react';
 import { Sidebar } from './components/sidebar/Sidebar';
 import { MainPane } from './components/main-pane/MainPane';
 import { StatusBar } from './components/status-bar/StatusBar';
@@ -22,6 +21,7 @@ import { handleSessionAlert } from './lib/notify';
 import { updateTabBadge } from './lib/tabBadge';
 import { loadPrefs, subscribePrefs } from './lib/notificationPrefs';
 import { useTheme } from './hooks/useTheme';
+import { useIsMobile } from './lib/useIsMobile';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
 import { NotificationCenter } from './components/notifications/NotificationCenter';
 import { ElicitationModalHost } from './components/elicitation/ElicitationModal';
@@ -31,20 +31,14 @@ function App() {
   const store = useAppStore();
   useTheme();
 
-  // Mobile detection
-  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
+  const isMobile = useIsMobile();
+  const mobileDrawerOpen = store.mobileDrawerOpen;
+  const setMobileDrawerOpen = store.setMobileDrawerOpen;
 
   // Close drawer when a process is selected on mobile
   useEffect(() => {
     if (isMobile) setMobileDrawerOpen(false);
-  }, [store.selectedProcessId, isMobile]);
+  }, [store.selectedProcessId, isMobile, setMobileDrawerOpen]);
 
   // Clear per-session unread alert badge when the session becomes selected.
   useEffect(() => {
@@ -83,15 +77,13 @@ function App() {
     };
   }, []);
 
-  // Compute running/total counts for mobile top bar (scoped to focused project)
-  const focusedProject = store.projects.find(p => p.id === store.focusedProjectId);
-  const allProcesses = [
-    ...Object.values(store.sessions),
-    ...Object.values(store.commands),
-    ...Object.values(store.terminals),
-  ].filter(p => p.projectId === store.focusedProjectId);
-  const runningCount = allProcesses.filter(p => p.state === 'running').length;
-  const totalCount = allProcesses.length;
+  // The merged SessionHeaderBar takes over as the mobile top bar when a session
+  // is the focused process, so the app-level top bar is suppressed there.
+  const focusedProject = store.projects.find((p) => p.id === store.focusedProjectId);
+  const isSessionFocused = !!(
+    store.selectedProcessId && store.sessions[store.selectedProcessId]
+  );
+  const showAppTopBar = isMobile && !isSessionFocused;
 
   useEffect(() => {
     // Connect WebSocket
@@ -369,8 +361,9 @@ function App() {
         backgroundColor: 'var(--bg-primary)',
       }}
     >
-      {/* Mobile top bar */}
-      {isMobile && (
+      {/* Mobile top bar — only when no session is focused; SessionHeaderBar
+          takes over as the mobile header on session views. */}
+      {showAppTopBar && (
         <div style={{
           height: 52,
           display: 'flex',
@@ -393,37 +386,6 @@ function App() {
           <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {focusedProject?.name || 'MultiTable'}
           </span>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 3,
-              padding: '2px 8px',
-              fontSize: 11,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              fontVariantNumeric: 'tabular-nums',
-              color: 'var(--text-secondary)',
-              backgroundColor: 'var(--bg-elevated)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-pill)',
-            }}
-          >
-            <Zap size={10} /> {runningCount}/{totalCount}
-          </span>
-          {(() => {
-            const allThemes = [...BUILTIN_THEMES, ...store.customThemes];
-            const cycle = () => {
-              const idx = allThemes.findIndex((t) => t.id === store.activeThemeId);
-              const next = allThemes[(idx + 1) % allThemes.length];
-              store.setActiveTheme(next.id);
-            };
-            const active = allThemes.find((t) => t.id === store.activeThemeId);
-            return (
-              <IconButton onClick={cycle} label={`Theme: ${active?.name ?? 'Light'}`} size="lg">
-                <Palette size={16} />
-              </IconButton>
-            );
-          })()}
         </div>
       )}
 

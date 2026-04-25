@@ -1,20 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
-import { PanelBottom, Copy, Check, Pencil, Sparkles } from 'lucide-react';
+import { PanelBottom, Copy, Check, Pencil, Sparkles, Menu } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { AttachButton } from './AttachButton';
 import type { Session } from '../../lib/types';
 import { IconButton, Spinner } from '../ui';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
+import { useIsMobile } from '../../lib/useIsMobile';
 
 interface Props {
   session: Session;
   onToggleDetailPanel: () => void;
+  /** Mobile only — small contextual project label rendered above the session name. */
+  projectName?: string;
+  /** Mobile only — when provided, renders a hamburger that opens the drawer. */
+  onOpenDrawer?: () => void;
 }
 
-export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
+export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, onOpenDrawer }: Props) {
   const claudeState = session.claudeState;
+  const isMobile = useIsMobile();
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draftName, setDraftName] = useState(session.name);
@@ -68,6 +74,7 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
       const result = await api.sessions.renameAi(session.id);
       upsertSession({ ...session, ...result.session });
       toast.success(`Renamed to "${result.name}"`, { duration: 2200 });
+      setEditing(false);
     } catch (err: any) {
       const msg = err?.message || 'AI rename failed';
       toast.error(`AI rename: ${msg}`, { duration: 5000, style: { maxWidth: 480 } });
@@ -99,6 +106,124 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
 
   const costUsd = claudeState?.costUsd ?? 0;
   const tokenCount = claudeState?.tokenCount ?? 0;
+
+  if (isMobile) {
+    return (
+      <div
+        style={{
+          backgroundColor: 'var(--bg-sidebar)',
+          borderBottom: '1px solid var(--border)',
+          padding: '6px 10px 8px',
+          boxSizing: 'border-box',
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+        }}
+      >
+        {onOpenDrawer && (
+          <IconButton size="lg" onClick={onOpenDrawer} label="Open menu">
+            <Menu size={20} />
+          </IconButton>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1, gap: 2 }}>
+          {projectName && (
+            <span
+              title={projectName}
+              style={{
+                fontSize: 9.5,
+                color: 'var(--text-muted)',
+                textTransform: 'uppercase',
+                letterSpacing: '0.18em',
+                fontWeight: 500,
+                lineHeight: 1,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {projectName}
+            </span>
+          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <StatusDot state={session.state} size={8} />
+            {editing ? (
+              <input
+                ref={inputRef}
+                value={draftName}
+                onChange={(e) => setDraftName(e.target.value)}
+                onBlur={commitRename}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    commitRename();
+                  } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelRename();
+                  }
+                }}
+                maxLength={120}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--accent-amber)',
+                  borderRadius: 0,
+                  padding: '2px 8px',
+                  outline: 'none',
+                  lineHeight: 1.25,
+                  fontFamily: 'inherit',
+                }}
+              />
+            ) : (
+              <span
+                onClick={() => setEditing(true)}
+                title="Tap to rename"
+                style={{
+                  fontSize: 16,
+                  fontWeight: 600,
+                  color: 'var(--text-primary)',
+                  lineHeight: 1.25,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  cursor: 'text',
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
+                {session.name}
+              </span>
+            )}
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+          {editing ? (
+            <IconButton
+              size="lg"
+              onClick={handleAiRename}
+              label="Rename with AI"
+              disabled={aiLoading}
+            >
+              {aiLoading ? <Spinner size="sm" /> : <Sparkles size={16} />}
+            </IconButton>
+          ) : (
+            <IconButton size="lg" onClick={() => setEditing(true)} label="Rename session">
+              <Pencil size={16} />
+            </IconButton>
+          )}
+          <IconButton size="lg" onClick={onToggleDetailPanel} label="Toggle detail panel">
+            <PanelBottom size={16} />
+          </IconButton>
+        </div>
+      </div>
+    );
+  }
 
   const chipStyle: React.CSSProperties = {
     display: 'inline-flex',

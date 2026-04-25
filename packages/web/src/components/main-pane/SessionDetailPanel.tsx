@@ -797,6 +797,15 @@ function CostTab({ session }: { session: Session }) {
     messageCount: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [copiedId, setCopiedId] = useState(false);
+
+  const claudeSessionId = session.claudeState?.claudeSessionId ?? null;
+  const handleCopyId = () => {
+    if (!claudeSessionId) return;
+    copyToClipboard(claudeSessionId);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 1200);
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -930,6 +939,44 @@ function CostTab({ session }: { session: Session }) {
           <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row.value}</span>
         </div>
       ))}
+      {claudeSessionId && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: 8,
+            padding: '5px 0',
+            fontSize: 13,
+          }}
+        >
+          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>Session ID</span>
+          <button
+            onClick={handleCopyId}
+            title={copiedId ? 'Copied' : 'Click to copy'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              minWidth: 0,
+              maxWidth: '100%',
+              padding: 0,
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-primary)',
+              fontFamily: 'monospace',
+              fontSize: 12,
+              cursor: 'pointer',
+              overflow: 'hidden',
+            }}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {claudeSessionId}
+            </span>
+            {copiedId ? <Check size={12} /> : <Copy size={12} />}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

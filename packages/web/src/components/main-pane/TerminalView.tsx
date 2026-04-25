@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTerminal } from '../../hooks/useTerminal';
 import { useAppStore } from '../../stores/appStore';
+import { useIsMobile } from '../../lib/useIsMobile';
 import { SessionHeaderBar } from './SessionHeaderBar';
 import { ProcessBanner } from './ProcessBanner';
 import { SessionDetailPanel } from './SessionDetailPanel';
@@ -23,7 +24,11 @@ export function TerminalView({ processId, process }: Props) {
   const attachKind =
     process?.type === 'session' ? 'session' : process?.type === 'terminal' ? 'terminal' : null;
   const containerRef = useTerminal(processId, !!terminalDisabled, { attachKind });
-  const { detailPanelOpen, setDetailPanelOpen } = useAppStore();
+  const { detailPanelOpen, setDetailPanelOpen, setMobileDrawerOpen } = useAppStore();
+  const isMobile = useIsMobile();
+  const projectName = useAppStore(
+    (s) => session ? s.projects.find((p) => p.id === session.projectId)?.name : undefined,
+  );
 
   const showBanner =
     process &&
@@ -46,6 +51,8 @@ export function TerminalView({ processId, process }: Props) {
         <SessionHeaderBar
           session={session}
           onToggleDetailPanel={() => setDetailPanelOpen(!detailPanelOpen)}
+          projectName={isMobile ? projectName : undefined}
+          onOpenDrawer={isMobile ? () => setMobileDrawerOpen(true) : undefined}
         />
       )}
 

@@ -3,6 +3,7 @@ import type { Message, Session } from '../../../lib/types';
 import { useAppStore } from '../../../stores/appStore';
 import { wsClient } from '../../../lib/ws';
 import { api } from '../../../lib/api';
+import { useIsMobile } from '../../../lib/useIsMobile';
 import { SessionHeaderBar } from '../SessionHeaderBar';
 import { SessionDetailPanel } from '../SessionDetailPanel';
 import { ProcessBanner } from '../ProcessBanner';
@@ -26,20 +27,16 @@ export function SessionChat({ sessionId, session }: Props) {
   const clearMessages = useAppStore((s) => s.clearMessages);
   const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
+  const setMobileDrawerOpen = useAppStore((s) => s.setMobileDrawerOpen);
+  const projectName = useAppStore(
+    (s) => s.projects.find((p) => p.id === session.projectId)?.name,
+  );
 
   const [loading, setLoading] = useState(false);
-  const [isMobile, setIsMobile] = useState(() =>
-    typeof window !== 'undefined' ? window.innerWidth < 768 : false,
-  );
+  const isMobile = useIsMobile();
   const claudeSessionId = session.claudeSessionId ?? session.claudeState?.claudeSessionId ?? null;
   const lastLoadedKeyRef = useRef<string | null>(null);
   const subscribedIdRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 768);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
 
   // Load + refresh the transcript whenever the session id or the linked
   // Claude session id changes. Resets scroll state by replacing, not
@@ -145,6 +142,8 @@ export function SessionChat({ sessionId, session }: Props) {
       <SessionHeaderBar
         session={session}
         onToggleDetailPanel={() => setDetailPanelOpen(!detailPanelOpen)}
+        projectName={isMobile ? projectName : undefined}
+        onOpenDrawer={isMobile ? () => setMobileDrawerOpen(true) : undefined}
       />
 
       {showBanner && <ProcessBanner process={session} />}

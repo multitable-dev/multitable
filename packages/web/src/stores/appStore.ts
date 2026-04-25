@@ -74,6 +74,7 @@ interface AppState {
   connectionState: 'connected' | 'reconnecting' | 'disconnected';
   projectOverviewOpen: boolean;
   contextMenu: { type: string; id: string; x: number; y: number } | null;
+  mobileDrawerOpen: boolean;
   setSelectedProcess: (id: string | null) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setActiveTheme: (id: string) => void;
@@ -91,6 +92,7 @@ interface AppState {
   setConnectionState: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
   setProjectOverviewOpen: (open: boolean) => void;
   setContextMenu: (menu: { type: string; id: string; x: number; y: number } | null) => void;
+  setMobileDrawerOpen: (open: boolean) => void;
 
   // Permissions
   pendingPermissions: PermissionPrompt[];
@@ -306,6 +308,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   connectionState: 'disconnected',
   projectOverviewOpen: false,
   contextMenu: null,
+  mobileDrawerOpen: false,
   setSelectedProcess: (id) =>
     set((s) => {
       if (id === null) return { selectedProcessId: null };
@@ -362,6 +365,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   setConnectionState: (state) => set({ connectionState: state }),
   setProjectOverviewOpen: (open) => set({ projectOverviewOpen: open }),
   setContextMenu: (menu) => set({ contextMenu: menu }),
+  setMobileDrawerOpen: (open) => set({ mobileDrawerOpen: open }),
 
   // Permissions
   pendingPermissions: [],
