@@ -405,8 +405,8 @@ export const ChatInputCM = memo(function ChatInputCM({
         maxRenderedOptions: 40,
         icons: true,
       }),
-      // Placeholder
-      placeholder(placeholderText ?? 'Message the agent…  Enter to send · Shift+Enter for newline · @ for files · / for commands'),
+      // Placeholder — empty by default; callers can still override.
+      placeholder(placeholderText ?? ''),
       // Keymap ordering matters — CM6 tries bindings in registration order
       // and the first one that returns true wins. We put completion's Enter
       // FIRST so it can accept a suggestion when the popup is open; only
@@ -529,9 +529,9 @@ export const ChatInputCM = memo(function ChatInputCM({
       <div
         style={{
           display: 'flex',
-          alignItems: 'flex-end',
+          alignItems: 'center',
           gap: 8,
-          padding: '6px 10px',
+          padding: '4px 8px',
           borderRadius: 0,
           border: '1px solid var(--border-strong)',
           backgroundColor: 'var(--bg-elevated)',
@@ -555,6 +555,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             color: 'var(--text-muted)',
             cursor: disabled ? 'not-allowed' : 'pointer',
             flexShrink: 0,
+            alignSelf: 'center',
           }}
         >
           <Paperclip size={13} />
@@ -565,9 +566,10 @@ export const ChatInputCM = memo(function ChatInputCM({
           style={{
             color: 'var(--accent-amber)',
             fontFamily: 'inherit',
-            fontSize: 13,
-            lineHeight: '26px',
+            fontSize: 12.5,
+            lineHeight: 1,
             flexShrink: 0,
+            alignSelf: 'center',
             userSelect: 'none',
             WebkitUserSelect: 'none',
           }}
@@ -585,6 +587,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             overflow: 'hidden',
             display: 'flex',
             alignItems: 'stretch',
+            alignSelf: 'stretch',
             opacity: disabled ? 0.55 : 1,
           }}
         />
@@ -605,6 +608,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             color: canSend ? 'var(--accent-amber)' : 'var(--text-faint)',
             cursor: canSend ? 'pointer' : 'not-allowed',
             flexShrink: 0,
+            alignSelf: 'center',
             transition: 'background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
           }}
         >
