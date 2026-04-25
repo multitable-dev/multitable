@@ -152,7 +152,7 @@ export function SessionChat({ sessionId, session }: Props) {
         style={{
           flex: 1,
           display: 'flex',
-          flexDirection: 'column',
+          flexDirection: isMobile ? 'column' : 'row',
           overflow: 'hidden',
           minHeight: 0,
           backgroundColor: 'var(--bg-primary)',
@@ -169,6 +169,7 @@ export function SessionChat({ sessionId, session }: Props) {
             flexDirection: 'column',
             overflow: 'hidden',
             minHeight: 0,
+            minWidth: 0,
             position: 'relative',
           }}
         >
@@ -186,10 +187,12 @@ export function SessionChat({ sessionId, session }: Props) {
           <div
             style={{
               flex: isMobile ? '0 0 80%' : '0 0 40%',
-              minHeight: 120,
-              maxHeight: isMobile ? '80%' : '60%',
+              minHeight: isMobile ? 120 : 0,
+              maxHeight: isMobile ? '80%' : undefined,
+              minWidth: isMobile ? undefined : 280,
               overflow: 'hidden',
-              borderTop: '1px solid var(--border)',
+              borderTop: isMobile ? '1px solid var(--border)' : 'none',
+              borderLeft: isMobile ? 'none' : '1px solid var(--border)',
               backgroundColor: 'var(--bg-primary)',
             }}
           >
