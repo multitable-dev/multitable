@@ -206,7 +206,13 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
           {editing ? (
             <IconButton
               size="lg"
-              onClick={handleAiRename}
+              // Trigger on mousedown so the input's onBlur (commitRename) doesn't
+              // run first and unmount the AI button before the click registers.
+              // preventDefault keeps focus in the input.
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleAiRename();
+              }}
               label="Rename with AI"
               disabled={aiLoading}
             >
@@ -316,7 +322,12 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
         <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, userSelect: 'none', WebkitUserSelect: 'none' }}>
           <IconButton
             size="sm"
-            onClick={handleAiRename}
+            // mousedown + preventDefault so a click while editing doesn't blur
+            // the input first (which would commit and unmount this button).
+            onMouseDown={(e) => {
+              e.preventDefault();
+              handleAiRename();
+            }}
             label="Rename with AI"
             disabled={aiLoading}
           >

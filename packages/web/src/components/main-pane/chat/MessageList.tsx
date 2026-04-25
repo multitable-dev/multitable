@@ -4,11 +4,14 @@ import type { Message } from '../../../lib/types';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { ToolCallCard } from './ToolCallCard';
+import { ThinkingIndicator } from './ThinkingIndicator';
 
 interface Props {
   messages: Message[];
   loading?: boolean;
   emptyHint?: React.ReactNode;
+  /** Show an in-flight indicator below the last message (turn is running). */
+  thinking?: boolean;
 }
 
 function formatCost(tokens: number | undefined, model: string | undefined): string | null {
@@ -29,20 +32,21 @@ function indexResults(messages: Message[]) {
   return byUseId;
 }
 
-export function MessageList({ messages, loading, emptyHint }: Props) {
+export function MessageList({ messages, loading, emptyHint, thinking }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const resultsByUseId = useMemo(() => indexResults(messages), [messages]);
 
   // Auto-scroll: only follow if the user is already near the bottom, so we
-  // don't yank them away while they're reading history.
+  // don't yank them away while they're reading history. Also re-check when
+  // the thinking indicator mounts/unmounts so it stays in view.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (atBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, atBottom]);
+  }, [messages, thinking, atBottom]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -126,6 +130,7 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
             Loading conversation…
           </div>
         )}
+        {thinking && <ThinkingIndicator />}
       </div>
 
       {!atBottom && renderable.length > 0 && (

@@ -173,7 +173,12 @@ export function SessionChat({ sessionId, session }: Props) {
             position: 'relative',
           }}
         >
-          <MessageList messages={messages} loading={loading} emptyHint={emptyHint} />
+          <MessageList
+            messages={messages}
+            loading={loading}
+            emptyHint={emptyHint}
+            thinking={session.state === 'running'}
+          />
           <ChatInputCM
             processId={sessionId}
             projectId={session.projectId}
