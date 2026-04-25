@@ -38,15 +38,14 @@ export function MessageList({ messages, loading, emptyHint, thinking }: Props) {
   const resultsByUseId = useMemo(() => indexResults(messages), [messages]);
 
   // Auto-scroll: only follow if the user is already near the bottom, so we
-  // don't yank them away while they're reading history. Also re-check when
-  // the thinking indicator mounts/unmounts so it stays in view.
+  // don't yank them away while they're reading history.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     if (atBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, thinking, atBottom]);
+  }, [messages, atBottom]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -68,6 +67,19 @@ export function MessageList({ messages, loading, emptyHint, thinking }: Props) {
   };
 
   const renderable = messages.filter((m) => m.kind !== 'tool_result');
+
+  // Show the thinking indicator only in the gap where the assistant has
+  // nothing on screen yet — i.e., after the user's prompt before the first
+  // assistant chunk, or after a completed tool call before the next chunk.
+  // While an assistant message is on screen, the indicator hides so the
+  // streaming text doesn't render alongside it (which would cause a jolt
+  // when the indicator finally unmounts at turn-complete).
+  const lastMsg = renderable[renderable.length - 1];
+  const showThinking =
+    !!thinking &&
+    (!lastMsg ||
+      lastMsg.kind === 'user' ||
+      (lastMsg.kind === 'tool_use' && resultsByUseId.has(lastMsg.toolUseId)));
 
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
@@ -130,7 +142,7 @@ export function MessageList({ messages, loading, emptyHint, thinking }: Props) {
             Loading conversation…
           </div>
         )}
-        {thinking && <ThinkingIndicator />}
+        {showThinking && <ThinkingIndicator />}
       </div>
 
       {!atBottom && renderable.length > 0 && (
