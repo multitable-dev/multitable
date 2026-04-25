@@ -28,9 +28,18 @@ export function SessionChat({ sessionId, session }: Props) {
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
 
   const [loading, setLoading] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 768 : false,
+  );
   const claudeSessionId = session.claudeSessionId ?? session.claudeState?.claudeSessionId ?? null;
   const lastLoadedKeyRef = useRef<string | null>(null);
   const subscribedIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   // Load + refresh the transcript whenever the session id or the linked
   // Claude session id changes. Resets scroll state by replacing, not
@@ -152,7 +161,11 @@ export function SessionChat({ sessionId, session }: Props) {
       >
         <div
           style={{
-            flex: showDetailPanel ? '1 1 60%' : '1',
+            flex: showDetailPanel
+              ? isMobile
+                ? '1 1 20%'
+                : '1 1 60%'
+              : '1',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
@@ -173,9 +186,9 @@ export function SessionChat({ sessionId, session }: Props) {
         {showDetailPanel && (
           <div
             style={{
-              flex: '0 0 40%',
+              flex: isMobile ? '0 0 80%' : '0 0 40%',
               minHeight: 120,
-              maxHeight: '60%',
+              maxHeight: isMobile ? '80%' : '60%',
               overflow: 'hidden',
               borderTop: '1px solid var(--border)',
               backgroundColor: 'var(--bg-primary)',

@@ -349,6 +349,17 @@ export const ChatInputCM = memo(function ChatInputCM({
         }
         return false;
       },
+      // Mobile: when the user re-engages with the composer, collapse the
+      // detail panel so the keyboard + chat take the full viewport. Desktop
+      // is unaffected — the panel is stable enough alongside a wide composer.
+      focus: () => {
+        if (typeof window !== 'undefined' && window.innerWidth < 768) {
+          if (useAppStore.getState().detailPanelOpen) {
+            useAppStore.getState().setDetailPanelOpen(false);
+          }
+        }
+        return false;
+      },
     });
 
     const updateListener = EditorView.updateListener.of((vu) => {
