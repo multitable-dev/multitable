@@ -427,6 +427,59 @@ export function createProjectsRouter(manager: PtyManager): Router {
     res.json({ ok: true });
   });
 
+  // GET /api/projects/:id/slash-commands — discover Claude Code custom slash
+  // commands from `.claude/commands/*.md` (project) and `~/.claude/commands/*.md`
+  // (user-global). Markdown frontmatter `description:` is surfaced in the
+  // composer's autocomplete; the file's body is the prompt template the SDK
+  // will run when the command is invoked.
+  router.get('/:id/slash-commands', (req: Request, res: Response) => {
+    const project = getProjectById(req.params.id);
+    if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    const dirs: Array<{ dir: string; scope: 'project' | 'user' }> = [
+      { dir: path.join(project.path, '.claude', 'commands'), scope: 'project' },
+    ];
+    if (home) dirs.push({ dir: path.join(home, '.claude', 'commands'), scope: 'user' });
+
+    interface SlashCmd { name: string; scope: 'project' | 'user'; description: string }
+    const out: SlashCmd[] = [];
+    const seen = new Set<string>();
+
+    for (const { dir, scope } of dirs) {
+      let entries: string[] = [];
+      try {
+        entries = fs.readdirSync(dir).filter((f) => f.endsWith('.md'));
+      } catch {
+        continue;
+      }
+      for (const file of entries) {
+        const name = '/' + file.replace(/\.md$/, '');
+        if (seen.has(name)) continue;  // project shadows user
+        seen.add(name);
+        let description = '';
+        try {
+          const content = fs.readFileSync(path.join(dir, file), 'utf8');
+          // Look for `description:` in the YAML frontmatter (between leading ---).
+          const fmMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
+          if (fmMatch) {
+            const dm = fmMatch[1].match(/^description:\s*(.+)$/m);
+            if (dm) description = dm[1].trim().replace(/^["']|["']$/g, '');
+          }
+          // Fallback: first non-frontmatter, non-empty line.
+          if (!description) {
+            const body = fmMatch ? content.slice(fmMatch[0].length) : content;
+            description = (body.split('\n').find((l) => l.trim()) ?? '').trim().slice(0, 80);
+          }
+        } catch {}
+        out.push({ name, scope, description });
+      }
+    }
+
+    out.sort((a, b) => a.name.localeCompare(b.name));
+    res.json({ commands: out });
+  });
+
   // GET /api/projects/:id/diff
   router.get('/:id/diff', async (req: Request, res: Response) => {
     const project = getProjectById(req.params.id);

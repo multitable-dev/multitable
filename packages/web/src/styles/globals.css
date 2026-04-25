@@ -260,3 +260,56 @@ select:focus-visible,
   caret-color: var(--accent-blue);
   min-height: 20px;
 }
+
+/* ---------- CodeMirror autocomplete popup ----------
+ * Minimal overrides so CM6's default layout still works. Earlier overrides
+ * (`overflow: hidden`, `display: flex` on <li>, `padding-left` on detail)
+ * caused the items to be invisible because they collapsed to width 0 when
+ * the tooltip had no min-width and `display: flex` items had nothing to
+ * stretch against. Only color/background/z-index needs forcing.
+ */
+.cm-tooltip {
+  z-index: 1000 !important;
+  background-color: var(--bg-elevated) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  box-shadow: var(--shadow-lg) !important;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+.cm-tooltip-autocomplete {
+  min-width: 280px;
+  max-width: 480px;
+}
+.cm-tooltip-autocomplete > ul {
+  max-height: 260px;
+  font-size: 12.5px;
+  font-family: inherit;
+}
+.cm-tooltip-autocomplete > ul > li {
+  padding: 4px 10px;
+  color: var(--text-primary);
+}
+.cm-tooltip-autocomplete > ul > li[aria-selected] {
+  background-color: var(--bg-hover) !important;
+  color: var(--text-primary) !important;
+}
+.cm-completionLabel {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--text-primary);
+}
+.cm-completionDetail {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: normal;
+  margin-left: 8px;
+}
+.cm-completionMatchedText {
+  text-decoration: none;
+  color: var(--accent-blue);
+  font-weight: 600;
+}
+.cm-completionIcon {
+  opacity: 0.85;
+  margin-right: 4px;
+}

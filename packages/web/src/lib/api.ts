@@ -47,6 +47,10 @@ export const api = {
     files: (id: string, path?: string) => get<any[]>(`/api/projects/${id}/files${path ? `?path=${encodeURIComponent(path)}` : ''}`),
     openFile: (id: string, filePath: string) => post<void>(`/api/projects/${id}/open-file`, { path: filePath }),
     diff: (id: string) => get<{ diff: string }>(`/api/projects/${id}/diff`),
+    slashCommands: (id: string) =>
+      get<{ commands: Array<{ name: string; scope: 'project' | 'user'; description: string }> }>(
+        `/api/projects/${id}/slash-commands`
+      ),
   },
   sessions: {
     list: (projectId: string) => get<Session[]>(`/api/projects/${projectId}/sessions`),
@@ -54,6 +58,7 @@ export const api = {
       post<Session>(`/api/projects/${projectId}/sessions`, data),
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
+    reset: (id: string) => post<{ ok: boolean; session: Session }>(`/api/sessions/${id}/reset`),
     diff: (id: string) => get<{ diff: string }>(`/api/sessions/${id}/diff`),
     cost: (id: string) => get<{
       tokensIn: number;

@@ -117,30 +117,118 @@ export function fileMentionSource(projectIdGetter: () => string | null) {
     }
     scored.sort((a, b) => a.score - b.score);
 
-    const options: Completion[] = scored.slice(0, 40).map(({ e }) => {
+    const options: Completion[] = scored.slice(0, 40).map(({ e }, idx) => {
       const dir = e.path.includes('/') ? e.path.slice(0, e.path.lastIndexOf('/')) : '';
       return {
         label: e.name,
         detail: dir || undefined,
         type: 'file',
         apply: `@${e.path} `,
-        boost: -entries.indexOf(e), // stable tie-break
+        boost: 100 - idx,
       };
     });
 
-    return {
-      from: match.from,
-      options,
-      validFor: /^@[\w./\-]*$/,
-    };
+    // `filter: false` tells CM6 not to re-filter our options against the
+    // typed text. This is essential here: the user types `@projects` but
+    // option labels are `package.json`, `Button.tsx`, etc. — none of them
+    // share the `@` prefix, so CM6's default prefix-match filter would
+    // discard every option and silently close the popup. We've already
+    // filtered via `fuzzyScore` upstream, so trust that result.
+    return { from: match.from, options, validFor: /^@[\w./\-]*$/, filter: false };
   };
 }
 
-// Slash-command autocomplete used to live here. It was removed because
-// Claude Code's slash commands are interactive TUI features (confirmation
-// modals, pickers, ephemeral screen output) that don't round-trip through a
-// raw stdin pipe. Submitting `/clear`, `/model`, `/compact`, etc. from the
-// chat view silently opens a modal that then eats the user's next message.
-// If we want slash-command support in the future, it should go through a
-// MultiTable-managed flow (explicit API, rendered modal UI) rather than
-// pushing text into the PTY.
+// ─── Slash commands (/-triggered) ────────────────────────────────────────────
+//
+// With the SDK driving sessions (no TUI), slash commands sent through the
+// composer flow through query() as user prompts. The SDK reads `.claude/commands/*.md`
+// (project) and `~/.claude/commands/*.md` (user-global) and substitutes
+// arguments into those templates. Built-in TUI slash commands (`/clear`,
+// `/model`, `/compact`) are NOT handled by the SDK and would simply land as
+// literal text — those need MultiTable-native equivalents to behave correctly.
+// We surface custom commands the user defined; we don't surface the
+// problematic built-ins.
+//
+// The slash-command list is fetched once per project (5-min TTL) so the
+// dropdown isn't paying an HTTP round-trip per keystroke.
+
+interface SlashCmdSpec {
+  name: string;        // includes leading slash, e.g. '/init'
+  description: string;
+  scope: 'project' | 'user' | 'builtin';
+}
+
+interface SlashIndex {
+  loadedAt: number;
+  commands: SlashCmdSpec[];
+}
+
+const slashCache = new Map<string, SlashIndex>();
+const SLASH_TTL_MS = 5 * 60 * 1000;
+
+// Built-in slash commands MultiTable handles natively. We deliberately ONLY
+// surface the ones we actually intercept in ChatInputCM's `handleNativeSlash`
+// — surfacing others (e.g. /model, /init, /compact) would mislead users
+// because the SDK doesn't intercept them and they'd land as plain-text
+// prompts. Custom commands from `.claude/commands/*.md` flow through the SDK
+// natively and are added to this list at fetch time.
+const BUILTIN_SLASH_COMMANDS: SlashCmdSpec[] = [
+  { name: '/clear',    description: 'clear conversation',  scope: 'builtin' },
+  { name: '/cost',     description: 'show session cost',   scope: 'builtin' },
+];
+
+async function getSlashCommands(projectId: string): Promise<SlashCmdSpec[]> {
+  const cached = slashCache.get(projectId);
+  if (cached && Date.now() - cached.loadedAt < SLASH_TTL_MS) return cached.commands;
+  let custom: SlashCmdSpec[] = [];
+  try {
+    const res = await api.projects.slashCommands(projectId);
+    custom = res.commands;
+  } catch {}
+  // Merge: project > user > builtin. Project / user shadow same-named builtins.
+  const seen = new Set(custom.map((c) => c.name));
+  const merged = [
+    ...custom,
+    ...BUILTIN_SLASH_COMMANDS.filter((c) => !seen.has(c.name)),
+  ];
+  slashCache.set(projectId, { loadedAt: Date.now(), commands: merged });
+  return merged;
+}
+
+export function warmSlashCommands(projectId: string): void {
+  void getSlashCommands(projectId);
+}
+
+export function invalidateSlashCommands(projectId: string): void {
+  slashCache.delete(projectId);
+}
+
+export function slashCommandSource(projectIdGetter: () => string | null) {
+  return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
+    const match = ctx.matchBefore(/\/[\w-]*/);
+    if (!match) return null;
+    const line = ctx.state.doc.lineAt(match.from);
+    if (match.from !== line.from) return null;
+
+    const projectId = projectIdGetter();
+    if (!projectId) return null;
+
+    const commands = await getSlashCommands(projectId);
+    if (commands.length === 0) return null;
+
+    const query = match.text.slice(1).toLowerCase();
+    const filtered = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(query));
+    if (filtered.length === 0) return null;
+
+    const options: Completion[] = filtered.map((c) => ({
+      label: c.name,
+      detail: c.description || c.scope,
+      type: 'command',
+      apply: c.name + ' ',
+      // Rank: project (2) > user (1) > builtin (0).
+      boost: c.scope === 'project' ? 2 : c.scope === 'user' ? 1 : 0,
+    }));
+
+    return { from: match.from, options, validFor: /^\/[\w-]*$/ };
+  };
+}

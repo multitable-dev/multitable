@@ -2,13 +2,16 @@ import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { Send, Paperclip } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { wsClient } from '../../../lib/ws';
+import { api } from '../../../lib/api';
 import type { ProcessState } from '../../../lib/types';
 import { useAppStore } from '../../../stores/appStore';
 import { BUILTIN_THEMES } from '../../../lib/themes';
 import { buildCmTheme } from '../../../lib/cm-theme';
 import {
   fileMentionSource,
+  slashCommandSource,
   warmProjectIndex,
+  warmSlashCommands,
 } from '../../../lib/cm-completions';
 import { uploadAttachment, quotePath } from '../../../lib/attachments';
 
@@ -22,6 +25,7 @@ import {
   highlightSpecialChars,
   rectangularSelection,
   crosshairCursor,
+  tooltips,
 } from '@codemirror/view';
 import {
   defaultKeymap,
@@ -136,10 +140,12 @@ export const ChatInputCM = memo(function ChatInputCM({
     return buildCmTheme(active?.isDark ?? true);
   }, [activeThemeId, customThemes]);
 
-  // Warm the project file index in the background so the first '@' keystroke
-  // doesn't stall on a fresh walk.
+  // Warm the project file index AND the slash-command list in the background
+  // so the first '@' or '/' keystroke doesn't stall on a fresh walk / fetch.
   useEffect(() => {
-    if (projectId) warmProjectIndex(projectId);
+    if (!projectId) return;
+    warmProjectIndex(projectId);
+    warmSlashCommands(projectId);
   }, [projectId]);
 
   // Mount CodeMirror once. Extensions that need to react to React state go
@@ -147,12 +153,108 @@ export const ChatInputCM = memo(function ChatInputCM({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    // Built-in slash commands MultiTable handles natively. Each one renders
+    // its result as a `system` message in the chat so the user sees inline
+    // feedback like a real chat command (matching Slack/Discord-style
+    // command UX). Custom commands defined in `.claude/commands/*.md` flow
+    // straight to the SDK because the SDK reads those files itself.
+    const pushSystemMessage = (text: string): void => {
+      const id = `cmd-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      useAppStore.getState().appendMessages(processId, [
+        { id, ts: Date.now(), kind: 'system', text },
+      ]);
+    };
+
+    const echoUserMessage = (text: string): void => {
+      const id = `cmd-user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      useAppStore.getState().appendMessages(processId, [
+        { id, ts: Date.now(), kind: 'user', text },
+      ]);
+    };
+
+    const handleNativeSlash = (text: string): boolean => {
+      const m = text.match(/^\/([a-z][\w-]*)\b\s*(.*)$/i);
+      if (!m) return false;
+      const cmd = m[1].toLowerCase();
+      switch (cmd) {
+        case 'clear': {
+          api.sessions
+            .reset(processId)
+            .then(() => {
+              useAppStore.getState().clearMessages(processId);
+              const session = useAppStore.getState().sessions[processId];
+              if (session) {
+                useAppStore.getState().upsertSession({
+                  ...session,
+                  claudeSessionId: null,
+                  claudeState: undefined,
+                });
+              }
+              pushSystemMessage('Conversation cleared. The next message will start a fresh session.');
+            })
+            .catch((err: any) => {
+              pushSystemMessage(`/clear failed: ${err?.message ?? err}`);
+            });
+          return true;
+        }
+        case 'cost': {
+          echoUserMessage(text);
+          // Prefer the API endpoint — it falls back to a JSONL re-parse when
+          // in-memory totals are zero (e.g., immediately after a daemon
+          // restart, before any new turn has fired). The in-memory state is
+          // 0 until a SDK `result` event lands.
+          api.sessions
+            .cost(processId)
+            .then((res) => {
+              const cost = res.costUsd ?? 0;
+              const tokens = (res.tokensIn ?? 0) + (res.tokensOut ?? 0)
+                + (res.cacheCreationTokens ?? 0) + (res.cacheReadTokens ?? 0);
+              const fmtCost = cost >= 1 ? `$${cost.toFixed(2)}` : cost > 0 ? `$${cost.toFixed(4)}` : '$0.00';
+              const fmtTokens = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`;
+              const session = useAppStore.getState().sessions[processId];
+              const tools = session?.claudeState?.toolCount ?? 0;
+              const messages = res.messageCount ?? 0;
+              pushSystemMessage(
+                `Session cost\n  Cost:           ${fmtCost}\n  Tokens (total): ${fmtTokens}\n  Messages:       ${messages}\n  Tools used:     ${tools}`
+              );
+            })
+            .catch(() => {
+              // Fall back to in-memory snapshot if the API errors.
+              const session = useAppStore.getState().sessions[processId];
+              const cs = session?.claudeState;
+              const cost = cs?.costUsd ?? 0;
+              const tokens = cs?.tokenCount ?? 0;
+              const tools = cs?.toolCount ?? 0;
+              const fmtCost = cost >= 1 ? `$${cost.toFixed(2)}` : cost > 0 ? `$${cost.toFixed(4)}` : '$0.00';
+              const fmtTokens = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`;
+              pushSystemMessage(
+                `Session cost\n  Cost:        ${fmtCost}\n  Tokens:      ${fmtTokens}\n  Tools used:  ${tools}`
+              );
+            });
+          return true;
+        }
+        default:
+          return false;
+      }
+    };
+
     const doSend = (): boolean => {
       if (disabledRef.current) return false;
       const view = viewRef.current;
       if (!view) return false;
       const text = view.state.doc.toString().trim();
       if (!text) return false;
+
+      // Try a native slash-command handler first. If consumed, clear the
+      // editor and don't forward to the SDK. Otherwise fall through (custom
+      // slash commands and regular prompts both go through wsClient.sendTurn).
+      if (handleNativeSlash(text)) {
+        view.dispatch({
+          changes: { from: 0, to: view.state.doc.length, insert: '' },
+        });
+        return true;
+      }
+
       wsClient.sendTurn(processId, text);
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: '' },
@@ -276,22 +378,35 @@ export const ChatInputCM = memo(function ChatInputCM({
       closeBrackets(),
       syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
       highlightSelectionMatches(),
+      // The composer's wrapper div uses `overflow: hidden` so CM6's default
+      // absolute-positioned tooltip would get clipped by it. Force fixed
+      // positioning AND mount on document.body so the autocomplete popup
+      // unambiguously escapes the overflow box.
+      tooltips({ position: 'fixed', parent: document.body }),
       // Autocomplete — file mentions (@) and slash commands (/)
       autocompletion({
-        // Slash-command autocomplete was deliberately dropped: Claude Code's
-        // slash commands are interactive TUI features (modals, pickers,
-        // ephemeral output) that don't round-trip through a raw stdin pipe.
-        // Submitting one from the chat view silently opens a modal that then
-        // eats the user's next message. File mentions are fine — they're
-        // just text insertion.
-        override: [fileMentionSource(() => projectIdRef.current || null)],
+        // Two completion sources:
+        //  - fileMentionSource: '@' triggers a fuzzy file picker scoped to
+        //    the current project; the chosen path is inserted as `@<path> `
+        //    so the SDK can read it as a literal reference.
+        //  - slashCommandSource: '/' at the start of a line triggers a
+        //    picker over the user's `.claude/commands/*.md` definitions
+        //    (project-scoped first, then `~/.claude/commands/*.md`). The SDK
+        //    expands the chosen template when the message is submitted.
+        //    Built-in TUI slash commands (/clear, /model, /compact) are
+        //    intentionally NOT surfaced — they need MultiTable-native
+        //    handling to behave correctly.
+        override: [
+          fileMentionSource(() => projectIdRef.current || null),
+          slashCommandSource(() => projectIdRef.current || null),
+        ],
         activateOnTyping: true,
         defaultKeymap: true,
         maxRenderedOptions: 40,
         icons: true,
       }),
       // Placeholder
-      placeholder(placeholderText ?? 'Message the agent…  Enter to send · Shift+Enter for newline · @ for files'),
+      placeholder(placeholderText ?? 'Message the agent…  Enter to send · Shift+Enter for newline · @ for files · / for commands'),
       // Keymap ordering matters — CM6 tries bindings in registration order
       // and the first one that returns true wins. We put completion's Enter
       // FIRST so it can accept a suggestion when the popup is open; only

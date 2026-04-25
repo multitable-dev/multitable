@@ -231,6 +231,7 @@ function App() {
                 currentTool: null,
                 toolCount: 0,
                 tokenCount: 0,
+                costUsd: 0,
                 lastActivity: 0,
                 activeSubagents: 0,
                 userMessages: [],
@@ -240,6 +241,31 @@ function App() {
             },
           } as Session);
         }
+      }),
+      wsClient.on('session:state-updated', (msg: any) => {
+        // The daemon's AgentSessionManager broadcasts a snapshot of cost,
+        // tokens, currentTool, etc. on every SDK `result` and on each tool
+        // hook. Mirror it onto the session's `claudeState` so SessionHeaderBar
+        // and the /cost slash command see live numbers. Use getState() rather
+        // than the closure's stale store snapshot.
+        const { sessionId, state } = msg.payload || {};
+        if (!sessionId || !state) return;
+        const session = useAppStore.getState().sessions[sessionId];
+        if (!session) return;
+        useAppStore.getState().upsertSession({
+          ...session,
+          claudeState: {
+            claudeSessionId: state.claudeSessionId ?? session.claudeState?.claudeSessionId ?? null,
+            currentTool: state.currentTool ?? null,
+            toolCount: state.toolCount ?? 0,
+            tokenCount: state.tokenCount ?? 0,
+            costUsd: state.costUsd ?? 0,
+            lastActivity: state.lastActivity ?? Date.now(),
+            activeSubagents: state.activeSubagents ?? 0,
+            userMessages: state.userMessages ?? session.claudeState?.userMessages ?? [],
+            label: state.label ?? session.claudeState?.label ?? null,
+          },
+        } as Session);
       }),
     ];
 

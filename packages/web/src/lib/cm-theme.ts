@@ -21,7 +21,6 @@ export function buildCmTheme(isDark: boolean): Extension {
   const textMuted = readVar('--text-muted') || '#888888';
   const accent = readVar('--accent-blue') || '#3b82f6';
   const border = readVar('--border') || '#333333';
-  const hover = readVar('--bg-hover') || '#1f2228';
   const statusRunning = readVar('--status-running') || '#22c55e';
   const statusWarning = readVar('--status-warning') || '#f59e0b';
   const statusError = readVar('--status-error') || '#ef4444';
@@ -94,46 +93,10 @@ export function buildCmTheme(isDark: boolean): Extension {
       '.cm-searchMatch.cm-searchMatch-selected': {
         backgroundColor: `color-mix(in srgb, ${accent} 45%, transparent)`,
       },
-      // Autocomplete tooltip
-      '.cm-tooltip': {
-        backgroundColor: bg,
-        color: text,
-        border: `1px solid ${border}`,
-        borderRadius: '8px',
-        boxShadow: 'var(--shadow-lg)',
-        overflow: 'hidden',
-      },
-      '.cm-tooltip.cm-tooltip-autocomplete > ul': {
-        maxHeight: '260px',
-        fontFamily: 'inherit',
-        fontSize: '12.5px',
-      },
-      '.cm-tooltip.cm-tooltip-autocomplete > ul > li': {
-        padding: '5px 10px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-      },
-      '.cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]': {
-        backgroundColor: hover,
-        color: text,
-      },
-      '.cm-completionLabel': {
-        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: '12px',
-      },
-      '.cm-completionDetail': {
-        marginLeft: 'auto',
-        fontSize: '11px',
-        color: textMuted,
-        fontStyle: 'normal',
-      },
-      '.cm-completionIcon': {
-        width: '14px',
-        display: 'inline-block',
-        textAlign: 'center',
-        opacity: 0.85,
-      },
+      // NOTE: autocomplete tooltip styles live in globals.css (NOT here).
+      // EditorView.theme rules are scoped to the editor's generated class, so
+      // they don't reach body-mounted fixed-position tooltips. Anything here
+      // would be dead code that can confuse readers later.
       '.cm-completionIcon-file::after': { content: '"\\1F4C4"' }, // 📄
       '.cm-completionIcon-command::after': { content: '"\\002F"' }, // /
       // Rectangular selection marker

@@ -235,6 +235,34 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     res.json({ ok: true });
   });
 
+  // POST /api/sessions/:id/reset
+  //
+  // Native handler for the `/clear` slash command. Cancels any in-flight turn,
+  // nulls the linked claudeSessionId in the DB and the agent manager, and
+  // resets per-session in-memory stats. The next user turn starts a fresh SDK
+  // conversation (no `resume`), so the SDK creates a new claudeSessionId at
+  // first SystemInit.
+  router.post('/:id/reset', (req: Request, res: Response) => {
+    const session = getSessionById(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    agentManager.abortTurn(req.params.id);
+    updateSession(req.params.id, { claudeSessionId: null });
+    const agent = agentManager.get(req.params.id);
+    if (agent) {
+      agent.claudeSessionId = null;
+      agent.userMessages = [];
+      agent.toolCount = 0;
+      agent.tokensIn = 0;
+      agent.tokensOut = 0;
+      agent.cacheCreationTokens = 0;
+      agent.cacheReadTokens = 0;
+      agent.totalCostUsd = 0;
+      agent.label = null;
+    }
+    const updated = getSessionById(req.params.id);
+    res.json({ ok: true, session: updated });
+  });
+
   // GET /api/sessions/:id/diff
   router.get('/:id/diff', async (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
