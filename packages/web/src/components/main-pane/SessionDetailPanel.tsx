@@ -6,13 +6,14 @@ import { wsClient } from '../../lib/ws';
 import { copyToClipboard } from '../../lib/clipboard';
 import type { Session, Note } from '../../lib/types';
 import { IconButton, Badge, Spinner } from '../ui';
+import { TasksTab } from './chat/TasksTab';
 
 interface Props {
   session: Session;
   projectId: string;
 }
 
-type TabId = 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm';
+type TabId = 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm' | 'tasks';
 
 const TABS: { id: TabId; label: string }[] = [
   { id: 'files', label: 'Files' },
@@ -20,6 +21,7 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'cost', label: 'Cost' },
   { id: 'prompts', label: 'Prompts' },
   { id: 'brainstorm', label: 'Brainstorm' },
+  { id: 'tasks', label: 'Tasks' },
 ];
 
 interface FileEntry {
@@ -1615,6 +1617,7 @@ export function SessionDetailPanel({ session, projectId }: Props) {
         {detailPanelTab === 'cost' && <CostTab session={session} />}
         {detailPanelTab === 'prompts' && <PromptsTab session={session} />}
         {detailPanelTab === 'brainstorm' && <BrainstormTab session={session} />}
+        {detailPanelTab === 'tasks' && <TasksTab sessionId={session.id} />}
       </div>
     </div>
   );

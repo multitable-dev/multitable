@@ -3,6 +3,7 @@ import { loadGlobalConfig } from './config/loader.js';
 import { initDb, getAllProjects, getSessionsByProject, getCommandsByProject } from './db/store.js';
 import { PtyManager } from './pty/manager.js';
 import { PermissionManager } from './hooks/permissionManager.js';
+import { ElicitationManager } from './hooks/elicitationManager.js';
 import { AgentSessionManager } from './agent/manager.js';
 import { FileWatcher } from './watcher/index.js';
 import { createServer } from './server.js';
@@ -46,7 +47,8 @@ async function main() {
   // 4. Create PtyManager and PermissionManager
   const manager = new PtyManager();
   const permManager = new PermissionManager();
-  const agentManager = new AgentSessionManager(permManager);
+  const elicitManager = new ElicitationManager();
+  const agentManager = new AgentSessionManager(permManager, elicitManager);
 
   // Configure permission manager from project configs
   for (const projRef of config.projects) {
@@ -57,7 +59,7 @@ async function main() {
   }
 
   // 5. Create Express/WS server
-  const serverInstance = createServer(config, manager, permManager, agentManager);
+  const serverInstance = createServer(config, manager, permManager, agentManager, elicitManager);
   const { server, broadcast } = serverInstance;
 
   // 7. Load projects from DB, start autostart processes

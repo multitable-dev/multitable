@@ -18,8 +18,13 @@ import { useAppStore } from './stores/appStore';
 import { wsClient } from './lib/ws';
 import { api } from './lib/api';
 import { playPermissionChime, playAttentionChime, playDoneChime } from './lib/sound';
+import { handleSessionAlert } from './lib/notify';
+import { updateTabBadge } from './lib/tabBadge';
+import { loadPrefs, subscribePrefs } from './lib/notificationPrefs';
 import { useTheme } from './hooks/useTheme';
 import { ConnectionOverlay } from './components/ConnectionOverlay';
+import { NotificationCenter } from './components/notifications/NotificationCenter';
+import { ElicitationModalHost } from './components/elicitation/ElicitationModal';
 import type { Session } from './lib/types';
 
 function App() {
@@ -40,6 +45,43 @@ function App() {
   useEffect(() => {
     if (isMobile) setMobileDrawerOpen(false);
   }, [store.selectedProcessId, isMobile]);
+
+  // Clear per-session unread alert badge when the session becomes selected.
+  useEffect(() => {
+    if (store.selectedProcessId) {
+      useAppStore.getState().markSessionRead(store.selectedProcessId);
+    }
+  }, [store.selectedProcessId]);
+
+  // Tab title + favicon badge — driven by total unread across all sessions.
+  // Cleared automatically when the user gives the tab focus, since the
+  // session-select effect above zeroes out the focused session's count.
+  useEffect(() => {
+    function totalUnread(): number {
+      const prefs = loadPrefs();
+      if (!prefs.showCenterBadge) return 0;
+      const map = useAppStore.getState().unreadBySession;
+      let n = 0;
+      for (const v of Object.values(map)) n += v;
+      return n;
+    }
+    updateTabBadge(totalUnread());
+    const unsub = useAppStore.subscribe((state, prev) => {
+      if (state.unreadBySession !== prev.unreadBySession) {
+        updateTabBadge(totalUnread());
+      }
+    });
+    const unsubPrefs = subscribePrefs(() => updateTabBadge(totalUnread()));
+    function onVisible() {
+      if (!document.hidden) updateTabBadge(totalUnread());
+    }
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      unsub();
+      unsubPrefs();
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, []);
 
   // Compute running/total counts for mobile top bar (scoped to focused project)
   const focusedProject = store.projects.find(p => p.id === store.focusedProjectId);
@@ -182,10 +224,18 @@ function App() {
       }),
       wsClient.on('session:turn-complete', (msg: any) => {
         const sessionId = msg.processId;
-        const session = sessionId ? store.sessions[sessionId] : null;
+        const live = useAppStore.getState();
+        const session = sessionId ? live.sessions[sessionId] : null;
         const name = session?.name ?? 'Claude';
         toast.success(`${name} is done`, { duration: 4000 });
         playDoneChime();
+        // Pulse the sidebar for sessions the user isn't currently looking at —
+        // turn-complete doesn't go through the alert envelope (intentional, to
+        // keep the NotificationCenter free of every routine completion), so
+        // bump the unread count manually for cross-session visibility.
+        if (sessionId && live.selectedProcessId !== sessionId) {
+          live.bumpUnread(sessionId);
+        }
       }),
       wsClient.on('session:assistant-message', (msg: any) => {
         const pid = msg.processId || msg.payload?.processId;
@@ -240,6 +290,63 @@ function App() {
               label,
             },
           } as Session);
+        }
+      }),
+      wsClient.on('session:alert', (msg: any) => {
+        const alert = msg.payload?.alert;
+        if (alert && typeof alert === 'object' && alert.alertId) {
+          handleSessionAlert(alert);
+        }
+      }),
+      wsClient.on('session:elicitation:prompt', (msg: any) => {
+        const prompt = msg.payload?.prompt;
+        if (prompt && typeof prompt === 'object' && prompt.id) {
+          useAppStore.getState().addElicitation(prompt);
+        }
+      }),
+      wsClient.on('session:elicitation:resolved', (msg: any) => {
+        const id = msg.payload?.id;
+        if (typeof id === 'string') useAppStore.getState().removeElicitation(id);
+      }),
+      wsClient.on('session:elicitation:expired', (msg: any) => {
+        const id = msg.payload?.id;
+        if (typeof id === 'string') useAppStore.getState().removeElicitation(id);
+      }),
+      wsClient.on('session:task-event', (msg: any) => {
+        const sessionId = msg.processId || msg.payload?.sessionId;
+        const subtype = msg.payload?.subtype;
+        const payload = msg.payload?.payload;
+        if (typeof sessionId === 'string' && typeof subtype === 'string' && payload && typeof payload === 'object') {
+          useAppStore.getState().applyTaskEvent(sessionId, subtype, payload);
+        }
+      }),
+      wsClient.on('session:tool-progress', (msg: any) => {
+        const sessionId = msg.processId || msg.payload?.sessionId;
+        const p = msg.payload;
+        if (typeof sessionId !== 'string' || !p) return;
+        useAppStore.getState().setToolProgress(sessionId, {
+          toolUseId: typeof p.toolUseId === 'string' ? p.toolUseId : '',
+          toolName: typeof p.toolName === 'string' ? p.toolName : '',
+          elapsedSeconds: typeof p.elapsedSeconds === 'number' ? p.elapsedSeconds : 0,
+          taskId: typeof p.taskId === 'string' ? p.taskId : null,
+          parentToolUseId: typeof p.parentToolUseId === 'string' ? p.parentToolUseId : null,
+          receivedAt: Date.now(),
+        });
+      }),
+      wsClient.on('session:status', (msg: any) => {
+        const sessionId = msg.processId || msg.payload?.sessionId;
+        const p = msg.payload;
+        if (typeof sessionId !== 'string' || !p) return;
+        const status = p.status === 'compacting' || p.status === 'requesting' ? p.status : null;
+        useAppStore.getState().setSessionStatus(sessionId, status === null ? { status: null } : { status, compactResult: p.compactResult ?? null, compactError: p.compactError ?? null });
+      }),
+      // Clear stale tool-progress when a turn completes — the SDK doesn't send a
+      // "tool stopped" event so we infer it from turn boundaries.
+      wsClient.on('session:turn-complete', (msg: any) => {
+        const sessionId = msg.processId;
+        if (typeof sessionId === 'string') {
+          useAppStore.getState().setToolProgress(sessionId, null);
+          useAppStore.getState().setSessionStatus(sessionId, { status: null });
         }
       }),
       wsClient.on('session:state-updated', (msg: any) => {
@@ -385,6 +492,8 @@ function App() {
       {!isMobile && <StatusBar />}
       {isMobile && <TouchToolbar />}
       <CommandPalette />
+      <NotificationCenter />
+      <ElicitationModalHost />
       <ConnectionOverlay />
       <Toaster
         position="top-right"

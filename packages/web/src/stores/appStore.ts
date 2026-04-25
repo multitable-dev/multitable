@@ -9,6 +9,8 @@ import type {
   ProcessState,
   ProcessMetrics,
   Message,
+  SessionAlert,
+  ElicitationPrompt,
 } from '../lib/types';
 import type { Theme, ThemeColors } from '../lib/themes';
 import {
@@ -68,7 +70,7 @@ interface AppState {
   globalSettingsOpen: boolean;
   projectSettingsOpen: boolean;
   detailPanelOpen: boolean;
-  detailPanelTab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm';
+  detailPanelTab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm' | 'tasks';
   connectionState: 'connected' | 'reconnecting' | 'disconnected';
   projectOverviewOpen: boolean;
   contextMenu: { type: string; id: string; x: number; y: number } | null;
@@ -85,7 +87,7 @@ interface AppState {
   setGlobalSettingsOpen: (open: boolean) => void;
   setProjectSettingsOpen: (open: boolean) => void;
   setDetailPanelOpen: (open: boolean) => void;
-  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm') => void;
+  setDetailPanelTab: (tab: 'files' | 'diff' | 'cost' | 'prompts' | 'brainstorm' | 'tasks') => void;
   setConnectionState: (state: 'connected' | 'reconnecting' | 'disconnected') => void;
   setProjectOverviewOpen: (open: boolean) => void;
   setContextMenu: (menu: { type: string; id: string; x: number; y: number } | null) => void;
@@ -103,8 +105,73 @@ interface AppState {
   messagesBySession: Record<string, Message[]>;
   setMessages: (sessionId: string, messages: Message[]) => void;
   appendMessages: (sessionId: string, messages: Message[]) => void;
+  /** Merge a fetched batch with already-stored messages; dedupes by id, sorts by ts. */
+  mergeMessages: (sessionId: string, messages: Message[]) => void;
   clearMessages: (sessionId: string) => void;
+
+  // Alerts (notification history + per-session unread counts)
+  alerts: SessionAlert[];
+  unreadBySession: Record<string, number>;
+  notificationCenterOpen: boolean;
+  addAlert: (alert: SessionAlert) => void;
+  dismissAlert: (alertId: string) => void;
+  markSessionRead: (sessionId: string) => void;
+  /** Increment unread count for a session without going through the alert envelope. */
+  bumpUnread: (sessionId: string) => void;
+  clearAllAlerts: () => void;
+  setNotificationCenterOpen: (open: boolean) => void;
+
+  // Elicitations (MCP form/url prompts)
+  pendingElicitations: ElicitationPrompt[];
+  addElicitation: (prompt: ElicitationPrompt) => void;
+  removeElicitation: (id: string) => void;
+
+  // Per-session live task list (driven by session:task-event)
+  tasksBySession: Record<string, TaskEntry[]>;
+  applyTaskEvent: (sessionId: string, subtype: string, payload: Record<string, unknown>) => void;
+
+  // Per-session tool progress (most-recent only) and status spinner
+  toolProgressBySession: Record<string, ToolProgress | null>;
+  setToolProgress: (sessionId: string, progress: ToolProgress | null) => void;
+  statusBySession: Record<string, SessionStatus>;
+  setSessionStatus: (sessionId: string, status: SessionStatus) => void;
 }
+
+export type TaskState = 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'stopped' | 'unknown';
+
+export interface TaskEntry {
+  taskId: string;
+  description: string;
+  state: TaskState;
+  taskType?: string;
+  workflowName?: string;
+  totalTokens?: number;
+  toolUses?: number;
+  durationMs?: number;
+  lastToolName?: string;
+  summary?: string;
+  outputFile?: string;
+  startedAt: number;
+  endedAt?: number;
+  isBackgrounded?: boolean;
+  skipTranscript?: boolean;
+}
+
+export interface ToolProgress {
+  toolUseId: string;
+  toolName: string;
+  elapsedSeconds: number;
+  taskId: string | null;
+  parentToolUseId: string | null;
+  receivedAt: number;
+}
+
+export type SessionStatus =
+  | { status: null }
+  | { status: 'compacting' | 'requesting'; compactResult?: 'success' | 'failed' | null; compactError?: string | null };
+
+// Cap alert history so an unattended user doesn't grow it indefinitely.
+const MAX_ALERT_HISTORY = 200;
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Projects
@@ -329,6 +396,20 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       };
     }),
+  mergeMessages: (sessionId, messages) =>
+    set((s) => {
+      const existing = s.messagesBySession[sessionId] ?? [];
+      if (existing.length === 0) {
+        return { messagesBySession: { ...s.messagesBySession, [sessionId]: messages } };
+      }
+      const byId = new Map<string, Message>();
+      for (const m of messages) byId.set(m.id, m);
+      // Existing-store entries take precedence — they include in-flight WS
+      // updates that may not have hit the JSONL yet.
+      for (const m of existing) byId.set(m.id, m);
+      const merged = [...byId.values()].sort((a, b) => a.ts - b.ts);
+      return { messagesBySession: { ...s.messagesBySession, [sessionId]: merged } };
+    }),
   clearMessages: (sessionId) =>
     set((s) => {
       if (!(sessionId in s.messagesBySession)) return s;
@@ -336,4 +417,145 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete next[sessionId];
       return { messagesBySession: next };
     }),
+
+  // Alerts
+  alerts: [],
+  unreadBySession: {},
+  notificationCenterOpen: false,
+  addAlert: (alert) =>
+    set((s) => {
+      // Dedup by alertId in case a reconnect re-delivers the same envelope.
+      if (s.alerts.some((a) => a.alertId === alert.alertId)) return s;
+      const persistent = alert.persistent
+        ? [alert, ...s.alerts].slice(0, MAX_ALERT_HISTORY)
+        : s.alerts;
+      const unread = { ...s.unreadBySession };
+      if (alert.needsAttention) {
+        unread[alert.sessionId] = (unread[alert.sessionId] ?? 0) + 1;
+      }
+      return { alerts: persistent, unreadBySession: unread };
+    }),
+  dismissAlert: (alertId) =>
+    set((s) => ({ alerts: s.alerts.filter((a) => a.alertId !== alertId) })),
+  markSessionRead: (sessionId) =>
+    set((s) => {
+      if (!s.unreadBySession[sessionId]) return s;
+      const next = { ...s.unreadBySession };
+      delete next[sessionId];
+      return { unreadBySession: next };
+    }),
+  bumpUnread: (sessionId) =>
+    set((s) => ({
+      unreadBySession: {
+        ...s.unreadBySession,
+        [sessionId]: (s.unreadBySession[sessionId] ?? 0) + 1,
+      },
+    })),
+  clearAllAlerts: () => set({ alerts: [], unreadBySession: {} }),
+  setNotificationCenterOpen: (open) => set({ notificationCenterOpen: open }),
+
+  // Elicitations
+  pendingElicitations: [],
+  addElicitation: (prompt) =>
+    set((s) =>
+      s.pendingElicitations.some((p) => p.id === prompt.id)
+        ? s
+        : { pendingElicitations: [...s.pendingElicitations, prompt] }
+    ),
+  removeElicitation: (id) =>
+    set((s) => ({ pendingElicitations: s.pendingElicitations.filter((p) => p.id !== id) })),
+
+  // Tasks
+  tasksBySession: {},
+  applyTaskEvent: (sessionId, subtype, payload) =>
+    set((s) => {
+      const list = [...(s.tasksBySession[sessionId] ?? [])];
+      const taskId = typeof payload.task_id === 'string' ? payload.task_id : '';
+      if (!taskId) return s;
+      const idx = list.findIndex((t) => t.taskId === taskId);
+
+      function patch(into: TaskEntry, with_: Partial<TaskEntry>): TaskEntry {
+        return { ...into, ...with_ };
+      }
+
+      const now = Date.now();
+
+      if (subtype === 'task_started') {
+        const desc = typeof payload.description === 'string' ? payload.description : 'Task';
+        const taskType = typeof payload.task_type === 'string' ? payload.task_type : undefined;
+        const workflowName = typeof payload.workflow_name === 'string' ? payload.workflow_name : undefined;
+        const skipTranscript = payload.skip_transcript === true;
+        const entry: TaskEntry = {
+          taskId,
+          description: desc,
+          state: 'running',
+          taskType,
+          workflowName,
+          startedAt: now,
+          skipTranscript,
+        };
+        if (idx >= 0) list[idx] = patch(list[idx], entry);
+        else list.push(entry);
+      } else if (subtype === 'task_progress') {
+        const usage = (payload.usage ?? {}) as Record<string, unknown>;
+        const upd: Partial<TaskEntry> = {
+          description: typeof payload.description === 'string' ? payload.description : undefined,
+          totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : undefined,
+          toolUses: typeof usage.tool_uses === 'number' ? usage.tool_uses : undefined,
+          durationMs: typeof usage.duration_ms === 'number' ? usage.duration_ms : undefined,
+          lastToolName: typeof payload.last_tool_name === 'string' ? payload.last_tool_name : undefined,
+          summary: typeof payload.summary === 'string' ? payload.summary : undefined,
+        };
+        if (idx >= 0) list[idx] = patch(list[idx], upd);
+        else list.push({ taskId, description: upd.description ?? '…', state: 'running', startedAt: now, ...upd });
+      } else if (subtype === 'task_updated') {
+        const p = (payload.patch ?? {}) as Record<string, unknown>;
+        const stateRaw = typeof p.status === 'string' ? p.status : undefined;
+        const state: TaskState = isTaskState(stateRaw) ? (stateRaw as TaskState) : 'unknown';
+        const upd: Partial<TaskEntry> = {
+          description: typeof p.description === 'string' ? p.description : undefined,
+          state: stateRaw ? state : undefined,
+          endedAt: typeof p.end_time === 'number' ? p.end_time : undefined,
+          isBackgrounded: typeof p.is_backgrounded === 'boolean' ? p.is_backgrounded : undefined,
+        };
+        if (idx >= 0) list[idx] = patch(list[idx], upd);
+        else list.push({ taskId, description: upd.description ?? '…', state: state, startedAt: now, ...upd });
+      } else if (subtype === 'task_notification') {
+        const status = typeof payload.status === 'string' ? payload.status : 'completed';
+        const finalState: TaskState =
+          status === 'completed' ? 'completed' : status === 'failed' ? 'failed' : status === 'stopped' ? 'stopped' : 'unknown';
+        const usage = (payload.usage ?? {}) as Record<string, unknown>;
+        const upd: Partial<TaskEntry> = {
+          state: finalState,
+          summary: typeof payload.summary === 'string' ? payload.summary : undefined,
+          outputFile: typeof payload.output_file === 'string' ? payload.output_file : undefined,
+          totalTokens: typeof usage.total_tokens === 'number' ? usage.total_tokens : undefined,
+          toolUses: typeof usage.tool_uses === 'number' ? usage.tool_uses : undefined,
+          durationMs: typeof usage.duration_ms === 'number' ? usage.duration_ms : undefined,
+          endedAt: now,
+        };
+        if (idx >= 0) list[idx] = patch(list[idx], upd);
+        else list.push({ taskId, description: upd.summary ?? 'Task', state: finalState, startedAt: now, ...upd });
+      }
+
+      return { tasksBySession: { ...s.tasksBySession, [sessionId]: list } };
+    }),
+
+  // Tool progress
+  toolProgressBySession: {},
+  setToolProgress: (sessionId, progress) =>
+    set((s) => ({
+      toolProgressBySession: { ...s.toolProgressBySession, [sessionId]: progress },
+    })),
+
+  // Status spinner
+  statusBySession: {},
+  setSessionStatus: (sessionId, status) =>
+    set((s) => ({
+      statusBySession: { ...s.statusBySession, [sessionId]: status },
+    })),
 }));
+
+function isTaskState(s: string | undefined): boolean {
+  return s === 'pending' || s === 'running' || s === 'completed' || s === 'failed' || s === 'killed';
+}

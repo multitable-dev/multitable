@@ -124,6 +124,53 @@ export interface OptionPrompt {
   options: string[];
 }
 
+// ─── Alerts (mirrors daemon agent/types.ts) ────────────────────────────────
+
+export type AlertSeverity = 'info' | 'success' | 'warning' | 'error' | 'attention';
+
+export type AlertCategory =
+  | 'turn'
+  | 'tool'
+  | 'permission'
+  | 'elicitation'
+  | 'rate-limit'
+  | 'auth'
+  | 'task'
+  | 'compaction'
+  | 'sync'
+  | 'budget'
+  | 'status';
+
+export interface SessionAlert {
+  alertId: string;
+  sessionId: string;
+  category: AlertCategory;
+  severity: AlertSeverity;
+  title: string;
+  body?: string;
+  needsAttention: boolean;
+  persistent: boolean;
+  ttlMs?: number;
+  metadata?: Record<string, unknown>;
+  timestamp: number;
+}
+
+export interface ElicitationPrompt {
+  id: string;
+  sessionId: string;
+  serverName: string;
+  message: string;
+  mode: 'form' | 'url';
+  url?: string;
+  elicitationId?: string;
+  requestedSchema?: Record<string, unknown>;
+  title?: string;
+  displayName?: string;
+  description?: string;
+  createdAt: number;
+  timeoutMs: number;
+}
+
 export interface WsMessage {
   type: string;
   processId?: string;

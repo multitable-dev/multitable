@@ -2,6 +2,7 @@ import type { WsClientState, WsMessage, ProcessConfig, SpawnConfig } from '../ty
 import type { WebSocket } from 'ws';
 import type { PtyManager } from './manager.js';
 import type { PermissionManager } from '../hooks/permissionManager.js';
+import type { ElicitationManager, ElicitAction, ElicitResponseContent } from '../hooks/elicitationManager.js';
 import type { AgentSessionManager } from '../agent/manager.js';
 import { getCommandById, getTerminalById, getSessionById } from '../db/store.js';
 
@@ -25,7 +26,8 @@ export function handleWsMessage(
   ws: WebSocket,
   manager: PtyManager,
   permManager: PermissionManager,
-  agentManager: AgentSessionManager
+  agentManager: AgentSessionManager,
+  elicitManager: ElicitationManager
 ): void {
   switch (msg.type) {
     case 'subscribe':
@@ -48,6 +50,9 @@ export function handleWsMessage(
       break;
     case 'permission:answer-question':
       handleAnswerQuestion(msg, permManager);
+      break;
+    case 'session:elicitation:respond':
+      handleElicitationRespond(msg, elicitManager);
       break;
     case 'option:dismiss':
       // handled at server level
@@ -285,6 +290,18 @@ function handlePermissionRespond(msg: WsMessage, permManager: PermissionManager)
       ? decision
       : 'deny';
   permManager.respond(id, normalized, updatedInput);
+}
+
+function handleElicitationRespond(msg: WsMessage, elicitManager: ElicitationManager): void {
+  const { id, action, content } = msg.payload || {};
+  if (typeof id !== 'string' || !id) return;
+  const validAction: ElicitAction =
+    action === 'accept' || action === 'decline' || action === 'cancel' ? action : 'cancel';
+  // Only accept content if it's a plain object; trust the client to have run
+  // its own JSON-Schema validation, but discard non-object payloads.
+  const responseContent: ElicitResponseContent | undefined =
+    content && typeof content === 'object' && !Array.isArray(content) ? content : undefined;
+  elicitManager.respond(id, validAction, responseContent);
 }
 
 function handleAnswerQuestion(msg: WsMessage, permManager: PermissionManager): void {

@@ -61,6 +61,22 @@ export interface AskQuestion {
   multiSelect?: boolean;
 }
 
+export interface ElicitationPrompt {
+  id: string;                       // multitable-generated uuid
+  sessionId: string;
+  serverName: string;               // MCP server requesting input
+  message: string;
+  mode: 'form' | 'url';
+  url?: string;                     // 'url' mode only
+  elicitationId?: string;           // SDK-side id (URL-mode correlation)
+  requestedSchema?: Record<string, unknown>; // 'form' mode only
+  title?: string;
+  displayName?: string;
+  description?: string;
+  createdAt: number;
+  timeoutMs: number;
+}
+
 export interface PermissionPrompt {
   id: string;
   sessionId: string;

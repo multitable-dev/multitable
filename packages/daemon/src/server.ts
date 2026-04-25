@@ -6,7 +6,10 @@ import fs from 'fs';
 import type { GlobalConfig, WsClientState, WsMessage } from './types.js';
 import type { PtyManager } from './pty/manager.js';
 import type { PermissionManager } from './hooks/permissionManager.js';
+import type { ElicitationManager } from './hooks/elicitationManager.js';
 import type { AgentSessionManager } from './agent/manager.js';
+import type { SessionAlert } from './agent/types.js';
+import type { ElicitationPrompt } from './types.js';
 import { handleWsMessage } from './pty/stream.js';
 import { createProjectsRouter } from './api/projects.js';
 import { createSessionsRouter } from './api/sessions.js';
@@ -32,7 +35,8 @@ export function createServer(
   config: GlobalConfig,
   manager: PtyManager,
   permManager: PermissionManager,
-  agentManager: AgentSessionManager
+  agentManager: AgentSessionManager,
+  elicitManager: ElicitationManager
 ): ServerInstance {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -49,6 +53,18 @@ export function createServer(
 
   function broadcast(type: string, payload: any): void {
     const msg = JSON.stringify({ type, payload });
+    for (const { ws } of clients) {
+      if (ws.readyState === WebSocket.OPEN) {
+        try { ws.send(msg); } catch {}
+      }
+    }
+  }
+
+  // Like broadcast(), but puts processId at the WS top level so frontend
+  // handlers that read `msg.processId` (the old sendToSubscribers contract)
+  // keep working when an event is widened from per-subscriber to broadcast.
+  function broadcastForProcess(processId: string, type: string, payload: any): void {
+    const msg = JSON.stringify({ type, processId, payload });
     for (const { ws } of clients) {
       if (ws.readyState === WebSocket.OPEN) {
         try { ws.send(msg); } catch {}
@@ -165,7 +181,7 @@ export function createServer(
     ws.on('message', (raw: Buffer | string) => {
       try {
         const msg = JSON.parse(raw.toString()) as WsMessage;
-        handleWsMessage(state, msg, ws, manager, permManager, agentManager);
+        handleWsMessage(state, msg, ws, manager, permManager, agentManager, elicitManager);
       } catch {}
     });
 
@@ -214,6 +230,20 @@ export function createServer(
     broadcast('permission:expired', { id });
   });
 
+  // ─── Wire elicitation events ────────────────────────────────────────────────
+
+  elicitManager.on('elicitation:prompt', (prompt: ElicitationPrompt) => {
+    broadcast('session:elicitation:prompt', { prompt });
+  });
+
+  elicitManager.on('elicitation:resolved', (id: string) => {
+    broadcast('session:elicitation:resolved', { id });
+  });
+
+  elicitManager.on('elicitation:expired', (id: string) => {
+    broadcast('session:elicitation:expired', { id });
+  });
+
   // ─── Wire agent session events ──────────────────────────────────────────────
   //
   // `state-changed` shares the global `process-state-changed` event shape with
@@ -231,29 +261,37 @@ export function createServer(
     }
   });
 
+  // Session events are session-id-keyed in their payload, so broadcasting is
+  // safe — the frontend store filters by id. Broadcasting (rather than
+  // sendToSubscribers) is essential: a user who sends a message to session A
+  // and immediately switches to session B would otherwise miss every event
+  // for A — chat updates, "Claude is done" toast, error toast, final cost
+  // — because their client unsubscribed when they navigated away. The
+  // sendToSubscribers pattern is a holdover from the PTY days where each
+  // terminal's raw bytes only made sense for the viewing client.
   agentManager.on('assistant-message', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
-    sendToSubscribers(sessionId, 'session:assistant-message', { messages });
+    broadcastForProcess(sessionId, 'session:assistant-message', { messages });
   });
 
   agentManager.on('user-message', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
-    sendToSubscribers(sessionId, 'session:user-message', { messages });
+    broadcastForProcess(sessionId, 'session:user-message', { messages });
   });
 
   agentManager.on('tool-event', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
-    sendToSubscribers(sessionId, 'session:tool-event', { messages });
+    broadcastForProcess(sessionId, 'session:tool-event', { messages });
   });
 
   agentManager.on('turn-result', (payload: { sessionId: string; subtype: string; totalCostUsd: number; usage: any; text: string | null }) => {
     const { sessionId, ...rest } = payload;
-    sendToSubscribers(sessionId, 'session:turn-result', rest);
+    broadcastForProcess(sessionId, 'session:turn-result', rest);
   });
 
   agentManager.on('turn-error', ({ sessionId, error }: { sessionId: string; error: string }) => {
-    sendToSubscribers(sessionId, 'session:turn-error', { message: error });
+    broadcastForProcess(sessionId, 'session:turn-error', { message: error });
   });
 
   agentManager.on('turn-complete', ({ sessionId }: { sessionId: string }) => {
-    sendToSubscribers(sessionId, 'session:turn-complete', {});
+    broadcastForProcess(sessionId, 'session:turn-complete', {});
   });
 
   // Hook-driven state propagation (Phase 6: replaces the HTTP receiver).
@@ -280,6 +318,31 @@ export function createServer(
   agentManager.on('session-renamed', ({ sessionId }: { sessionId: string }) => {
     const session = getSessionById(sessionId);
     if (session) broadcast('session:updated', { session });
+  });
+
+  // Unified alert envelope. Broadcast (not sendToSubscribers) so unread badges
+  // on non-focused sessions still tick over in the sidebar. Frontend filters
+  // toast/OS-notif suppression based on the focused session.
+  agentManager.on('alert', ({ alert }: { alert: SessionAlert }) => {
+    broadcast('session:alert', { alert });
+  });
+
+  // Phase 5 informational events. Broadcast (not sendToSubscribers) so the
+  // Tasks tab + status spinner + tool-progress pill stay accurate when the
+  // user navigates away mid-turn and comes back.
+  agentManager.on('status', (payload: { sessionId: string; status: string | null }) => {
+    const { sessionId, ...rest } = payload;
+    broadcastForProcess(sessionId, 'session:status', rest);
+  });
+
+  agentManager.on('task-event', (payload: { sessionId: string; subtype: string; payload: any }) => {
+    const { sessionId, ...rest } = payload;
+    broadcastForProcess(sessionId, 'session:task-event', rest);
+  });
+
+  agentManager.on('tool-progress', (payload: { sessionId: string }) => {
+    const { sessionId, ...rest } = payload;
+    broadcastForProcess(sessionId, 'session:tool-progress', rest);
   });
 
   function closeAllClients(): void {

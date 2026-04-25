@@ -4,16 +4,19 @@ import type {
   HookCallbackMatcher,
   HookEvent,
 } from '@anthropic-ai/claude-agent-sdk';
-import type { AgentSession, SendTurnInput } from './types.js';
+import type { AgentSession, SendTurnInput, AlertSeverity } from './types.js';
 import type { ProcessState } from '../types.js';
 import type { Message } from '../transcripts/parser.js';
 import type { PermissionManager } from '../hooks/permissionManager.js';
+import type { ElicitationManager } from '../hooks/elicitationManager.js';
+import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
 import {
   sdkSystemInit,
   sdkAssistantToMessages,
   sdkUserToMessages,
   sdkResult,
 } from './sdkAdapter.js';
+import { createAlert } from './alerts.js';
 import { updateSession, insertCostRecord, getSessionById } from '../db/store.js';
 import { generateSessionLabel } from '../hooks/labeler.js';
 import { detectOptions } from '../hooks/optionDetector.js';
@@ -57,10 +60,12 @@ type RegisterInput = Omit<
 export class AgentSessionManager extends EventEmitter {
   private sessions = new Map<string, AgentSession>();
   private permManager: PermissionManager;
+  private elicitManager: ElicitationManager;
 
-  constructor(permManager: PermissionManager) {
+  constructor(permManager: PermissionManager, elicitManager: ElicitationManager) {
     super();
     this.permManager = permManager;
+    this.elicitManager = elicitManager;
   }
 
   /**
@@ -150,6 +155,7 @@ export class AgentSessionManager extends EventEmitter {
           settingSources: ['project', 'user'],
           permissionMode: 'default',
           canUseTool: this.makeCanUseTool(sessionId),
+          onElicitation: this.makeOnElicitation(sessionId),
           hooks: this.makeHooks(sessionId),
           includePartialMessages: false,
           // NOTE: Phase 0 correction — SDK accepts the controller, NOT just its signal.
@@ -169,6 +175,13 @@ export class AgentSessionManager extends EventEmitter {
       s.state = 'errored';
       this.emit('turn-error', { sessionId, error: message });
       this.emit('state-changed', { sessionId, state: 'errored' as ProcessState });
+      this.emitAlert({
+        sessionId,
+        category: 'turn',
+        severity: 'error',
+        title: 'Turn failed',
+        body: message,
+      });
     } finally {
       s.currentTurn = null;
       if (s.state === 'running') {
@@ -192,19 +205,63 @@ export class AgentSessionManager extends EventEmitter {
 
     switch (m.type) {
       case 'system': {
-        if (m.subtype !== 'init') return;
-        const info = sdkSystemInit(msg);
-        if (!info) return;
-        const newSid = info.claudeSessionId;
-        if (newSid && newSid !== s.claudeSessionId) {
-          s.claudeSessionId = newSid;
-          try {
-            updateSession(sessionId, { claudeSessionId: newSid });
-          } catch (err) {
-            console.error('[agent] failed to persist claudeSessionId:', err);
+        switch (m.subtype) {
+          case 'init': {
+            const info = sdkSystemInit(msg);
+            if (!info) return;
+            const newSid = info.claudeSessionId;
+            if (newSid && newSid !== s.claudeSessionId) {
+              s.claudeSessionId = newSid;
+              try {
+                updateSession(sessionId, { claudeSessionId: newSid });
+              } catch (err) {
+                console.error('[agent] failed to persist claudeSessionId:', err);
+              }
+              this.emit('session-updated', { sessionId, claudeSessionId: newSid });
+            }
+            return;
           }
-          this.emit('session-updated', { sessionId, claudeSessionId: newSid });
+          case 'notification': {
+            this.handleSdkNotificationMessage(sessionId, msg);
+            return;
+          }
+          case 'compact_boundary': {
+            this.handleCompactBoundary(sessionId, msg);
+            return;
+          }
+          case 'mirror_error': {
+            this.handleMirrorError(sessionId, msg);
+            return;
+          }
+          case 'api_retry': {
+            this.handleApiRetry(sessionId, msg);
+            return;
+          }
+          case 'status': {
+            this.handleStatus(sessionId, msg);
+            return;
+          }
+          case 'task_started':
+          case 'task_progress':
+          case 'task_updated':
+          case 'task_notification': {
+            this.handleTaskEvent(sessionId, m.subtype, msg);
+            return;
+          }
+          default:
+            return;
         }
+      }
+      case 'rate_limit_event': {
+        this.handleRateLimitEvent(sessionId, msg);
+        return;
+      }
+      case 'auth_status': {
+        this.handleAuthStatus(sessionId, msg);
+        return;
+      }
+      case 'tool_progress': {
+        this.handleToolProgress(sessionId, msg);
         return;
       }
       case 'assistant': {
@@ -273,6 +330,7 @@ export class AgentSessionManager extends EventEmitter {
         // without waiting for JSONL re-parse. server.ts re-emits this as
         // `session:state-updated` to all clients.
         this.emit('state-snapshot', { sessionId, snapshot: this.snapshotStats(s) });
+        this.maybeEmitResultAlert(sessionId, info.subtype, info.totalCostUsd);
         return;
       }
       default:
@@ -327,6 +385,34 @@ export class AgentSessionManager extends EventEmitter {
   }
 
   /**
+   * Build the onElicitation callback the SDK invokes when an MCP server asks
+   * for structured user input (form mode) or browser-based auth (url mode).
+   * Delegates to ElicitationManager.requestFromSdk; returned action+content
+   * is forwarded back to the MCP server by the SDK. Also emits an attention-
+   * level alert so the UI surfaces the request even when the user is on a
+   * different session.
+   */
+  private makeOnElicitation(sessionId: string): OnElicitation {
+    return async (request, opts) => {
+      this.emitAlert({
+        sessionId,
+        category: 'elicitation',
+        severity: 'attention',
+        title: request.title || `${request.serverName} needs input`,
+        body: request.message,
+        metadata: {
+          serverName: request.serverName,
+          mode: request.mode ?? 'form',
+        },
+      });
+      const result = await this.elicitManager.requestFromSdk(sessionId, request, opts.signal);
+      // ElicitationResult has a loose index signature in the MCP schema; our
+      // narrower runtime shape is structurally compatible.
+      return result as unknown as Awaited<ReturnType<OnElicitation>>;
+    };
+  }
+
+  /**
    * Abort an in-flight turn. The `for await` loop in sendTurn will exit and
    * the `finally` block handles the state cleanup + turn-complete emission.
    */
@@ -352,7 +438,253 @@ export class AgentSessionManager extends EventEmitter {
     } catch (err) {
       console.error('[agent] clearForSession failed:', err);
     }
+    try {
+      this.elicitManager.clearForSession(sessionId);
+    } catch (err) {
+      console.error('[agent] elicit clearForSession failed:', err);
+    }
     this.sessions.delete(sessionId);
+  }
+
+  /**
+   * Emit a unified alert envelope. server.ts re-broadcasts as `session:alert`.
+   */
+  private emitAlert(input: Parameters<typeof createAlert>[0]): void {
+    this.emit('alert', { alert: createAlert(input) });
+  }
+
+  /**
+   * Surface budget/turn-limit and structured-output-retry exhaustion as alerts.
+   * Plain `result` with subtype 'success' or 'error_during_execution' are
+   * handled by the existing `turn-result` event and don't need a banner.
+   */
+  private maybeEmitResultAlert(sessionId: string, subtype: string, totalCostUsd: number): void {
+    if (subtype === 'error_max_budget_usd') {
+      this.emitAlert({
+        sessionId,
+        category: 'budget',
+        severity: 'error',
+        title: 'Budget limit reached',
+        body: `Spent $${totalCostUsd.toFixed(4)}; turn stopped at the configured maxBudgetUsd.`,
+      });
+    } else if (subtype === 'error_max_turns') {
+      this.emitAlert({
+        sessionId,
+        category: 'budget',
+        severity: 'error',
+        title: 'Turn limit reached',
+        body: 'Conversation hit the configured maxTurns ceiling.',
+      });
+    } else if (subtype === 'error_max_structured_output_retries') {
+      this.emitAlert({
+        sessionId,
+        category: 'budget',
+        severity: 'error',
+        title: 'Structured-output retries exhausted',
+        body: 'Claude could not produce a valid structured response after the maximum retries.',
+      });
+    }
+  }
+
+  // ─── Phase 4: SDK message-type handlers ─────────────────────────────────
+  //
+  // Each handler is fed the raw SDK message; it extracts what it needs and
+  // emits a typed `session:alert`. All are best-effort — any missing field
+  // falls back to a sensible default so a future SDK shape change doesn't
+  // crash the iteration loop.
+
+  private handleSdkNotificationMessage(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as Record<string, unknown>;
+    const text = typeof m.text === 'string' ? m.text : '';
+    const priority = typeof m.priority === 'string' ? m.priority : 'medium';
+    const color = typeof m.color === 'string' ? m.color : undefined;
+    const timeoutMs = typeof m.timeout_ms === 'number' ? m.timeout_ms : undefined;
+    const severity: AlertSeverity =
+      priority === 'immediate' || priority === 'high' ? 'attention' : 'info';
+    this.emitAlert({
+      sessionId,
+      category: 'turn',
+      severity,
+      title: 'Claude notification',
+      body: text,
+      ttlMs: timeoutMs,
+      metadata: { source: 'sdk-notification-message', priority, color },
+    });
+  }
+
+  private handleCompactBoundary(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as { compact_metadata?: unknown };
+    const meta = (m.compact_metadata ?? {}) as Record<string, unknown>;
+    const trigger = meta.trigger === 'auto' ? 'auto' : 'manual';
+    const preTokens = typeof meta.pre_tokens === 'number' ? meta.pre_tokens : 0;
+    const postTokens = typeof meta.post_tokens === 'number' ? meta.post_tokens : undefined;
+    const body =
+      postTokens !== undefined
+        ? `Reduced ${preTokens.toLocaleString()} → ${postTokens.toLocaleString()} tokens.`
+        : `Compacted (${preTokens.toLocaleString()} tokens).`;
+    this.emitAlert({
+      sessionId,
+      category: 'compaction',
+      severity: 'info',
+      title: trigger === 'auto' ? 'Context auto-compacted' : 'Context compacted',
+      body,
+      metadata: { trigger, preTokens, postTokens },
+    });
+  }
+
+  private handleMirrorError(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as { error?: unknown };
+    const err = typeof m.error === 'string' ? m.error : 'Session sync failed.';
+    this.emitAlert({
+      sessionId,
+      category: 'sync',
+      severity: 'error',
+      title: 'Session sync error',
+      body: err,
+    });
+  }
+
+  private handleApiRetry(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as { attempt?: unknown; max_retries?: unknown; error?: unknown };
+    const attempt = typeof m.attempt === 'number' ? m.attempt : 0;
+    const max = typeof m.max_retries === 'number' ? m.max_retries : 0;
+    const errMsg =
+      m.error && typeof m.error === 'object' && 'message' in m.error
+        ? String((m.error as { message?: unknown }).message ?? '')
+        : '';
+    this.emitAlert({
+      sessionId,
+      category: 'status',
+      severity: 'info',
+      title: max ? `Retrying API call (${attempt}/${max})` : 'Retrying API call',
+      body: errMsg || undefined,
+      ttlMs: 3000,
+      persistent: false,
+      needsAttention: false,
+      metadata: { attempt, maxRetries: max },
+    });
+  }
+
+  private handleRateLimitEvent(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as { rate_limit_info?: unknown };
+    const info = (m.rate_limit_info ?? {}) as Record<string, unknown>;
+    const status =
+      info.status === 'allowed' || info.status === 'allowed_warning' || info.status === 'rejected'
+        ? (info.status as 'allowed' | 'allowed_warning' | 'rejected')
+        : 'allowed';
+    if (status === 'allowed') return;
+    const utilization = typeof info.utilization === 'number' ? info.utilization : null;
+    const resetsAt = typeof info.resetsAt === 'number' ? info.resetsAt : null;
+    const limitType = typeof info.rateLimitType === 'string' ? info.rateLimitType : 'limit';
+    const severity: AlertSeverity = status === 'rejected' ? 'error' : 'warning';
+    const title =
+      status === 'rejected' ? `Rate limit hit (${limitType})` : `Approaching rate limit (${limitType})`;
+    const parts: string[] = [];
+    if (utilization !== null) parts.push(`${Math.round(utilization * 100)}% used`);
+    if (resetsAt !== null) parts.push(`resets ${new Date(resetsAt).toLocaleString()}`);
+    this.emitAlert({
+      sessionId,
+      category: 'rate-limit',
+      severity,
+      title,
+      body: parts.join(' · ') || undefined,
+      metadata: { status, utilization, resetsAt, rateLimitType: limitType },
+    });
+  }
+
+  // ─── Phase 5: informational events (not alerts) ─────────────────────────
+
+  private handleStatus(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as {
+      status?: unknown;
+      compact_result?: unknown;
+      compact_error?: unknown;
+    };
+    const status = m.status === 'compacting' || m.status === 'requesting' ? m.status : null;
+    this.emit('status', {
+      sessionId,
+      status,
+      compactResult:
+        m.compact_result === 'success' || m.compact_result === 'failed' ? m.compact_result : null,
+      compactError: typeof m.compact_error === 'string' ? m.compact_error : null,
+    });
+  }
+
+  private handleTaskEvent(sessionId: string, subtype: string, msg: unknown): void {
+    const m = (msg ?? {}) as Record<string, unknown>;
+    this.emit('task-event', { sessionId, subtype, payload: m });
+
+    // task_notification carries the terminal outcome. The TaskCompleted hook
+    // already covers status==='completed'; we only emit alerts for failure /
+    // stop here so we don't double-toast.
+    if (subtype === 'task_notification') {
+      const status = typeof m.status === 'string' ? m.status : '';
+      const summary = typeof m.summary === 'string' ? m.summary : undefined;
+      const taskId = typeof m.task_id === 'string' ? m.task_id : undefined;
+      if (status === 'failed') {
+        this.emitAlert({
+          sessionId,
+          category: 'task',
+          severity: 'warning',
+          title: 'Task failed',
+          body: summary,
+          metadata: { taskId, status },
+        });
+      } else if (status === 'stopped') {
+        this.emitAlert({
+          sessionId,
+          category: 'task',
+          severity: 'info',
+          title: 'Task stopped',
+          body: summary,
+          metadata: { taskId, status },
+        });
+      }
+    }
+  }
+
+  private handleToolProgress(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as {
+      tool_use_id?: unknown;
+      tool_name?: unknown;
+      elapsed_time_seconds?: unknown;
+      task_id?: unknown;
+      parent_tool_use_id?: unknown;
+    };
+    this.emit('tool-progress', {
+      sessionId,
+      toolUseId: typeof m.tool_use_id === 'string' ? m.tool_use_id : '',
+      toolName: typeof m.tool_name === 'string' ? m.tool_name : '',
+      elapsedSeconds: typeof m.elapsed_time_seconds === 'number' ? m.elapsed_time_seconds : 0,
+      taskId: typeof m.task_id === 'string' ? m.task_id : null,
+      parentToolUseId: typeof m.parent_tool_use_id === 'string' ? m.parent_tool_use_id : null,
+    });
+  }
+
+  private handleAuthStatus(sessionId: string, msg: unknown): void {
+    const m = (msg ?? {}) as { isAuthenticating?: unknown; error?: unknown; output?: unknown };
+    const errText = typeof m.error === 'string' ? m.error : '';
+    if (errText) {
+      this.emitAlert({
+        sessionId,
+        category: 'auth',
+        severity: 'error',
+        title: 'Auth failed',
+        body: `${errText} — set ANTHROPIC_API_KEY or run \`claude login\`.`,
+      });
+      return;
+    }
+    if (m.isAuthenticating === true) {
+      this.emitAlert({
+        sessionId,
+        category: 'auth',
+        severity: 'info',
+        title: 'Authenticating…',
+        ttlMs: 2000,
+        persistent: false,
+        needsAttention: false,
+      });
+    }
   }
 
   /**
@@ -508,6 +840,23 @@ export class AgentSessionManager extends EventEmitter {
 
     const onNotification: HookCallback = async (input) => {
       this.emit('notification', { sessionId, payload: input });
+      const i = (input ?? {}) as Record<string, unknown>;
+      const notifType = typeof i.notification_type === 'string' ? i.notification_type : '';
+      // notification_type values like 'agent_waiting' = Claude paused for user
+      // input; 'permission_required' = the existing permission card already
+      // covers it, so keep that path quieter.
+      const severity: AlertSeverity =
+        notifType === 'agent_waiting' || notifType === 'idle' ? 'attention' : 'info';
+      const title = typeof i.title === 'string' && i.title ? i.title : 'Claude needs attention';
+      const body = typeof i.message === 'string' ? i.message : undefined;
+      this.emitAlert({
+        sessionId,
+        category: 'turn',
+        severity,
+        title,
+        body,
+        metadata: { source: 'sdk-notification-hook', notificationType: notifType },
+      });
       return { continue: true };
     };
 
@@ -517,19 +866,160 @@ export class AgentSessionManager extends EventEmitter {
 
     const onSessionEnd: HookCallback = async () => {
       this.emit('session-ended', { sessionId });
+      this.emitAlert({
+        sessionId,
+        category: 'turn',
+        severity: 'info',
+        title: 'Session ended',
+      });
+      return { continue: true };
+    };
+
+    const onPostToolUseFailure: HookCallback = async (input) => {
+      const i = (input ?? {}) as { tool_name?: unknown; error?: unknown; is_interrupt?: unknown };
+      const toolName = typeof i.tool_name === 'string' ? i.tool_name : 'tool';
+      const errText = typeof i.error === 'string' ? i.error : 'Tool execution failed.';
+      const interrupted = i.is_interrupt === true;
+      this.emitAlert({
+        sessionId,
+        category: 'tool',
+        severity: 'warning',
+        title: interrupted ? `${toolName} interrupted` : `${toolName} failed`,
+        body: errText,
+        metadata: { toolName, interrupted },
+      });
+      return { continue: true };
+    };
+
+    const onPermissionDenied: HookCallback = async (input) => {
+      const i = (input ?? {}) as { tool_name?: unknown; reason?: unknown };
+      const toolName = typeof i.tool_name === 'string' ? i.tool_name : 'tool';
+      const reason = typeof i.reason === 'string' ? i.reason : 'Permission denied.';
+      this.emitAlert({
+        sessionId,
+        category: 'permission',
+        severity: 'warning',
+        title: `Permission denied: ${toolName}`,
+        body: reason,
+        metadata: { toolName },
+      });
+      return { continue: true };
+    };
+
+    const onTaskCreated: HookCallback = async (input) => {
+      const i = (input ?? {}) as {
+        task_id?: unknown;
+        task_subject?: unknown;
+        task_description?: unknown;
+        teammate_name?: unknown;
+      };
+      const subject = typeof i.task_subject === 'string' ? i.task_subject : 'New task';
+      const description = typeof i.task_description === 'string' ? i.task_description : undefined;
+      this.emitAlert({
+        sessionId,
+        category: 'task',
+        severity: 'info',
+        title: `Task created: ${subject}`,
+        body: description,
+        metadata: {
+          taskId: typeof i.task_id === 'string' ? i.task_id : undefined,
+          teammate: typeof i.teammate_name === 'string' ? i.teammate_name : undefined,
+        },
+      });
+      return { continue: true };
+    };
+
+    // TaskCompleted hook fires only on successful completion; failure / stop
+    // outcomes arrive via the `task_notification` SDKMessage (handled in
+    // handleSdkMessage). Both surfaces would duplicate on success, so the
+    // SDKMessage path skips status==='completed' and lets this hook own it.
+    const onTaskCompleted: HookCallback = async (input) => {
+      const i = (input ?? {}) as {
+        task_id?: unknown;
+        task_subject?: unknown;
+        teammate_name?: unknown;
+      };
+      const subject = typeof i.task_subject === 'string' ? i.task_subject : 'Task';
+      this.emitAlert({
+        sessionId,
+        category: 'task',
+        severity: 'success',
+        title: `Task completed: ${subject}`,
+        metadata: {
+          taskId: typeof i.task_id === 'string' ? i.task_id : undefined,
+          teammate: typeof i.teammate_name === 'string' ? i.teammate_name : undefined,
+        },
+      });
+      return { continue: true };
+    };
+
+    const onStopFailure: HookCallback = async (input) => {
+      const i = (input ?? {}) as { error?: unknown; error_details?: unknown };
+      const errMsg =
+        (typeof i.error_details === 'string' && i.error_details) ||
+        (i.error && typeof i.error === 'object' && 'message' in i.error
+          ? String((i.error as { message?: unknown }).message ?? 'Stop failed')
+          : 'Stop failed.');
+      this.emitAlert({
+        sessionId,
+        category: 'turn',
+        severity: 'error',
+        title: 'Stop failed',
+        body: errMsg,
+      });
+      return { continue: true };
+    };
+
+    const onPreCompact: HookCallback = async (input) => {
+      const i = (input ?? {}) as { trigger?: unknown };
+      const trigger = i.trigger === 'auto' ? 'auto' : 'manual';
+      this.emitAlert({
+        sessionId,
+        category: 'compaction',
+        severity: 'info',
+        title: trigger === 'auto' ? 'Compacting context…' : 'Manual compact starting…',
+        // Status-class signal — keep it transient; Phase 9's status indicator
+        // is the primary surface, not a toast.
+        ttlMs: 1500,
+        persistent: false,
+        needsAttention: false,
+        metadata: { trigger },
+      });
+      return { continue: true };
+    };
+
+    const onPostCompact: HookCallback = async (input) => {
+      const i = (input ?? {}) as { trigger?: unknown; compact_summary?: unknown };
+      const trigger = i.trigger === 'auto' ? 'auto' : 'manual';
+      const summary = typeof i.compact_summary === 'string' ? i.compact_summary : undefined;
+      this.emitAlert({
+        sessionId,
+        category: 'compaction',
+        severity: 'info',
+        title: trigger === 'auto' ? 'Context compacted' : 'Manual compact finished',
+        body: summary,
+        metadata: { trigger },
+      });
       return { continue: true };
     };
 
     return {
       PreToolUse: [{ hooks: [onPre] }],
       PostToolUse: [{ hooks: [onPost] }],
+      PostToolUseFailure: [{ hooks: [onPostToolUseFailure] }],
+      PermissionDenied: [{ hooks: [onPermissionDenied] }],
       UserPromptSubmit: [{ hooks: [onUserPrompt] }],
       Stop: [{ hooks: [onStop] }],
+      StopFailure: [{ hooks: [onStopFailure] }],
       SubagentStart: [{ hooks: [onSubStart] }],
       SubagentStop: [{ hooks: [onSubStop] }],
       Notification: [{ hooks: [onNotification] }],
       SessionStart: [{ hooks: [onSessionStart] }],
       SessionEnd: [{ hooks: [onSessionEnd] }],
+      TaskCreated: [{ hooks: [onTaskCreated] }],
+      TaskCompleted: [{ hooks: [onTaskCompleted] }],
+      PreCompact: [{ hooks: [onPreCompact] }],
+      PostCompact: [{ hooks: [onPostCompact] }],
     };
   }
 }

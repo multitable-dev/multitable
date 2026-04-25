@@ -2,7 +2,7 @@ import React from 'react';
 import { useProcess } from '../../hooks/useProcess';
 import { useAppStore } from '../../stores/appStore';
 import { api } from '../../lib/api';
-import { Square, Palette, Settings } from 'lucide-react';
+import { Square, Palette, Settings, Bell } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { BUILTIN_THEMES } from '../../lib/themes';
 import { IconButton } from '../ui';
@@ -35,8 +35,13 @@ export function StatusBar() {
     customThemes,
     setActiveTheme,
     setGlobalSettingsOpen,
+    setNotificationCenterOpen,
   } = useAppStore();
   const process = useProcess(selectedProcessId);
+  const totalUnread = useAppStore((s) =>
+    Object.values(s.unreadBySession).reduce((n, v) => n + v, 0),
+  );
+  const totalAlerts = useAppStore((s) => s.alerts.length);
 
   const allThemes = [...BUILTIN_THEMES, ...customThemes];
   const activeTheme = allThemes.find((t) => t.id === activeThemeId) ?? allThemes[0];
@@ -138,6 +143,63 @@ export function StatusBar() {
       >
         <Palette size={13} />
         {activeTheme?.name ?? 'Light'}
+      </button>
+      <button
+        onClick={() => setNotificationCenterOpen(true)}
+        title={
+          totalUnread > 0
+            ? `${totalUnread} unread alert${totalUnread === 1 ? '' : 's'}`
+            : totalAlerts > 0
+              ? `${totalAlerts} notification${totalAlerts === 1 ? '' : 's'} in history`
+              : 'No notifications'
+        }
+        style={{
+          position: 'relative',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 26,
+          height: 22,
+          background: 'transparent',
+          border: '1px solid transparent',
+          borderRadius: 'var(--radius-md)',
+          cursor: 'pointer',
+          color: totalUnread > 0 ? 'var(--accent)' : 'var(--text-secondary)',
+          padding: 0,
+          transition: 'background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'var(--bg-hover)';
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.backgroundColor = 'transparent';
+        }}
+      >
+        <Bell size={13} />
+        {totalUnread > 0 && (
+          <span
+            style={{
+              position: 'absolute',
+              top: -2,
+              right: -2,
+              minWidth: 14,
+              height: 14,
+              padding: '0 3px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--accent)',
+              color: 'white',
+              fontSize: 9,
+              fontWeight: 700,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              lineHeight: 1,
+              boxShadow: 'var(--shadow-sm)',
+            }}
+          >
+            {totalUnread > 99 ? '99+' : totalUnread}
+          </span>
+        )}
       </button>
       <IconButton size="sm" onClick={() => setGlobalSettingsOpen(true)} label="Customize themes">
         <Settings size={13} />

@@ -220,6 +220,15 @@ select:focus-visible,
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes mt-spin {
+  to { transform: rotate(360deg); }
+}
+
+.mt-spin {
+  animation: mt-spin 1s linear infinite;
+  transform-origin: center;
+}
+
 /* ---------- Dashboard responsive padding ---------- */
 .mt-dashboard {
   padding: 32px;

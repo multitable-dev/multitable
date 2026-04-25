@@ -22,7 +22,7 @@ interface Props {
 
 export function SessionChat({ sessionId, session }: Props) {
   const messages = useAppStore((s) => s.messagesBySession[sessionId] ?? EMPTY_MESSAGES);
-  const setMessages = useAppStore((s) => s.setMessages);
+  const mergeMessages = useAppStore((s) => s.mergeMessages);
   const clearMessages = useAppStore((s) => s.clearMessages);
   const detailPanelOpen = useAppStore((s) => s.detailPanelOpen);
   const setDetailPanelOpen = useAppStore((s) => s.setDetailPanelOpen);
@@ -48,13 +48,16 @@ export function SessionChat({ sessionId, session }: Props) {
     api.sessions
       .messages(sessionId)
       .then((res) => {
-        setMessages(sessionId, res.messages);
+        // Merge (not replace) so any deltas accumulated via WS broadcast while
+        // the user was on a different session aren't clobbered by a slightly
+        // stale JSONL fetch.
+        mergeMessages(sessionId, res.messages);
       })
       .catch(() => {
         // Empty transcript is valid; errors are silent.
       })
       .finally(() => setLoading(false));
-  }, [sessionId, claudeSessionId, setMessages, clearMessages]);
+  }, [sessionId, claudeSessionId, mergeMessages, clearMessages]);
 
   // Subscribe the WS client so we receive session events (assistant-message,
   // tool-event, user-message, etc.). Sessions have no PTY, so no dims are
@@ -81,11 +84,11 @@ export function SessionChat({ sessionId, session }: Props) {
       if (!claudeSessionId) return;
       api.sessions
         .messages(sessionId)
-        .then((res) => setMessages(sessionId, res.messages))
+        .then((res) => mergeMessages(sessionId, res.messages))
         .catch(() => {});
     });
     return off;
-  }, [sessionId, claudeSessionId, setMessages]);
+  }, [sessionId, claudeSessionId, mergeMessages]);
 
   // When a new claudeSessionId is assigned mid-session (SessionStart), we
   // may already have some deltas in the store — keep them but also refetch

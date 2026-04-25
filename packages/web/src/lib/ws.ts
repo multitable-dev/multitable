@@ -134,6 +134,17 @@ class WsClient {
   answerQuestion(id: string, answers: string[][]): void {
     this.send({ type: 'permission:answer-question', payload: { id, answers } });
   }
+
+  respondElicitation(
+    id: string,
+    action: 'accept' | 'decline' | 'cancel',
+    content?: Record<string, string | number | boolean | string[]>,
+  ): void {
+    this.send({
+      type: 'session:elicitation:respond',
+      payload: { id, action, content },
+    });
+  }
 }
 
 export const wsClient = new WsClient();

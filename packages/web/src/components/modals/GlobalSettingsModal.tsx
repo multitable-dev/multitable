@@ -13,6 +13,7 @@ import {
 } from '../../lib/themes';
 import { Check, Copy, Pencil, Trash2, Plus } from 'lucide-react';
 import { Modal, Input, Button, IconButton, Divider, Badge } from '../ui';
+import { NotificationsSection } from './NotificationsSection';
 
 interface Props {
   onClose: () => void;
@@ -285,28 +286,14 @@ export function GlobalSettingsModal({ onClose }: Props) {
 
         <Divider margin={18} />
 
+        {/* Notifications */}
+        <h3 style={sectionTitleStyle}>Notifications</h3>
+        <NotificationsSection />
+
+        <Divider margin={18} />
+
         {/* Behavior */}
         <h3 style={sectionTitleStyle}>Behavior</h3>
-
-        <div style={fieldStyle}>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13,
-              cursor: 'pointer',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={config.notifications}
-              onChange={(e) => setConfig({ ...config, notifications: e.target.checked })}
-            />
-            Enable notifications
-          </label>
-        </div>
 
         <div style={fieldStyle}>
           <label style={labelStyle}>Default editor</label>

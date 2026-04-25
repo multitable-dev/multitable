@@ -25,7 +25,7 @@ export function SidebarItem({
 }: Props) {
   const [hovered, setHovered] = useState(false);
 
-  const pendingCount = useAppStore(s =>
+  const permissionCount = useAppStore(s =>
     process.type === 'session'
       ? s.pendingPermissions.reduce(
           (n, p) => (p.sessionId === process.id ? n + 1 : n),
@@ -33,6 +33,10 @@ export function SidebarItem({
         )
       : 0,
   );
+  const unreadAttention = useAppStore(s =>
+    process.type === 'session' ? s.unreadBySession[process.id] ?? 0 : 0,
+  );
+  const pendingCount = permissionCount + unreadAttention;
 
   const isIdle =
     process.type === 'session' &&
@@ -92,7 +96,13 @@ export function SidebarItem({
           </span>
           {pendingCount > 0 && (
             <span
-              title={`${pendingCount} confirmation${pendingCount === 1 ? '' : 's'} pending`}
+              title={
+                permissionCount > 0 && unreadAttention > 0
+                  ? `${permissionCount} permission${permissionCount === 1 ? '' : 's'} pending, ${unreadAttention} unread alert${unreadAttention === 1 ? '' : 's'}`
+                  : permissionCount > 0
+                    ? `${permissionCount} confirmation${permissionCount === 1 ? '' : 's'} pending`
+                    : `${unreadAttention} unread alert${unreadAttention === 1 ? '' : 's'}`
+              }
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',

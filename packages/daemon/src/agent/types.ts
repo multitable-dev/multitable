@@ -43,3 +43,38 @@ export interface SendTurnInput {
   sessionId: string;
   text: string; // user prompt; may contain @file mentions, attachment paths
 }
+
+// ─── Alert envelope ────────────────────────────────────────────────────────
+//
+// Unified shape every notification-class signal funnels into. The frontend
+// routes one event (`session:alert`) by severity → toast / chime / OS notif /
+// NotificationCenter entry, instead of subscribing to N bespoke events.
+
+export type AlertSeverity = 'info' | 'success' | 'warning' | 'error' | 'attention';
+
+export type AlertCategory =
+  | 'turn'
+  | 'tool'
+  | 'permission'
+  | 'elicitation'
+  | 'rate-limit'
+  | 'auth'
+  | 'task'
+  | 'compaction'
+  | 'sync'
+  | 'budget'
+  | 'status';
+
+export interface SessionAlert {
+  alertId: string;
+  sessionId: string;
+  category: AlertCategory;
+  severity: AlertSeverity;
+  title: string;
+  body?: string;
+  needsAttention: boolean;
+  persistent: boolean;
+  ttlMs?: number;
+  metadata?: Record<string, unknown>;
+  timestamp: number;
+}
