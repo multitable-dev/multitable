@@ -27,22 +27,9 @@ export function DashboardView() {
     store.setProjectOverviewOpen(false);
     store.setSelectedProcess(proc.id);
 
-    if (proc.type === 'session' && proc.state === 'stopped') {
-      const s = proc as Session;
-      const hasPrior = !!(s.claudeSessionId || s.claudeState?.claudeSessionId);
-      if (hasPrior) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const dims = terminalManager.fit(proc.id);
-            api.sessions
-              .resumeClaude(proc.id, dims ?? undefined)
-              .catch(() => toast.error('Failed to resume session'));
-          });
-        });
-      } else {
-        api.processes.start(proc.id).catch(() => toast.error('Failed to start session'));
-      }
-    } else if (
+    // Sessions are SDK-driven: no start/resume action — first turn auto-starts.
+    // Commands and terminals still spawn via PtyManager.
+    if (
       (proc.type === 'command' || proc.type === 'terminal') &&
       proc.state === 'stopped'
     ) {

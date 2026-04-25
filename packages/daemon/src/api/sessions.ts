@@ -7,39 +7,15 @@ import {
   updateSession,
   deleteSession,
   getAllSessions,
-  getSessionsByProject,
   getSessionCostAggregate,
-  insertSessionEvent,
 } from '../db/store.js';
 import { parseSessionCost } from '../hooks/costParser.js';
 import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
-import { getClaudeState } from '../hooks/receiver.js';
+import { parseTranscript, getSessionJsonlPath } from '../transcripts/parser.js';
 import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
-import type { PtyManager } from '../pty/manager.js';
-import type { ProcessConfig, SpawnConfig } from '../types.js';
+import type { AgentSessionManager } from '../agent/manager.js';
 
-function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig {
-  return {
-    autostart: false,
-    autorestart: false,
-    autorestartMax: 5,
-    autorestartDelayMs: 2000,
-    autorestartWindowSecs: 60,
-    autorespawn: true,
-    terminalAlerts: false,
-    fileWatchPatterns: [],
-    ...overrides,
-  };
-}
-
-function buildClaudeCommand(workingDir: string, resume?: string): string {
-  if (resume) {
-    return `claude --resume ${resume}`;
-  }
-  return 'claude';
-}
-
-export function createSessionsRouter(manager: PtyManager): Router {
+export function createSessionsRouter(agentManager: AgentSessionManager): Router {
   const router = Router();
 
   const attachmentHandler = createAttachmentHandler({
@@ -53,8 +29,10 @@ export function createSessionsRouter(manager: PtyManager): Router {
   router.get('/', (_req: Request, res: Response) => {
     const sessions = getAllSessions();
     const enriched = sessions.map((s) => {
-      const proc = manager.get(s.id);
-      return { ...s, state: proc?.state ?? 'stopped', pid: proc?.pid ?? null };
+      // Sessions no longer spawn a PTY; state lives in the AgentSessionManager.
+      // pid is always null for sessions now.
+      const agent = agentManager.get(s.id);
+      return { ...s, state: agent?.state ?? 'stopped', pid: null };
     });
     res.json(enriched);
   });
@@ -63,8 +41,8 @@ export function createSessionsRouter(manager: PtyManager): Router {
   router.get('/:id', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    const proc = manager.get(session.id);
-    res.json({ ...session, state: proc?.state ?? 'stopped', pid: proc?.pid ?? null });
+    const agent = agentManager.get(session.id);
+    res.json({ ...session, state: agent?.state ?? 'stopped', pid: null });
   });
 
   // POST /api/sessions
@@ -104,6 +82,15 @@ export function createSessionsRouter(manager: PtyManager): Router {
         terminalAlerts,
         fileWatchPatterns,
       });
+      // Register immediately so the next `session:send` from the UI doesn't
+      // race the DB write with the agent manager's lookup.
+      agentManager.register({
+        id: session.id,
+        projectId: session.projectId,
+        name: session.name,
+        workingDir: session.workingDirectory || '',
+        claudeSessionId: session.claudeSessionId ?? null,
+      });
       res.status(201).json(session);
     } catch (err) {
       res.status(500).json({ error: 'Failed to create session' });
@@ -124,21 +111,41 @@ export function createSessionsRouter(manager: PtyManager): Router {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    // Stop if running
-    const proc = manager.get(req.params.id);
-    if (proc) manager.kill(req.params.id);
-
     deleteSession(req.params.id);
+    // Clean up in-memory agent state + any in-flight turn.
+    agentManager.remove(req.params.id);
     removeAttachmentDir(req.params.id);
     res.status(204).send();
   });
 
   // GET /api/sessions/:id/cost
+  //
+  // Phase 7 lookup order:
+  //   1. In-memory AgentSessionManager totals (live; populated by SDK `result`
+  //      messages within the current daemon process).
+  //   2. JSONL parse (real-time on disk; covers cold-start / pre-Phase-2
+  //      sessions whose totals haven't been observed by this daemon).
+  //   3. DB aggregate (final fallback for sessions without a JSONL).
   router.get('/:id/cost', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    // Try to read cost from JSONL first (real-time, accurate)
+    // 1. In-memory totals — preferred when the daemon has observed any usage
+    //    for this session this run.
+    const agent = agentManager.get(req.params.id);
+    if (agent && (agent.tokensIn > 0 || agent.tokensOut > 0 || agent.totalCostUsd > 0)) {
+      return res.json({
+        tokensIn: agent.tokensIn,
+        tokensOut: agent.tokensOut,
+        cacheCreationTokens: agent.cacheCreationTokens,
+        cacheReadTokens: agent.cacheReadTokens,
+        costUsd: agent.totalCostUsd,
+        model: '', // model isn't tracked at session level today
+        messageCount: 0,
+      });
+    }
+
+    // 2. JSONL fallback — covers cold-start / pre-Phase-2 sessions.
     if (session.claudeSessionId && session.workingDirectory) {
       try {
         const jsonlCost = parseSessionCost(session.workingDirectory, session.claudeSessionId);
@@ -156,7 +163,7 @@ export function createSessionsRouter(manager: PtyManager): Router {
       } catch {}
     }
 
-    // Fallback to DB aggregate
+    // 3. DB aggregate.
     const cost = getSessionCostAggregate(req.params.id);
     res.json({ ...cost, cacheCreationTokens: 0, cacheReadTokens: 0, model: '', messageCount: 0 });
   });
@@ -191,106 +198,41 @@ export function createSessionsRouter(manager: PtyManager): Router {
       } catch {}
     }
 
-    const state = getClaudeState(req.params.id);
-    const fallback = (state?.userMessages ?? []).map((text) => ({ text, timestamp: null }));
+    const agent = agentManager.get(req.params.id);
+    const fallback = (agent?.userMessages ?? []).map((text) => ({ text, timestamp: null }));
     res.json({ prompts: fallback, source: 'memory' });
   });
 
-  // POST /api/sessions/:id/start
-  router.post('/:id/start', (req: Request, res: Response) => {
+  // GET /api/sessions/:id/messages — full parsed conversation from JSONL.
+  // Returns an empty array if the session has no claudeSessionId yet or the
+  // transcript file hasn't been created. The endOffset allows callers to tail
+  // the file from that point via the WS session:transcript-delta event.
+  router.get('/:id/messages', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    const existing = manager.get(session.id);
-    if (existing && existing.state === 'running') {
-      return res.status(409).json({ error: 'Session is already running' });
+    if (!session.claudeSessionId || !session.workingDirectory) {
+      return res.json({ messages: [], endOffset: 0 });
     }
-
-    const { cols, rows } = req.body || {};
-
     try {
-      const spawnCfg: SpawnConfig = {
-        id: session.id,
-        name: session.name,
-        command: session.command,
-        workingDir: session.workingDirectory || '',
-        type: 'session',
-        projectId: session.projectId,
-        config: defaultProcessConfig({
-          autostart: session.autostart,
-          autorestart: session.autorestart,
-          autorestartMax: session.autorestartMax,
-          autorestartDelayMs: session.autorestartDelayMs,
-          autorestartWindowSecs: session.autorestartWindowSecs,
-          autorespawn: session.autorespawn,
-          terminalAlerts: session.terminalAlerts,
-          fileWatchPatterns: session.fileWatchPatterns,
-        }),
-        cols: cols || 80,
-        rows: rows || 24,
-      };
-
-      // Remove existing stopped process entry if present
-      if (existing) manager.remove(session.id);
-
-      const proc = manager.spawn(spawnCfg);
-      res.json({ ok: true, pid: proc.pid });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Failed to start session' });
+      const jsonlPath = getSessionJsonlPath(session.workingDirectory, session.claudeSessionId);
+      const { messages, endOffset } = parseTranscript(jsonlPath, 0);
+      res.json({ messages, endOffset });
+    } catch {
+      res.json({ messages: [], endOffset: 0 });
     }
   });
 
   // POST /api/sessions/:id/stop
+  //
+  // Canonical lifecycle endpoint: aborts any in-flight turn for the session.
+  // There is no PTY to kill; this is purely a cancel for the current query()
+  // call. Sending a new turn (POST .../turn or ws session:send) re-engages the
+  // SDK; there is no separate "start" or "restart" action.
   router.post('/:id/stop', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    manager.kill(req.params.id);
+    agentManager.abortTurn(req.params.id);
     res.json({ ok: true });
-  });
-
-  // POST /api/sessions/:id/restart
-  router.post('/:id/restart', (req: Request, res: Response) => {
-    const session = getSessionById(req.params.id);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    manager.restart(req.params.id);
-    res.json({ ok: true });
-  });
-
-  // POST /api/sessions/:id/spawn-claude
-  // Spawn a new Claude Code session in the session's PTY
-  router.post('/:id/spawn-claude', (req: Request, res: Response) => {
-    const session = getSessionById(req.params.id);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    const { cols, rows } = req.body || {};
-    const claudeCmd = buildClaudeCommand(session.workingDirectory || '');
-
-    try {
-      const existing = manager.get(session.id);
-      if (existing) manager.remove(session.id);
-
-      const spawnCfg: SpawnConfig = {
-        id: session.id,
-        name: session.name,
-        command: claudeCmd,
-        workingDir: session.workingDirectory || '',
-        type: 'session',
-        projectId: session.projectId,
-        config: defaultProcessConfig({
-          autorespawn: session.autorespawn,
-        }),
-        cols: cols || 80,
-        rows: rows || 24,
-      };
-
-      const proc = manager.spawn(spawnCfg);
-      insertSessionEvent(session.id, 'claude-spawned', { command: claudeCmd });
-      res.json({ ok: true, pid: proc.pid });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Failed to spawn Claude' });
-    }
   });
 
   // GET /api/sessions/:id/diff
@@ -307,50 +249,6 @@ export function createSessionsRouter(manager: PtyManager): Router {
       res.json({ diff });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to get diff' });
-    }
-  });
-
-  // POST /api/sessions/:id/resume-claude
-  // Resume an existing Claude Code session
-  router.post('/:id/resume-claude', (req: Request, res: Response) => {
-    const session = getSessionById(req.params.id);
-    if (!session) return res.status(404).json({ error: 'Session not found' });
-
-    const { claudeSessionId, cols, rows } = req.body || {};
-    const resumeId = claudeSessionId || session.claudeSessionId;
-
-    if (!resumeId) {
-      return res.status(400).json({ error: 'No claudeSessionId to resume' });
-    }
-
-    // Persist the claudeSessionId to DB so spawnPty can pick it up for --resume
-    updateSession(session.id, { claudeSessionId: resumeId });
-
-    try {
-      const existing = manager.get(session.id);
-      if (existing) manager.remove(session.id);
-
-      // Use the base command (e.g. 'claude'); spawnPty will read the
-      // claudeSessionId from the DB and construct --resume with fallback.
-      const spawnCfg: SpawnConfig = {
-        id: session.id,
-        name: session.name,
-        command: session.command,
-        workingDir: session.workingDirectory || '',
-        type: 'session',
-        projectId: session.projectId,
-        config: defaultProcessConfig({
-          autorespawn: session.autorespawn,
-        }),
-        cols: cols || 80,
-        rows: rows || 24,
-      };
-
-      const proc = manager.spawn(spawnCfg);
-      insertSessionEvent(session.id, 'claude-resumed', { claudeSessionId: resumeId });
-      res.json({ ok: true, pid: proc.pid });
-    } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Failed to resume Claude' });
     }
   });
 

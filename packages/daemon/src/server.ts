@@ -6,6 +6,7 @@ import fs from 'fs';
 import type { GlobalConfig, WsClientState, WsMessage } from './types.js';
 import type { PtyManager } from './pty/manager.js';
 import type { PermissionManager } from './hooks/permissionManager.js';
+import type { AgentSessionManager } from './agent/manager.js';
 import { handleWsMessage } from './pty/stream.js';
 import { createProjectsRouter } from './api/projects.js';
 import { createSessionsRouter } from './api/sessions.js';
@@ -16,7 +17,7 @@ import { createConfigRouter } from './api/config.js';
 import { createSearchRouter } from './api/search.js';
 import { createTranscriptsRouter } from './api/transcripts.js';
 import { createNotesRouter } from './api/notes.js';
-import { createHooksRouter } from './hooks/receiver.js';
+import { getSessionById } from './db/store.js';
 
 export interface ServerInstance {
   app: express.Application;
@@ -30,7 +31,8 @@ export interface ServerInstance {
 export function createServer(
   config: GlobalConfig,
   manager: PtyManager,
-  permManager: PermissionManager
+  permManager: PermissionManager,
+  agentManager: AgentSessionManager
 ): ServerInstance {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -66,15 +68,58 @@ export function createServer(
   // ─── Mount API routes ───────────────────────────────────────────────────────
 
   app.use('/api/projects', createProjectsRouter(manager));
-  app.use('/api/sessions', createSessionsRouter(manager));
+  app.use('/api/sessions', createSessionsRouter(agentManager));
   app.use('/api/commands', createCommandsRouter(manager));
   app.use('/api/processes', createProcessesRouter(manager));
   app.use('/api/terminals', createTerminalsRouter(manager));
-  app.use('/api/hooks', createHooksRouter(manager, permManager, broadcast));
   app.use('/api/config', createConfigRouter());
   app.use('/api/search', createSearchRouter(manager));
   app.use('/api/transcripts', createTranscriptsRouter(manager));
   app.use('/api/notes', createNotesRouter());
+
+  // ─── Internal agent-turn endpoint (Phase 2) ────────────────────────────────
+  //
+  // Private, experimental: fires a single SDK-driven turn against an existing
+  // session. Returns 202 immediately; turn progress streams via WS events.
+  // Promoted to /api/sessions/:id/turn in Phase 4.
+  app.post('/api/_internal/agent/turn', (req, res) => {
+    const body = (req.body ?? {}) as { sessionId?: unknown; text?: unknown };
+    const sessionId = typeof body.sessionId === 'string' ? body.sessionId : '';
+    const text = typeof body.text === 'string' ? body.text : '';
+    if (!sessionId || !text) {
+      res.status(400).json({ error: 'sessionId and text required' });
+      return;
+    }
+
+    // Auto-register on demand from the DB if the session isn't in memory yet.
+    if (!agentManager.get(sessionId)) {
+      const row = getSessionById(sessionId);
+      if (!row) {
+        res.status(404).json({ error: `session not found: ${sessionId}` });
+        return;
+      }
+      agentManager.register({
+        id: row.id,
+        projectId: row.projectId,
+        name: row.name,
+        workingDir: row.workingDirectory || '',
+        claudeSessionId: row.claudeSessionId,
+      });
+    }
+
+    try {
+      // Do NOT await — the turn drives WS events as it progresses.
+      void agentManager.sendTurn({ sessionId, text }).catch((err) => {
+        console.error('[agent] sendTurn background error:', err);
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      res.status(409).json({ error: message });
+      return;
+    }
+
+    res.status(202).json({ ok: true, sessionId });
+  });
 
   // Health check
   app.get('/api/health', (_req, res) => {
@@ -120,7 +165,7 @@ export function createServer(
     ws.on('message', (raw: Buffer | string) => {
       try {
         const msg = JSON.parse(raw.toString()) as WsMessage;
-        handleWsMessage(state, msg, ws, manager, permManager);
+        handleWsMessage(state, msg, ws, manager, permManager, agentManager);
       } catch {}
     });
 
@@ -155,10 +200,6 @@ export function createServer(
     broadcast('process-exited', { processId, exitCode, signal });
   });
 
-  manager.on('resume-failed', ({ processId, staleClaudeSessionId, message }: { processId: string; staleClaudeSessionId: string; message: string }) => {
-    broadcast('session:resume-failed', { processId, staleClaudeSessionId, message });
-  });
-
   // ─── Wire permission events ─────────────────────────────────────────────────
 
   permManager.on('permission:prompt', (prompt: any) => {
@@ -171,6 +212,74 @@ export function createServer(
 
   permManager.on('permission:expired', (id: string) => {
     broadcast('permission:expired', { id });
+  });
+
+  // ─── Wire agent session events ──────────────────────────────────────────────
+  //
+  // `state-changed` shares the global `process-state-changed` event shape with
+  // PTY-managed processes so the frontend treats all three process types the
+  // same. Per-turn message events go only to the subscribed client.
+
+  agentManager.on('state-changed', ({ sessionId, state }: { sessionId: string; state: string }) => {
+    broadcast('process-state-changed', { processId: sessionId, state });
+  });
+
+  agentManager.on('session-updated', ({ sessionId }: { sessionId: string; claudeSessionId: string }) => {
+    const session = getSessionById(sessionId);
+    if (session) {
+      broadcast('session:updated', { session });
+    }
+  });
+
+  agentManager.on('assistant-message', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
+    sendToSubscribers(sessionId, 'session:assistant-message', { messages });
+  });
+
+  agentManager.on('user-message', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
+    sendToSubscribers(sessionId, 'session:user-message', { messages });
+  });
+
+  agentManager.on('tool-event', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
+    sendToSubscribers(sessionId, 'session:tool-event', { messages });
+  });
+
+  agentManager.on('turn-result', (payload: { sessionId: string; subtype: string; totalCostUsd: number; usage: any; text: string | null }) => {
+    const { sessionId, ...rest } = payload;
+    sendToSubscribers(sessionId, 'session:turn-result', rest);
+  });
+
+  agentManager.on('turn-error', ({ sessionId, error }: { sessionId: string; error: string }) => {
+    sendToSubscribers(sessionId, 'session:turn-error', { message: error });
+  });
+
+  agentManager.on('turn-complete', ({ sessionId }: { sessionId: string }) => {
+    sendToSubscribers(sessionId, 'session:turn-complete', {});
+  });
+
+  // Hook-driven state propagation (Phase 6: replaces the HTTP receiver).
+  agentManager.on('state-snapshot', ({ sessionId, snapshot }: { sessionId: string; snapshot: any }) => {
+    broadcast('session:state-updated', { sessionId, state: snapshot });
+  });
+
+  agentManager.on('options-detected', ({ sessionId, options }: { sessionId: string; options: any }) => {
+    broadcast('session:options-detected', { sessionId, options });
+  });
+
+  agentManager.on('label-updated', ({ sessionId, label }: { sessionId: string; label: string }) => {
+    broadcast('session:label-updated', { sessionId, label });
+  });
+
+  agentManager.on('notification', ({ sessionId, payload }: { sessionId: string; payload: any }) => {
+    broadcast('session:notification', { sessionId, payload });
+  });
+
+  agentManager.on('session-ended', ({ sessionId }: { sessionId: string }) => {
+    broadcast('session:ended', { sessionId });
+  });
+
+  agentManager.on('session-renamed', ({ sessionId }: { sessionId: string }) => {
+    const session = getSessionById(sessionId);
+    if (session) broadcast('session:updated', { session });
   });
 
   function closeAllClients(): void {

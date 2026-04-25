@@ -42,16 +42,9 @@ export function AddAgentModal({ onClose, projectId }: Props) {
       store.upsertSession(session);
       store.setSelectedProcess(session.id);
 
-      try {
-        if (command.trim() === 'claude') {
-          await api.sessions.spawnClaude(session.id);
-        } else {
-          await api.processes.start(session.id);
-        }
-        store.updateProcessState(session.id, 'running');
-      } catch {
-        // Session created but spawn failed — user can manually start later
-      }
+      // Sessions are SDK-driven now: no spawn/start step. The first user turn
+      // sent through the chat composer auto-starts the agent. Until then the
+      // session sits idle, which is the correct state.
 
       toast.success('Session added');
       onClose();

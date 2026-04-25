@@ -92,6 +92,10 @@ class WsClient {
   send(msg: WsMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+    } else {
+      // Only surface when we had something meaningful to send — helps catch
+      // cases where the socket dropped mid-interaction.
+      console.warn(`[ws] dropped message type=${msg.type} — socket not open (readyState=${this.ws?.readyState})`);
     }
   }
 
@@ -108,6 +112,10 @@ class WsClient {
 
   sendInput(processId: string, data: string): void {
     this.send({ type: 'pty-input', processId, payload: { data } });
+  }
+
+  sendTurn(processId: string, text: string): void {
+    this.send({ type: 'session:send', processId, payload: { text } });
   }
 
   sendResize(processId: string, cols: number, rows: number): void {

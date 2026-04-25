@@ -77,29 +77,8 @@ export function ProjectSidebarItem({ project }: Props) {
       setSelectedProcess(proc.id);
     }
 
-    // Auto-resume/start sessions when clicked in a non-running state.
-    // Errored state means a previous resume already failed — don't auto-retry;
-    // the user must explicitly start a new session.
-    if (proc.type === 'session' && proc.state === 'stopped') {
-      const s = proc as any;
-      const hasPrior = !!(s.claudeSessionId || s.claudeState?.claudeSessionId);
-      if (hasPrior) {
-        // Defer resume until after TerminalView mounts and the xterm has fitted,
-        // so the backend spawns the PTY at the real container size (not 80×24).
-        // Double-RAF matches terminalManager.attach's own fit timing, ensuring
-        // glyph measurements have settled before we read cols/rows.
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            const dims = terminalManager.fit(proc.id);
-            api.sessions
-              .resumeClaude(proc.id, dims ?? undefined)
-              .catch(() => toast.error('Failed to resume session'));
-          });
-        });
-      } else {
-        api.processes.start(proc.id).catch(() => toast.error('Failed to start session'));
-      }
-    }
+    // Sessions are SDK-driven now: there's no "start" or "resume" action —
+    // the first user turn auto-starts the work. Clicking simply selects.
   };
 
   const routeAwayIfSelected = (deletedId: string) => {

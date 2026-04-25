@@ -8,6 +8,7 @@ import type {
   OptionPrompt,
   ProcessState,
   ProcessMetrics,
+  Message,
 } from '../lib/types';
 import type { Theme, ThemeColors } from '../lib/themes';
 import {
@@ -97,6 +98,12 @@ interface AppState {
   // Options
   currentOption: OptionPrompt | null;
   setOption: (option: OptionPrompt | null) => void;
+
+  // Session transcript messages (chat view)
+  messagesBySession: Record<string, Message[]>;
+  setMessages: (sessionId: string, messages: Message[]) => void;
+  appendMessages: (sessionId: string, messages: Message[]) => void;
+  clearMessages: (sessionId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -303,4 +310,30 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Options
   currentOption: null,
   setOption: (option) => set({ currentOption: option }),
+
+  // Messages
+  messagesBySession: {},
+  setMessages: (sessionId, messages) =>
+    set((s) => ({ messagesBySession: { ...s.messagesBySession, [sessionId]: messages } })),
+  appendMessages: (sessionId, messages) =>
+    set((s) => {
+      if (messages.length === 0) return s;
+      const existing = s.messagesBySession[sessionId] ?? [];
+      const seen = new Set(existing.map((m) => m.id));
+      const additions = messages.filter((m) => !seen.has(m.id));
+      if (additions.length === 0) return s;
+      return {
+        messagesBySession: {
+          ...s.messagesBySession,
+          [sessionId]: [...existing, ...additions],
+        },
+      };
+    }),
+  clearMessages: (sessionId) =>
+    set((s) => {
+      if (!(sessionId in s.messagesBySession)) return s;
+      const next = { ...s.messagesBySession };
+      delete next[sessionId];
+      return { messagesBySession: next };
+    }),
 }));

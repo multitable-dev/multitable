@@ -20,7 +20,6 @@ import {
   createTerminal,
 } from '../db/store.js';
 import { loadProjectConfig, loadGlobalConfig } from '../config/loader.js';
-import { HookManager } from '../hooks/installer.js';
 import { removeAttachmentDir } from './attachments.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
@@ -170,18 +169,10 @@ export function createProjectsRouter(manager: PtyManager): Router {
       return res.status(500).json({ error: 'Failed to create project' });
     }
 
-    // Install Claude Code hooks before responding, so the first session
-    // the user spawns in this project sees the permission UI, cost
-    // tracking, labels, etc. Otherwise hooks would only land on the
-    // next daemon restart. Best-effort: a hook-install failure must
-    // not block project creation.
-    try {
-      const config = loadGlobalConfig();
-      const hookManager = new HookManager();
-      await hookManager.installForProject(project.path, config.port);
-    } catch (err) {
-      console.warn(`Failed to install hooks for new project ${project.path}:`, err);
-    }
+    // Phase 6: legacy webhook hooks are retired. The SDK's in-process hook
+    // callbacks cover everything we used to install into .claude/settings.json,
+    // so creating a project no longer touches that file. Boot-time sweeper in
+    // index.ts cleans up any stale entries left by older daemons.
 
     res.status(201).json(project);
   });
@@ -213,13 +204,6 @@ export function createProjectsRouter(manager: PtyManager): Router {
     for (const child of [...sessions, ...terminals]) {
       removeAttachmentDir(child.id);
     }
-
-    // Uninstall claude hooks from the project's .claude/settings.json.
-    try {
-      const config = loadGlobalConfig();
-      const hookManager = new HookManager();
-      await hookManager.removeForProject(project.path, config.port);
-    } catch { /* best effort — file may not exist or already cleaned */ }
 
     // Cascades to sessions/commands/terminals/session_events/cost_records.
     deleteProject(req.params.id);

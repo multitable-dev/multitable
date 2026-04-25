@@ -172,16 +172,7 @@ function App() {
       wsClient.on('option:prompt', (msg: any) => {
         store.setOption(msg.payload);
       }),
-      wsClient.on('session:resume-failed', (msg: any) => {
-        const { processId, message } = msg.payload;
-        toast.error(message || 'Failed to resume session. Start a new session instead.', {
-          duration: 8000,
-          style: { maxWidth: 480 },
-        });
-        // Update session state to errored in the store
-        if (processId) store.updateProcessState(processId, 'errored');
-      }),
-      wsClient.on('hook:Notification', (msg: any) => {
+      wsClient.on('session:notification', (msg: any) => {
         const { sessionId, payload } = msg.payload || {};
         const session = sessionId ? store.sessions[sessionId] : null;
         const name = session?.name ?? 'Claude';
@@ -189,12 +180,44 @@ function App() {
         toast(`${name}: ${message}`, { duration: 5000 });
         playAttentionChime();
       }),
-      wsClient.on('hook:Stop', (msg: any) => {
-        const { sessionId } = msg.payload || {};
+      wsClient.on('session:turn-complete', (msg: any) => {
+        const sessionId = msg.processId;
         const session = sessionId ? store.sessions[sessionId] : null;
         const name = session?.name ?? 'Claude';
         toast.success(`${name} is done`, { duration: 4000 });
         playDoneChime();
+      }),
+      wsClient.on('session:assistant-message', (msg: any) => {
+        const pid = msg.processId || msg.payload?.processId;
+        const messages = msg.payload?.messages;
+        if (pid && Array.isArray(messages) && messages.length > 0) {
+          store.appendMessages(pid, messages);
+        }
+      }),
+      wsClient.on('session:tool-event', (msg: any) => {
+        const pid = msg.processId || msg.payload?.processId;
+        const messages = msg.payload?.messages;
+        if (pid && Array.isArray(messages) && messages.length > 0) {
+          store.appendMessages(pid, messages);
+        }
+      }),
+      wsClient.on('session:user-message', (msg: any) => {
+        const pid = msg.processId || msg.payload?.processId;
+        const messages = msg.payload?.messages;
+        if (pid && Array.isArray(messages) && messages.length > 0) {
+          store.appendMessages(pid, messages);
+        }
+      }),
+      wsClient.on('session:turn-error', (msg: any) => {
+        const message = msg.payload?.message || 'Turn failed';
+        const pid = msg.processId;
+        const session = pid ? store.sessions[pid] : null;
+        const name = session?.name ?? 'Session';
+        toast.error(`${name}: ${message}`, { duration: 6000, style: { maxWidth: 480 } });
+      }),
+      wsClient.on('session:send-error', (msg: any) => {
+        const message = msg.payload?.message || 'Send failed';
+        toast.error(message, { duration: 4000 });
       }),
       wsClient.on('session:label-updated', (msg: any) => {
         const { sessionId, label } = msg.payload;

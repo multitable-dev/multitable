@@ -3,7 +3,7 @@ import { loadGlobalConfig } from './config/loader.js';
 import { initDb, getAllProjects, getSessionsByProject, getCommandsByProject } from './db/store.js';
 import { PtyManager } from './pty/manager.js';
 import { PermissionManager } from './hooks/permissionManager.js';
-import { HookManager } from './hooks/installer.js';
+import { AgentSessionManager } from './agent/manager.js';
 import { FileWatcher } from './watcher/index.js';
 import { createServer } from './server.js';
 import { checkOrphanedPids } from './pids.js';
@@ -46,6 +46,7 @@ async function main() {
   // 4. Create PtyManager and PermissionManager
   const manager = new PtyManager();
   const permManager = new PermissionManager();
+  const agentManager = new AgentSessionManager(permManager);
 
   // Configure permission manager from project configs
   for (const projRef of config.projects) {
@@ -55,24 +56,8 @@ async function main() {
     }
   }
 
-  // 5. Install hooks for each registered project (from config AND DB)
-  const hookManager = new HookManager();
-  const dbProjects = getAllProjects();
-  const allProjectPaths = new Set<string>([
-    ...config.projects.map((p: { path: string }) => p.path),
-    ...dbProjects.map((p) => p.path),
-  ]);
-  for (const projectPath of allProjectPaths) {
-    try {
-      await hookManager.installForProject(projectPath, config.port);
-      console.log(`Installed hooks for: ${projectPath}`);
-    } catch (err) {
-      console.warn(`Failed to install hooks for ${projectPath}:`, err);
-    }
-  }
-
-  // 6. Create Express/WS server
-  const serverInstance = createServer(config, manager, permManager);
+  // 5. Create Express/WS server
+  const serverInstance = createServer(config, manager, permManager, agentManager);
   const { server, broadcast } = serverInstance;
 
   // 7. Load projects from DB, start autostart processes
@@ -89,50 +74,20 @@ async function main() {
       broadcast('project:config-changed', { projectId: project.id });
     });
 
-    // Start autostart sessions
+    // Register sessions with the agent manager. Sessions are no longer spawned
+    // as PTY children; the SDK owns their lifecycle. "Autostart" has no meaning
+    // for an agent session — sending a turn is what "starts" work. File-watch
+    // restart also doesn't apply (we don't restart a conversation on file
+    // change). Both concepts are commands-only now.
     for (const session of sessions) {
-      if (session.autostart) {
-        try {
-          const spawnCfg: SpawnConfig = {
-            id: session.id,
-            name: session.name,
-            command: session.command,
-            workingDir: session.workingDirectory || project.path,
-            type: 'session',
-            projectId: project.id,
-            config: defaultProcessConfig({
-              autostart: session.autostart,
-              autorestart: session.autorestart,
-              autorestartMax: session.autorestartMax,
-              autorestartDelayMs: session.autorestartDelayMs,
-              autorestartWindowSecs: session.autorestartWindowSecs,
-              autorespawn: session.autorespawn,
-              terminalAlerts: session.terminalAlerts,
-              fileWatchPatterns: session.fileWatchPatterns,
-            }),
-          };
-          if (session.claudeSessionId) {
-            // Session has a prior Claude conversation — we can't know if it's
-            // still valid. Register as stopped so the user can choose Resume
-            // or Start New. Never auto-spawn stale Claude sessions.
-            manager.register(spawnCfg);
-            console.log(`Registered session (has prior Claude ID, needs user action): ${session.name} (${session.id})`);
-          } else {
-            manager.spawn(spawnCfg);
-            console.log(`Autostarted session: ${session.name} (${session.id})`);
-          }
-        } catch (err) {
-          console.error(`Failed to autostart session ${session.name}:`, err);
-        }
-      }
-
-      // 8. Start file watchers for sessions with file watch patterns
-      if (session.fileWatchPatterns.length > 0) {
-        fileWatcher.watchPatterns(session.id, session.fileWatchPatterns, session.workingDirectory || project.path, () => {
-          console.log(`File change detected, restarting session: ${session.name}`);
-          manager.restart(session.id);
-        });
-      }
+      agentManager.register({
+        id: session.id,
+        projectId: project.id,
+        name: session.name,
+        workingDir: session.workingDirectory || project.path,
+        claudeSessionId: session.claudeSessionId ?? null,
+      });
+      console.log(`Registered session: ${session.name} (${session.id})`);
     }
 
     // Start autostart commands

@@ -939,12 +939,14 @@ function PromptsTab({ session }: { session: Session }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
-  // Live-refresh whenever a new user prompt arrives. The observational hook
-  // channel carries every UserPromptSubmit; refetch so we catch the full
-  // text including any new lines since last fetch.
+  // Live-refresh whenever a new user prompt arrives. After the SDK migration
+  // (Phase 4+) the user-prompt signal is `session:user-message`, emitted by
+  // AgentSessionManager when sendTurn pushes the user's text. Refetch so we
+  // pick up the full text from the JSONL/prompts endpoint.
   useEffect(() => {
-    const off = wsClient.on('hook:UserPromptSubmit', (msg: any) => {
-      if (msg?.payload?.sessionId === session.id) {
+    const off = wsClient.on('session:user-message', (msg: any) => {
+      const pid = msg?.processId || msg?.payload?.processId;
+      if (pid === session.id) {
         fetchPrompts();
       }
     });

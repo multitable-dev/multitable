@@ -1,4 +1,4 @@
-import type { Project, Session, Command, Terminal, GlobalConfig, Note } from './types';
+import type { Project, Session, Command, Terminal, GlobalConfig, Note, Message } from './types';
 
 const BASE = '';  // same origin
 
@@ -54,9 +54,6 @@ export const api = {
       post<Session>(`/api/projects/${projectId}/sessions`, data),
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
-    spawnClaude: (id: string) => post<void>(`/api/sessions/${id}/spawn-claude`),
-    resumeClaude: (id: string, dims?: { cols: number; rows: number }) =>
-      post<void>(`/api/sessions/${id}/resume-claude`, dims),
     diff: (id: string) => get<{ diff: string }>(`/api/sessions/${id}/diff`),
     cost: (id: string) => get<{
       tokensIn: number;
@@ -71,6 +68,10 @@ export const api = {
       prompts: Array<{ text: string; timestamp: number | null }>;
       source: 'jsonl' | 'jsonl-project' | 'memory';
     }>(`/api/sessions/${id}/prompts`),
+    messages: (id: string) => get<{
+      messages: Message[];
+      endOffset: number;
+    }>(`/api/sessions/${id}/messages`),
   },
   commands: {
     list: (projectId: string) => get<Command[]>(`/api/projects/${projectId}/commands`),

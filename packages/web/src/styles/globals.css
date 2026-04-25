@@ -241,3 +241,22 @@ select:focus-visible,
     scroll-behavior: auto !important;
   }
 }
+
+/* ---------- CodeMirror 6 composer ---------- */
+.mt-cm-composer {
+  width: 100%;
+}
+.mt-cm-composer .cm-editor {
+  width: 100%;
+  max-height: 100%;
+  background: transparent;
+}
+.mt-cm-composer .cm-scroller {
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: 40vh;
+}
+.mt-cm-composer .cm-content {
+  caret-color: var(--accent-blue);
+  min-height: 20px;
+}

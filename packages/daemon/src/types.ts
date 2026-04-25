@@ -74,18 +74,16 @@ export interface PermissionPrompt {
   // question UI instead of an Allow/Deny card.
   kind?: 'permission' | 'ask-question';
   questions?: AskQuestion[];
-}
-
-export interface ClaudeSessionState {
-  claudeSessionId: string | null;
-  currentTool: string | null;
-  toolCount: number;
-  tokenCount: number;
-  costUsd: number;
-  lastActivity: number;
-  activeSubagents: number;
-  userMessages: string[];
-  label: string | null;
+  // Phase 5 SDK extras: when the SDK's canUseTool callback fires, the
+  // options bag carries Claude-rendered labels for the permission card
+  // (title/displayName/subtitle) plus blockedPath when the gate fired
+  // because of a path-scope check. Plumbed through the WS so future UI
+  // work can render Claude's own strings instead of re-deriving from
+  // toolName.
+  title?: string;
+  displayName?: string;
+  subtitle?: string;
+  blockedPath?: string;
 }
 
 export interface Project {

@@ -109,6 +109,13 @@ export interface PermissionPrompt {
   timeoutMs: number;
   kind?: 'permission' | 'ask-question';
   questions?: AskQuestion[];
+  // Phase 5 SDK extras (optional). The existing UI doesn't render these
+  // yet — they're plumbed through the wire so future work can use the
+  // SDK's pre-rendered strings instead of re-deriving from toolName.
+  title?: string;
+  displayName?: string;
+  subtitle?: string;
+  blockedPath?: string;
 }
 
 export interface OptionPrompt {
@@ -122,6 +129,35 @@ export interface WsMessage {
   processId?: string;
   payload: unknown;
 }
+
+export interface Usage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+}
+
+export type Message =
+  | { id: string; ts: number; kind: 'user'; text: string }
+  | { id: string; ts: number; kind: 'assistant'; text: string; model: string; usage?: Usage }
+  | {
+      id: string;
+      ts: number;
+      kind: 'tool_use';
+      parentId: string;
+      toolUseId: string;
+      toolName: string;
+      input: unknown;
+    }
+  | {
+      id: string;
+      ts: number;
+      kind: 'tool_result';
+      toolUseId: string;
+      output: string;
+      isError?: boolean;
+    }
+  | { id: string; ts: number; kind: 'system'; text: string };
 
 export interface GlobalConfig {
   theme: 'light' | 'dark' | 'system';
