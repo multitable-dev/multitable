@@ -134,15 +134,15 @@ function App() {
       wsClient.on('ws:reconnected', () => {
         loadData();
       }),
-      wsClient.on('process-state-changed', (msg: any) => {
+      wsClient.on('process-state-changed', msg => {
         const pid = msg.processId || msg.payload?.processId;
         if (pid) store.updateProcessState(pid, msg.payload.state);
       }),
-      wsClient.on('process-metrics', (msg: any) => {
+      wsClient.on('process-metrics', msg => {
         const pid = msg.processId || msg.payload?.processId;
         if (pid) store.updateProcessMetrics(pid, msg.payload);
       }),
-      wsClient.on('session:updated', (msg: any) => {
+      wsClient.on('session:updated', msg => {
         // Preserve in-memory claudeState (label, tokens, etc.) since the
         // backend broadcasts the DB row which doesn't carry transient state.
         const incoming: Session = msg.payload.session;
@@ -153,26 +153,26 @@ function App() {
             : incoming
         );
       }),
-      wsClient.on('session:created', (msg: any) => {
+      wsClient.on('session:created', msg => {
         store.upsertSession(msg.payload.session);
       }),
-      wsClient.on('session:deleted', (msg: any) => {
+      wsClient.on('session:deleted', msg => {
         store.removeSession(msg.payload.sessionId);
       }),
-      wsClient.on('permission:prompt', (msg: any) => {
+      wsClient.on('permission:prompt', msg => {
         store.addPermission(msg.payload.prompt);
         playPermissionChime();
       }),
-      wsClient.on('permission:resolved', (msg: any) => {
+      wsClient.on('permission:resolved', msg => {
         store.removePermission(msg.payload.id);
       }),
-      wsClient.on('permission:expired', (msg: any) => {
+      wsClient.on('permission:expired', msg => {
         store.removePermission(msg.payload.id);
       }),
-      wsClient.on('option:prompt', (msg: any) => {
+      wsClient.on('option:prompt', msg => {
         store.setOption(msg.payload);
       }),
-      wsClient.on('session:resume-failed', (msg: any) => {
+      wsClient.on('session:resume-failed', msg => {
         const { processId, message } = msg.payload;
         toast.error(message || 'Failed to resume session. Start a new session instead.', {
           duration: 8000,
@@ -181,7 +181,7 @@ function App() {
         // Update session state to errored in the store
         if (processId) store.updateProcessState(processId, 'errored');
       }),
-      wsClient.on('hook:Notification', (msg: any) => {
+      wsClient.on('hook:Notification', msg => {
         const { sessionId, payload } = msg.payload || {};
         const session = sessionId ? store.sessions[sessionId] : null;
         const name = session?.name ?? 'Claude';
@@ -189,14 +189,14 @@ function App() {
         toast(`${name}: ${message}`, { duration: 5000 });
         playAttentionChime();
       }),
-      wsClient.on('hook:Stop', (msg: any) => {
+      wsClient.on('hook:Stop', msg => {
         const { sessionId } = msg.payload || {};
         const session = sessionId ? store.sessions[sessionId] : null;
         const name = session?.name ?? 'Claude';
         toast.success(`${name} is done`, { duration: 4000 });
         playDoneChime();
       }),
-      wsClient.on('session:label-updated', (msg: any) => {
+      wsClient.on('session:label-updated', msg => {
         const { sessionId, label } = msg.payload;
         const session = store.sessions[sessionId];
         if (session) {

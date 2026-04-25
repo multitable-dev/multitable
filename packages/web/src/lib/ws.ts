@@ -1,7 +1,8 @@
-import type { WsMessage } from './types';
+import type { WsEventMap, WsEventType, WsMessage } from './types';
 import { useAppStore } from '../stores/appStore';
 
 type MessageHandler = (msg: WsMessage) => void;
+type TypedHandler<K extends WsEventType> = (msg: WsMessage<WsEventMap[K]>) => void;
 
 const MAX_RETRIES = 20;
 
@@ -77,6 +78,8 @@ class WsClient {
     };
   }
 
+  on<K extends WsEventType>(type: K, handler: TypedHandler<K>): () => void;
+  on(type: string, handler: MessageHandler): () => void;
   on(type: string, handler: MessageHandler): () => void {
     const list = this.handlers.get(type) ?? [];
     list.push(handler);

@@ -117,11 +117,62 @@ export interface OptionPrompt {
   options: string[];
 }
 
-export interface WsMessage {
+export interface WsMessage<T = unknown> {
   type: string;
   processId?: string;
-  payload: unknown;
+  payload: T;
 }
+
+/**
+ * Map of WebSocket event type → payload shape, for the events the web client
+ * listens to. Used by `wsClient.on` to give callers a typed `msg.payload`
+ * without having to cast through `any`.
+ *
+ * Daemon emit sites:
+ *   - `process-state-changed`, `process-metrics`, `session:resume-failed`,
+ *     `permission:prompt`, `permission:resolved`, `permission:expired`
+ *     → packages/daemon/src/server.ts
+ *   - `session:updated`, `session:label-updated`, `hook:Notification`,
+ *     `hook:Stop`
+ *     → packages/daemon/src/hooks/receiver.ts
+ *   - `ws:reconnected` is a synthetic client-side event fired by the WS
+ *     client itself when the socket re-opens.
+ */
+export interface WsEventMap {
+  'ws:reconnected': Record<string, never>;
+  'process-state-changed': { processId: string; state: ProcessState };
+  'process-metrics': { processId: string } & ProcessMetrics;
+  'session:updated': { session: Session };
+  'session:created': { session: Session };
+  'session:deleted': { sessionId: string };
+  'permission:prompt': { prompt: PermissionPrompt };
+  'permission:resolved': { id: string };
+  'permission:expired': { id: string };
+  'option:prompt': OptionPrompt;
+  'session:resume-failed': {
+    processId: string;
+    staleClaudeSessionId?: string | null;
+    message: string;
+  };
+  'hook:Notification': {
+    event: string;
+    sessionId: string;
+    claudeSessionId: string | null;
+    payload: { message?: string } & Record<string, unknown>;
+    receivedAt: number;
+  };
+  'hook:Stop': {
+    event: string;
+    sessionId: string;
+    claudeSessionId: string | null;
+    payload: Record<string, unknown>;
+    receivedAt: number;
+  };
+  'session:label-updated': { sessionId: string; label: string };
+}
+
+export type WsEventType = keyof WsEventMap;
+export type WsEventPayload<K extends WsEventType> = WsEventMap[K];
 
 export interface GlobalConfig {
   theme: 'light' | 'dark' | 'system';
