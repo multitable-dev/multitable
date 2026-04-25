@@ -46,6 +46,15 @@ function FilesTab({ projectId }: { projectId: string }) {
   // entry's relative path, cleared after ~1.2s.
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors the App-level mobile breakpoint so we can flip the copy-path
+  // button to the right edge on touch layouts.
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
+
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -116,6 +125,46 @@ function FilesTab({ projectId }: { projectId: string }) {
       {entries.map((entry) => {
         const isCopied = copiedPath === entry.path;
         const isDir = entry.type === 'directory';
+        const copyBtn = (
+          <button
+            type="button"
+            onClick={(e) => copyEntryPath(entry, e)}
+            title="Copy path"
+            aria-label={`Copy path for ${entry.name}`}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 3,
+              background: isCopied
+                ? 'color-mix(in srgb, var(--accent-blue) 20%, transparent)'
+                : 'transparent',
+              border: '1px solid',
+              borderColor: isCopied ? 'var(--accent-blue)' : 'var(--border)',
+              color: isCopied ? 'var(--accent-blue)' : 'var(--text-muted)',
+              padding: '2px 6px',
+              borderRadius: 'var(--radius-sm)',
+              cursor: 'pointer',
+              fontSize: 11,
+              flexShrink: 0,
+              transition: 'background-color var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast)',
+            }}
+            onMouseEnter={(e) => {
+              if (!isCopied) {
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-muted)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!isCopied) {
+                (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
+                (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
+              }
+            }}
+          >
+            {isCopied ? <Check size={12} /> : <Copy size={12} />}
+            {isCopied ? 'Copied' : 'Copy'}
+          </button>
+        );
         return (
           <React.Fragment key={entry.path}>
             <div
@@ -141,6 +190,7 @@ function FilesTab({ projectId }: { projectId: string }) {
                 ((e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent')
               }
             >
+              {!isMobile && copyBtn}
               {isDir ? (
                 <Folder size={14} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
               ) : (
@@ -157,44 +207,7 @@ function FilesTab({ projectId }: { projectId: string }) {
               >
                 {entry.name}
               </span>
-              <button
-                type="button"
-                onClick={(e) => copyEntryPath(entry, e)}
-                title="Copy path"
-                aria-label={`Copy path for ${entry.name}`}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 3,
-                  background: isCopied
-                    ? 'color-mix(in srgb, var(--accent-blue) 20%, transparent)'
-                    : 'transparent',
-                  border: '1px solid',
-                  borderColor: isCopied ? 'var(--accent-blue)' : 'var(--border)',
-                  color: isCopied ? 'var(--accent-blue)' : 'var(--text-muted)',
-                  padding: '2px 6px',
-                  borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                  flexShrink: 0,
-                  transition: 'background-color var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast)',
-                }}
-                onMouseEnter={(e) => {
-                  if (!isCopied) {
-                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-primary)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--text-muted)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!isCopied) {
-                    (e.currentTarget as HTMLButtonElement).style.color = 'var(--text-muted)';
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)';
-                  }
-                }}
-              >
-                {isCopied ? <Check size={12} /> : <Copy size={12} />}
-                {isCopied ? 'Copied' : 'Copy'}
-              </button>
+              {isMobile && copyBtn}
             </div>
             {isDir &&
               expandedPaths.has(entry.path) &&
