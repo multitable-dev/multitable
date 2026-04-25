@@ -35,8 +35,7 @@ export interface AgentSession {
   currentTool: string | null;
   activeSubagents: number;
   lastActivity: number;
-  label: string | null;
-  userMessages: string[]; // for labeler input
+  userMessages: string[]; // accumulated user prompts (used by AI rename)
 }
 
 export interface SendTurnInput {

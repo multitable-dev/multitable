@@ -2,9 +2,20 @@ import type { Project, Session, Command, Terminal, GlobalConfig, Note, Message }
 
 const BASE = '';  // same origin
 
+// Read the JSON body's `error` field on a non-OK response and bubble it up
+// as the Error message — much better signal than just "502 Bad Gateway".
+async function failed(res: Response): Promise<never> {
+  let detail = '';
+  try {
+    const body = await res.json();
+    if (body && typeof body.error === 'string') detail = body.error;
+  } catch {}
+  throw new Error(detail || `${res.status} ${res.statusText}`);
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(BASE + path);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await failed(res);
   return res.json();
 }
 
@@ -14,7 +25,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await failed(res);
   return res.json();
 }
 
@@ -24,13 +35,13 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
     headers: body ? { 'Content-Type': 'application/json' } : {},
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await failed(res);
   return res.json();
 }
 
 async function del(path: string): Promise<void> {
   const res = await fetch(BASE + path, { method: 'DELETE' });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  if (!res.ok) await failed(res);
 }
 
 export const api = {
@@ -59,6 +70,7 @@ export const api = {
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
     reset: (id: string) => post<{ ok: boolean; session: Session }>(`/api/sessions/${id}/reset`),
+    renameAi: (id: string) => post<{ session: Session; name: string }>(`/api/sessions/${id}/rename-ai`),
     diff: (id: string) => get<{ diff: string }>(`/api/sessions/${id}/diff`),
     cost: (id: string) => get<{
       tokensIn: number;

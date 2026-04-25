@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
-import { PanelBottom, Copy, Check } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
+import { PanelBottom, Copy, Check, Pencil, Sparkles } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { AttachButton } from './AttachButton';
 import type { Session } from '../../lib/types';
-import { IconButton } from '../ui';
+import { IconButton, Spinner } from '../ui';
+import { api } from '../../lib/api';
+import { useAppStore } from '../../stores/appStore';
 
 interface Props {
   session: Session;
@@ -13,6 +16,65 @@ interface Props {
 export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
   const claudeState = session.claudeState;
   const [copied, setCopied] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(session.name);
+  const [aiLoading, setAiLoading] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const upsertSession = useAppStore((s) => s.upsertSession);
+
+  useEffect(() => {
+    if (editing) {
+      setDraftName(session.name);
+      // Defer to next frame so the input is mounted before focusing.
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      });
+    }
+  }, [editing, session.name]);
+
+  // If a server-side rename arrives while not editing, keep draft in sync so
+  // the next edit starts from the latest value.
+  useEffect(() => {
+    if (!editing) setDraftName(session.name);
+  }, [session.name, editing]);
+
+  const commitRename = async () => {
+    const next = draftName.trim();
+    if (!next || next === session.name) {
+      setEditing(false);
+      setDraftName(session.name);
+      return;
+    }
+    setEditing(false);
+    try {
+      const updated = await api.sessions.update(session.id, { name: next });
+      upsertSession({ ...session, ...updated });
+    } catch {
+      toast.error('Failed to rename session');
+      setDraftName(session.name);
+    }
+  };
+
+  const cancelRename = () => {
+    setEditing(false);
+    setDraftName(session.name);
+  };
+
+  const handleAiRename = async () => {
+    if (aiLoading) return;
+    setAiLoading(true);
+    try {
+      const result = await api.sessions.renameAi(session.id);
+      upsertSession({ ...session, ...result.session });
+      toast.success(`Renamed to "${result.name}"`, { duration: 2200 });
+    } catch (err: any) {
+      const msg = err?.message || 'AI rename failed';
+      toast.error(`AI rename: ${msg}`, { duration: 5000, style: { maxWidth: 480 } });
+    } finally {
+      setAiLoading(false);
+    }
+  };
 
   const handleCopySessionId = () => {
     if (claudeState?.claudeSessionId) {
@@ -65,29 +127,81 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
       }}
     >
       {/* Top row */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, userSelect: 'none', WebkitUserSelect: 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: 1 }}>
-          <StatusDot state={session.state} size={8} />
-          <span style={{ fontSize: 14, color: 'var(--text-primary)', fontWeight: 600, whiteSpace: 'nowrap' }}>
-            {session.name}
-          </span>
-          {claudeState?.label && (
-            <span
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, minWidth: 0, flex: 1 }}>
+          <div style={{ marginTop: 5, flexShrink: 0 }}>
+            <StatusDot state={session.state} size={8} />
+          </div>
+          {editing ? (
+            <input
+              ref={inputRef}
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              onBlur={commitRename}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitRename();
+                } else if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelRename();
+                }
+              }}
+              maxLength={120}
               style={{
-                fontSize: 12,
-                color: 'var(--text-secondary)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
+                flex: 1,
                 minWidth: 0,
+                fontSize: 14,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                background: 'var(--bg-elevated)',
+                border: '1px solid var(--accent-blue)',
+                borderRadius: 'var(--radius-sm)',
+                padding: '2px 8px',
+                outline: 'none',
+                lineHeight: 1.3,
+              }}
+            />
+          ) : (
+            <span
+              onDoubleClick={() => setEditing(true)}
+              title="Double-click to rename"
+              style={{
+                fontSize: 14,
+                color: 'var(--text-primary)',
+                fontWeight: 600,
+                lineHeight: 1.3,
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
+                cursor: 'text',
+                userSelect: 'text',
+                WebkitUserSelect: 'text',
               }}
             >
-              {claudeState.label}
+              {session.name}
             </span>
           )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0, userSelect: 'none', WebkitUserSelect: 'none' }}>
+          <IconButton
+            size="sm"
+            onClick={handleAiRename}
+            label="Rename with AI"
+            disabled={aiLoading}
+          >
+            {aiLoading ? <Spinner size="sm" /> : <Sparkles size={14} />}
+          </IconButton>
+          <IconButton
+            size="sm"
+            onClick={() => setEditing(true)}
+            label="Rename session"
+          >
+            <Pencil size={13} />
+          </IconButton>
           <AttachButton processId={session.id} kind="session" />
           <IconButton size="sm" onClick={onToggleDetailPanel} label="Toggle detail panel">
             <PanelBottom size={14} />

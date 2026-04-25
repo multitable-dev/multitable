@@ -42,7 +42,6 @@ export interface ClaudeSessionState {
   lastActivity: number;
   activeSubagents: number;
   userMessages: string[];
-  label: string | null;
 }
 
 export interface Session extends ManagedProcess {

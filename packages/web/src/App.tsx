@@ -185,8 +185,8 @@ function App() {
         if (pid) store.updateProcessMetrics(pid, msg.payload);
       }),
       wsClient.on('session:updated', (msg: any) => {
-        // Preserve in-memory claudeState (label, tokens, etc.) since the
-        // backend broadcasts the DB row which doesn't carry transient state.
+        // Preserve in-memory claudeState since the backend broadcasts the DB
+        // row which doesn't carry transient stats.
         const incoming: Session = msg.payload.session;
         const existing = store.sessions[incoming.id];
         store.upsertSession(
@@ -269,29 +269,6 @@ function App() {
         const message = msg.payload?.message || 'Send failed';
         toast.error(message, { duration: 4000 });
       }),
-      wsClient.on('session:label-updated', (msg: any) => {
-        const { sessionId, label } = msg.payload;
-        const session = store.sessions[sessionId];
-        if (session) {
-          store.upsertSession({
-            ...session,
-            claudeState: {
-              ...(session.claudeState ?? {
-                claudeSessionId: null,
-                currentTool: null,
-                toolCount: 0,
-                tokenCount: 0,
-                costUsd: 0,
-                lastActivity: 0,
-                activeSubagents: 0,
-                userMessages: [],
-                label: null,
-              }),
-              label,
-            },
-          } as Session);
-        }
-      }),
       wsClient.on('session:alert', (msg: any) => {
         const alert = msg.payload?.alert;
         if (alert && typeof alert === 'object' && alert.alertId) {
@@ -370,7 +347,6 @@ function App() {
             lastActivity: state.lastActivity ?? Date.now(),
             activeSubagents: state.activeSubagents ?? 0,
             userMessages: state.userMessages ?? session.claudeState?.userMessages ?? [],
-            label: state.label ?? session.claudeState?.label ?? null,
           },
         } as Session);
       }),

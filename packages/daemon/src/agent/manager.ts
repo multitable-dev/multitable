@@ -18,7 +18,6 @@ import {
 } from './sdkAdapter.js';
 import { createAlert } from './alerts.js';
 import { updateSession, insertCostRecord, getSessionById } from '../db/store.js';
-import { generateSessionLabel } from '../hooks/labeler.js';
 import { detectOptions } from '../hooks/optionDetector.js';
 
 // Agent-modal defaults from AddAgentModal — session.name matching one of these
@@ -53,7 +52,6 @@ type RegisterInput = Omit<
   | 'currentTool'
   | 'activeSubagents'
   | 'lastActivity'
-  | 'label'
   | 'userMessages'
 >;
 
@@ -94,7 +92,6 @@ export class AgentSessionManager extends EventEmitter {
       currentTool: null,
       activeSubagents: 0,
       lastActivity: 0,
-      label: null,
       userMessages: [],
     };
     this.sessions.set(session.id, session);
@@ -704,7 +701,6 @@ export class AgentSessionManager extends EventEmitter {
       tokensOut: s.tokensOut,
       activeSubagents: s.activeSubagents,
       lastActivity: s.lastActivity,
-      label: s.label,
       userMessages: s.userMessages,
     };
   }
@@ -734,15 +730,14 @@ export class AgentSessionManager extends EventEmitter {
   }
 
   /**
-   * Fire-and-forget: run the labeler + option-detection on Stop. Mirrors the
-   * /stop receiver branch — option detection reads the JSONL the SDK just
-   * wrote, label generation reads in-memory userMessages.
+   * Fire-and-forget: run option-detection on Stop. Reads the JSONL the SDK
+   * just wrote. AI rename is no longer auto-triggered here — the user
+   * invokes it explicitly via POST /api/sessions/:id/rename-ai.
    */
   private async runStopWork(sessionId: string): Promise<void> {
     const s = this.sessions.get(sessionId);
     if (!s) return;
 
-    // Option detection — only meaningful once we have a claudeSessionId.
     if (s.claudeSessionId) {
       try {
         const result = await detectOptions(s.workingDir, s.claudeSessionId);
@@ -751,19 +746,6 @@ export class AgentSessionManager extends EventEmitter {
         }
       } catch {
         // best-effort — JSONL may not have flushed yet
-      }
-    }
-
-    // Label generation — first label only, then stick.
-    if (!s.label && s.userMessages.length > 0) {
-      try {
-        const label = await generateSessionLabel(s.userMessages);
-        if (label) {
-          s.label = label;
-          this.emit('label-updated', { sessionId, label });
-        }
-      } catch {
-        // best-effort
       }
     }
   }

@@ -84,11 +84,16 @@ export function SidebarItem({
         >
           <span
             style={{
+              flex: 1,
+              minWidth: 0,
               fontSize: 13.5,
+              lineHeight: 1.3,
               color: 'var(--text-primary)',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
               overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
+              wordBreak: 'break-word',
               fontWeight: isSelected ? 600 : 500,
             }}
           >

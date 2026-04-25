@@ -56,8 +56,7 @@ function ProcessTile({
   if (process.type === 'command') {
     metaLine = truncate(process.command, 64);
   } else if (process.type === 'session') {
-    const s = process as Session;
-    metaLine = s.claudeState?.label || truncate(process.command, 64);
+    metaLine = truncate(process.command, 64);
   } else {
     metaLine = truncate(process.workingDir || '~', 64);
   }

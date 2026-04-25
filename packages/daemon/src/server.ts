@@ -303,10 +303,6 @@ export function createServer(
     broadcast('session:options-detected', { sessionId, options });
   });
 
-  agentManager.on('label-updated', ({ sessionId, label }: { sessionId: string; label: string }) => {
-    broadcast('session:label-updated', { sessionId, label });
-  });
-
   agentManager.on('notification', ({ sessionId, payload }: { sessionId: string; payload: any }) => {
     broadcast('session:notification', { sessionId, payload });
   });

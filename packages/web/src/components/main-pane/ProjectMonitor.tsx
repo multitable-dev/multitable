@@ -26,7 +26,6 @@ function buildLines(process: AnyProcess): { text: string; dim?: boolean; accent?
       { text: '$ claude', accent: 'rgba(120, 200, 255, 0.85)' },
     ];
     const label =
-      s.claudeState?.label ||
       s.claudeState?.userMessages?.[s.claudeState.userMessages.length - 1] ||
       null;
     lines.push({ text: label ? truncate(label, 22) : '—', dim: !label });

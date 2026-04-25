@@ -372,7 +372,6 @@ export function ProjectSidebarItem({ project }: Props) {
                 <SidebarItem
                   key={session.id}
                   process={session}
-                  subtitle={(session as any).claudeState?.label || undefined}
                   isSelected={selectedProcessId === session.id}
                   onClick={() => handleSelectProcess(session)}
                   onContextMenu={(e) => {

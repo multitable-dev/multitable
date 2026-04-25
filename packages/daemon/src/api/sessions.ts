@@ -11,6 +11,7 @@ import {
 } from '../db/store.js';
 import { parseSessionCost } from '../hooks/costParser.js';
 import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
+import { generateSessionLabel } from '../hooks/labeler.js';
 import { parseTranscript, getSessionJsonlPath } from '../transcripts/parser.js';
 import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
 import type { AgentSessionManager } from '../agent/manager.js';
@@ -103,6 +104,15 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
     const updated = updateSession(req.params.id, req.body);
+    // Re-broadcast when the visible name changed so other tabs/clients
+    // pick up manual renames without a full refresh.
+    if (
+      updated &&
+      typeof req.body?.name === 'string' &&
+      req.body.name !== session.name
+    ) {
+      agentManager.emit('session-renamed', { sessionId: req.params.id });
+    }
     res.json(updated);
   });
 
@@ -257,10 +267,66 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
       agent.cacheCreationTokens = 0;
       agent.cacheReadTokens = 0;
       agent.totalCostUsd = 0;
-      agent.label = null;
     }
     const updated = getSessionById(req.params.id);
     res.json({ ok: true, session: updated });
+  });
+
+  // POST /api/sessions/:id/rename-ai
+  //
+  // Generates a short title from the session's user prompts via Haiku and
+  // overwrites session.name. Mirrors the prompt-lookup chain of
+  // /api/sessions/:id/prompts (current JSONL → all project JSONLs →
+  // in-memory userMessages) so resumed and brand-new sessions both work.
+  // Emits `session-renamed` so subscribers see `session:updated`.
+  router.post('/:id/rename-ai', async (req: Request, res: Response) => {
+    const session = getSessionById(req.params.id);
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    let prompts: string[] = [];
+    if (session.claudeSessionId && session.workingDirectory) {
+      try {
+        prompts = parseSessionPrompts(session.workingDirectory, session.claudeSessionId).map((p) => p.text);
+      } catch {}
+    }
+    if (prompts.length === 0 && session.workingDirectory) {
+      try {
+        prompts = parseAllProjectPrompts(session.workingDirectory).map((p) => p.text);
+      } catch {}
+    }
+    if (prompts.length === 0) {
+      const agent = agentManager.get(req.params.id);
+      prompts = agent?.userMessages ?? [];
+    }
+
+    if (prompts.length === 0) {
+      return res.status(400).json({ error: 'No prompts yet — send a message first' });
+    }
+
+    const result = await generateSessionLabel(prompts);
+    if (!result.ok) {
+      console.error('[rename-ai] labeler failed:', result.error);
+      return res.status(502).json({ error: result.error });
+    }
+    // Strip wrapping quotes, normalize whitespace, drop trailing punctuation,
+    // and keep only the first line — Haiku occasionally adds an explanatory
+    // second line despite the system prompt.
+    const firstLine = result.title.split('\n', 1)[0] ?? result.title;
+    const cleaned = firstLine
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(/[.!?]+$/, '')
+      .trim();
+    const name = cleaned.length > 60 ? cleaned.slice(0, 59).trimEnd() + '…' : cleaned;
+    if (!name) {
+      return res.status(502).json({ error: 'AI returned an empty title' });
+    }
+
+    const updated = updateSession(req.params.id, { name });
+    if (!updated) return res.status(500).json({ error: 'Failed to persist new name' });
+    agentManager.emit('session-renamed', { sessionId: req.params.id });
+    res.json({ session: updated, name });
   });
 
   // GET /api/sessions/:id/diff
