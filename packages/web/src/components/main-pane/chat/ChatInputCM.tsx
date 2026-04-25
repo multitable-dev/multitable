@@ -1,5 +1,9 @@
 import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Paperclip } from 'lucide-react';
+import { Send, Paperclip, X, Clock } from 'lucide-react';
+
+// Stable empty array so the pending-sends selector doesn't churn on
+// unrelated store updates.
+const EMPTY_PENDING: string[] = [];
 import { toast } from 'react-hot-toast';
 import { wsClient } from '../../../lib/ws';
 import { api } from '../../../lib/api';
@@ -117,10 +121,18 @@ export const ChatInputCM = memo(function ChatInputCM({
 
   const [hasText, setHasText] = useState(false);
   // Sessions are SDK-driven: 'stopped'/'idle' means "ready to start a new turn",
-  // 'running' means a turn is in flight (block sends to avoid 409s), 'errored'
-  // means the last turn failed and needs explicit recovery.
-  const disabled = state === 'errored' || state === 'running';
+  // 'running' means a turn is in flight (we client-side queue more sends),
+  // 'errored' means the last turn failed and the input is blocked until the
+  // user takes an explicit action.
+  const disabled = state === 'errored';
+  const queueing = state === 'running';
   disabledRef.current = disabled;
+
+  const pendingSends = useAppStore(
+    (s) => s.pendingSendsBySession[processId] ?? EMPTY_PENDING,
+  );
+  const enqueueSend = useAppStore((s) => s.enqueueSend);
+  const removePendingSend = useAppStore((s) => s.removePendingSend);
 
   // Keep project id reachable by the file-mention completion source — it
   // reads it lazily so we don't have to re-create extensions when the user
@@ -182,6 +194,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             .reset(processId)
             .then(() => {
               useAppStore.getState().clearMessages(processId);
+              useAppStore.getState().clearPendingSends(processId);
               const session = useAppStore.getState().sessions[processId];
               if (session) {
                 useAppStore.getState().upsertSession({
@@ -255,7 +268,15 @@ export const ChatInputCM = memo(function ChatInputCM({
         return true;
       }
 
-      wsClient.sendTurn(processId, text);
+      // If a turn is in flight, queue the message client-side. SessionChat
+      // drains the queue when the daemon flips state back to 'stopped'.
+      const live = useAppStore.getState();
+      const session = live.sessions[processId];
+      if (session?.state === 'running') {
+        live.enqueueSend(processId, text);
+      } else {
+        wsClient.sendTurn(processId, text);
+      }
       view.dispatch({
         changes: { from: 0, to: view.state.doc.length, insert: '' },
       });
@@ -537,6 +558,66 @@ export const ChatInputCM = memo(function ChatInputCM({
         flexShrink: 0,
       }}
     >
+      {pendingSends.length > 0 && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 4,
+            marginBottom: 6,
+          }}
+        >
+          {pendingSends.map((text, i) => (
+            <div
+              key={i}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 8px',
+                fontSize: 11.5,
+                color: 'var(--text-secondary)',
+                backgroundColor: 'var(--bg-elevated)',
+                border: '1px dashed var(--border-strong)',
+                borderRadius: 0,
+              }}
+            >
+              <Clock size={11} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
+              <span
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontFamily: 'inherit',
+                }}
+                title={text}
+              >
+                {text}
+              </span>
+              <button
+                onClick={() => removePendingSend(processId, i)}
+                title="Remove from queue"
+                aria-label="Remove queued message"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  width: 18,
+                  height: 18,
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+              >
+                <X size={11} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <div
         style={{
           display: 'flex',
@@ -606,7 +687,15 @@ export const ChatInputCM = memo(function ChatInputCM({
         <button
           onClick={() => onSendRef.current()}
           disabled={!canSend}
-          title={canSend ? 'Send (Enter)' : disabled ? 'Session not running' : 'Type a message'}
+          title={
+            !canSend
+              ? disabled
+                ? 'Session not running'
+                : 'Type a message'
+              : queueing
+                ? 'Queue message (Enter)'
+                : 'Send (Enter)'
+          }
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -638,9 +727,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             letterSpacing: '0.12em',
           }}
         >
-          {state === 'errored'
-            ? 'Session errored — last turn failed. Send a new message to retry.'
-            : 'A turn is in flight — wait for it to finish.'}
+          Session errored — last turn failed. Send a new message to retry.
         </div>
       )}
     </div>

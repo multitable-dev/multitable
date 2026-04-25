@@ -15,6 +15,7 @@ import { ChatInputCM } from './ChatInputCM';
 // [] to Zustand on every unrelated store update — without this, every metrics
 // tick re-renders the chat tree.
 const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_PENDING: string[] = [];
 
 interface Props {
   sessionId: string;
@@ -31,6 +32,10 @@ export function SessionChat({ sessionId, session }: Props) {
   const projectName = useAppStore(
     (s) => s.projects.find((p) => p.id === session.projectId)?.name,
   );
+  const pendingHead = useAppStore(
+    (s) => (s.pendingSendsBySession[sessionId] ?? EMPTY_PENDING)[0],
+  );
+  const popPendingSend = useAppStore((s) => s.popPendingSend);
 
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
@@ -100,6 +105,18 @@ export function SessionChat({ sessionId, session }: Props) {
   // may already have some deltas in the store — keep them but also refetch
   // the initial history to be safe. Handled by the key-based effect above.
   // (No extra wiring needed here — claudeSessionId change retriggers load.)
+
+  // Drain queued sends: whenever the session is idle and there's a head
+  // message in the queue, pop it and dispatch via wsClient.sendTurn. The
+  // daemon flips state back to 'running', which gates the next iteration —
+  // so this naturally serializes one queued message per turn. We skip the
+  // 'errored' state because that requires explicit recovery.
+  useEffect(() => {
+    if (session.state !== 'stopped') return;
+    if (!pendingHead) return;
+    const text = popPendingSend(sessionId);
+    if (text) wsClient.sendTurn(sessionId, text);
+  }, [session.state, pendingHead, sessionId, popPendingSend]);
 
   // Sessions sit in 'stopped' until the first turn fires; that's the normal
   // ready state, no banner needed. Only surface the banner on actual error.

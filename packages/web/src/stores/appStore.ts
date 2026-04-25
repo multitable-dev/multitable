@@ -137,6 +137,15 @@ interface AppState {
   setToolProgress: (sessionId: string, progress: ToolProgress | null) => void;
   statusBySession: Record<string, SessionStatus>;
   setSessionStatus: (sessionId: string, status: SessionStatus) => void;
+
+  // Per-session client-side send queue. While a turn is running, the user
+  // can keep typing and queue more messages; SessionChat drains the queue
+  // when the turn completes (one sendTurn per state-transition tick).
+  pendingSendsBySession: Record<string, string[]>;
+  enqueueSend: (sessionId: string, text: string) => void;
+  removePendingSend: (sessionId: string, index: number) => void;
+  popPendingSend: (sessionId: string) => string | undefined;
+  clearPendingSends: (sessionId: string) => void;
 }
 
 export type TaskState = 'pending' | 'running' | 'completed' | 'failed' | 'killed' | 'stopped' | 'unknown';
@@ -557,6 +566,49 @@ export const useAppStore = create<AppState>((set, get) => ({
   setSessionStatus: (sessionId, status) =>
     set((s) => ({
       statusBySession: { ...s.statusBySession, [sessionId]: status },
+    })),
+
+  // Pending send queue (client-side; the daemon serializes turns)
+  pendingSendsBySession: {},
+  enqueueSend: (sessionId, text) =>
+    set((s) => {
+      const trimmed = text.trim();
+      if (!trimmed) return {};
+      const current = s.pendingSendsBySession[sessionId] ?? [];
+      return {
+        pendingSendsBySession: {
+          ...s.pendingSendsBySession,
+          [sessionId]: [...current, trimmed],
+        },
+      };
+    }),
+  removePendingSend: (sessionId, index) =>
+    set((s) => {
+      const current = s.pendingSendsBySession[sessionId];
+      if (!current || index < 0 || index >= current.length) return {};
+      const next = current.slice(0, index).concat(current.slice(index + 1));
+      return {
+        pendingSendsBySession: { ...s.pendingSendsBySession, [sessionId]: next },
+      };
+    }),
+  popPendingSend: (sessionId) => {
+    let head: string | undefined;
+    set((s) => {
+      const current = s.pendingSendsBySession[sessionId];
+      if (!current || current.length === 0) return {};
+      head = current[0];
+      return {
+        pendingSendsBySession: {
+          ...s.pendingSendsBySession,
+          [sessionId]: current.slice(1),
+        },
+      };
+    });
+    return head;
+  },
+  clearPendingSends: (sessionId) =>
+    set((s) => ({
+      pendingSendsBySession: { ...s.pendingSendsBySession, [sessionId]: [] },
     })),
 }));
 
