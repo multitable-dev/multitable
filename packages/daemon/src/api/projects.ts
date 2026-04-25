@@ -169,10 +169,9 @@ export function createProjectsRouter(manager: PtyManager): Router {
       return res.status(500).json({ error: 'Failed to create project' });
     }
 
-    // Phase 6: legacy webhook hooks are retired. The SDK's in-process hook
-    // callbacks cover everything we used to install into .claude/settings.json,
-    // so creating a project no longer touches that file. Boot-time sweeper in
-    // index.ts cleans up any stale entries left by older daemons.
+    // Legacy webhook hooks are retired. The SDK's in-process hook callbacks
+    // cover everything we used to install into .claude/settings.json, so
+    // creating a project no longer touches that file.
 
     res.status(201).json(project);
   });
