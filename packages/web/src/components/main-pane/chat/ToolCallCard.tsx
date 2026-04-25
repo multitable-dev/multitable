@@ -1,5 +1,5 @@
 import React, { memo, useState } from 'react';
-import { ChevronRight, FileText, FilePenLine, Terminal as TerminalIcon, Search, Globe, Wrench, AlertTriangle } from 'lucide-react';
+import { FileText, FilePenLine, Terminal as TerminalIcon, Search, Globe, Wrench, AlertTriangle } from 'lucide-react';
 import { CodeBlock } from './CodeBlock';
 
 interface Props {
@@ -81,9 +81,9 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
     <div
       style={{
         margin: '6px 0',
-        border: `1px solid ${isError ? 'var(--status-error)' : 'var(--border)'}`,
-        borderRadius: 'var(--radius-md)',
-        backgroundColor: 'color-mix(in srgb, var(--bg-elevated) 60%, transparent)',
+        border: `1px solid ${isError ? 'var(--status-error)' : 'var(--border-strong)'}`,
+        borderRadius: 0,
+        backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}
     >
@@ -94,35 +94,48 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
           width: '100%',
           alignItems: 'center',
           gap: 8,
-          padding: '6px 10px',
+          padding: '5px 10px',
           background: 'transparent',
           border: 'none',
           color: 'var(--text-primary)',
           cursor: 'pointer',
           textAlign: 'left',
+          fontFamily: 'inherit',
         }}
       >
         <span
           style={{
             display: 'inline-flex',
             alignItems: 'center',
-            transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
-            transition: 'transform var(--dur-fast) var(--ease-out)',
+            justifyContent: 'center',
+            width: 14,
             color: 'var(--text-muted)',
+            fontSize: 11,
+            fontFamily: 'inherit',
           }}
         >
-          <ChevronRight size={13} />
+          {open ? '[−]' : '[+]'}
         </span>
-        <span style={{ color: isError ? 'var(--status-error)' : 'var(--text-secondary)', display: 'inline-flex' }}>
-          {isError ? <AlertTriangle size={13} /> : toolIcon(toolName)}
+        <span style={{ color: isError ? 'var(--status-error)' : 'var(--text-muted)', display: 'inline-flex' }}>
+          {isError ? <AlertTriangle size={12} /> : toolIcon(toolName, 12)}
         </span>
-        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{toolName}</span>
+        <span
+          style={{
+            fontSize: 11,
+            fontWeight: 500,
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
+            color: 'var(--text-primary)',
+          }}
+        >
+          {toolName}
+        </span>
         {summary && (
           <span
             style={{
               fontSize: 12,
               color: 'var(--text-secondary)',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontFamily: 'inherit',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
@@ -136,9 +149,11 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
         {pending && (
           <span
             style={{
-              fontSize: 10.5,
-              color: 'var(--text-muted)',
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+              fontSize: 10,
+              color: 'var(--accent-amber)',
+              fontFamily: 'inherit',
+              textTransform: 'uppercase',
+              letterSpacing: '0.14em',
               marginLeft: 'auto',
             }}
           >
@@ -148,14 +163,32 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
       </button>
 
       {open && (
-        <div style={{ padding: '4px 10px 10px' }}>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+        <div style={{ padding: '4px 10px 10px', borderTop: '1px solid var(--border)' }}>
+          <div
+            style={{
+              fontSize: 9.5,
+              color: 'var(--text-muted)',
+              marginTop: 6,
+              marginBottom: 4,
+              textTransform: 'uppercase',
+              letterSpacing: '0.18em',
+            }}
+          >
             Input
           </div>
           <CodeBlock code={JSON.stringify(input, null, 2)} lang="json" />
           {output !== null && (
             <>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              <div
+                style={{
+                  fontSize: 9.5,
+                  color: 'var(--text-muted)',
+                  marginTop: 8,
+                  marginBottom: 4,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.18em',
+                }}
+              >
                 {isError ? 'Error' : 'Result'}
               </div>
               <CodeBlock code={output} lang={lang} />

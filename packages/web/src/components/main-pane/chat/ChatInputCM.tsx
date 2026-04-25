@@ -532,11 +532,11 @@ export const ChatInputCM = memo(function ChatInputCM({
           alignItems: 'flex-end',
           gap: 8,
           padding: '6px 10px',
-          borderRadius: 'var(--radius-lg)',
-          border: '1px solid var(--border)',
+          borderRadius: 0,
+          border: '1px solid var(--border-strong)',
           backgroundColor: 'var(--bg-elevated)',
-          boxShadow: 'var(--shadow-sm)',
-          transition: 'border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
+          boxShadow: 'none',
+          transition: 'border-color var(--dur-fast) var(--ease-out)',
         }}
       >
         <button
@@ -547,25 +547,40 @@ export const ChatInputCM = memo(function ChatInputCM({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 28,
-            height: 28,
-            borderRadius: 'var(--radius-md)',
-            border: 'none',
+            width: 26,
+            height: 26,
+            borderRadius: 0,
+            border: '1px solid transparent',
             background: 'transparent',
             color: 'var(--text-muted)',
             cursor: disabled ? 'not-allowed' : 'pointer',
             flexShrink: 0,
           }}
         >
-          <Paperclip size={14} />
+          <Paperclip size={13} />
         </button>
+
+        <span
+          aria-hidden
+          style={{
+            color: 'var(--accent-amber)',
+            fontFamily: 'inherit',
+            fontSize: 13,
+            lineHeight: '26px',
+            flexShrink: 0,
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+          }}
+        >
+          {'>'}
+        </span>
 
         <div
           ref={containerRef}
           className="mt-cm-composer"
           style={{
             flex: 1,
-            minHeight: 28,
+            minHeight: 26,
             maxHeight: '40vh',
             overflow: 'hidden',
             display: 'flex',
@@ -582,18 +597,18 @@ export const ChatInputCM = memo(function ChatInputCM({
             display: 'inline-flex',
             alignItems: 'center',
             justifyContent: 'center',
-            width: 30,
-            height: 30,
-            borderRadius: 'var(--radius-md)',
-            border: 'none',
-            backgroundColor: canSend ? 'var(--accent-blue)' : 'var(--bg-hover)',
-            color: canSend ? '#fff' : 'var(--text-muted)',
+            width: 28,
+            height: 28,
+            borderRadius: 0,
+            border: `1px solid ${canSend ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
+            backgroundColor: 'transparent',
+            color: canSend ? 'var(--accent-amber)' : 'var(--text-faint)',
             cursor: canSend ? 'pointer' : 'not-allowed',
             flexShrink: 0,
-            transition: 'background-color var(--dur-fast) var(--ease-out)',
+            transition: 'background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
           }}
         >
-          <Send size={14} />
+          <Send size={13} />
         </button>
       </div>
 
@@ -601,9 +616,11 @@ export const ChatInputCM = memo(function ChatInputCM({
         <div
           style={{
             marginTop: 6,
-            fontSize: 11.5,
+            fontSize: 10.5,
             color: 'var(--text-muted)',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: 'inherit',
+            textTransform: 'uppercase',
+            letterSpacing: '0.12em',
           }}
         >
           {state === 'errored'

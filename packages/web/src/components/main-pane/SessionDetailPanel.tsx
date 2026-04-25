@@ -1345,14 +1345,17 @@ function NoteCard({
               type="button"
               onClick={acceptSuggestion}
               style={{
-                fontSize: 11,
-                padding: '4px 10px',
-                borderRadius: 'var(--radius-sm)',
-                backgroundColor: 'var(--accent-blue)',
-                color: 'white',
-                border: 'none',
+                fontSize: 10.5,
+                padding: '3px 10px',
+                borderRadius: 0,
+                backgroundColor: 'transparent',
+                color: 'var(--accent-amber)',
+                border: '1px solid var(--accent-amber)',
                 cursor: 'pointer',
                 fontWeight: 500,
+                fontFamily: 'inherit',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
               }}
             >
               Replace note

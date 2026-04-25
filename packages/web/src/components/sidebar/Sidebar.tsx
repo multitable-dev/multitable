@@ -56,28 +56,28 @@ export function Sidebar() {
           }}
         >
           <LogoArt />
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
             <span
               style={{
-                fontSize: 15,
+                fontSize: 18,
                 fontWeight: 700,
-                color: 'var(--text-primary)',
-                letterSpacing: -0.2,
+                color: 'var(--accent-amber)',
+                letterSpacing: '-0.02em',
                 lineHeight: 1,
               }}
             >
-              MultiTable
+              mt
             </span>
             <span
               style={{
-                fontSize: 10,
+                fontSize: 9.5,
                 color: 'var(--text-muted)',
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-                letterSpacing: 0.5,
+                textTransform: 'uppercase',
+                letterSpacing: '0.18em',
                 lineHeight: 1,
               }}
             >
-              v0.1
+              multitable v0.1
             </span>
           </div>
         </div>

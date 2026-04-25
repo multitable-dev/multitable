@@ -47,11 +47,11 @@ export const CodeBlock = memo(function CodeBlock({ code, lang }: Props) {
   }, [code, lang, activeThemeId, customThemes]);
 
   const wrapperStyle: React.CSSProperties = {
-    fontSize: 12.5,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    borderRadius: 'var(--radius-md)',
-    border: '1px solid var(--border)',
-    backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 70%, transparent)',
+    fontSize: 12,
+    fontFamily: 'inherit',
+    borderRadius: 0,
+    border: '1px solid var(--border-strong)',
+    backgroundColor: 'var(--bg-sidebar)',
     overflow: 'hidden',
     margin: '6px 0',
   };

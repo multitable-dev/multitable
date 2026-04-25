@@ -25,57 +25,89 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
     removePermission(prompt.id);
   };
 
+  // ASCII countdown bar — segments fill from 0% to 100%, then flip to "0s"
+  const SEGMENTS = 28;
+  const filled = Math.max(0, Math.min(SEGMENTS, Math.round(progress * SEGMENTS)));
+  const bar = '█'.repeat(filled) + '░'.repeat(SEGMENTS - filled);
+
   return (
     <div
       style={{
+        position: 'relative',
         backgroundColor: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 14,
+        border: '1px solid var(--border-strong)',
+        borderRadius: 0,
+        padding: '14px 14px 12px',
         marginBottom: 8,
-        boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 8, userSelect: 'none', WebkitUserSelect: 'none' }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>
-          {prompt.toolName}
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
-          from {prompt.sessionId}
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-          {Math.ceil(timeoutSecs - elapsed)}s
-        </span>
-      </div>
-      {/* Countdown bar */}
-      <div
+      <span
         style={{
-          height: 3,
-          backgroundColor: 'var(--border)',
-          borderRadius: 'var(--radius-pill)',
-          marginBottom: 10,
-          overflow: 'hidden',
+          position: 'absolute',
+          top: -7,
+          left: 12,
+          background: 'var(--bg-elevated)',
+          padding: '0 6px',
+          fontSize: 9.5,
+          color: 'var(--accent-amber)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.18em',
+          fontWeight: 500,
         }}
       >
-        <div
-          style={{
-            height: '100%',
-            backgroundColor: 'var(--accent-blue)',
-            borderRadius: 'var(--radius-pill)',
-            width: `${progress * 100}%`,
-            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.35)',
-            transition: 'width 0.1s linear',
-          }}
-        />
-      </div>
+        permission · {prompt.toolName}
+      </span>
+      <span
+        style={{
+          position: 'absolute',
+          top: -7,
+          right: 12,
+          background: 'var(--bg-elevated)',
+          padding: '0 6px',
+          fontSize: 9.5,
+          color: 'var(--text-faint)',
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {Math.ceil(timeoutSecs - elapsed)}s · {prompt.sessionId.slice(0, 12)}
+      </span>
       <div style={{ marginBottom: 10 }}>
         <ToolInputPreview toolName={prompt.toolName} input={prompt.toolInput} />
+      </div>
+      {/* ASCII countdown bar */}
+      <div
+        style={{
+          fontFamily: 'inherit',
+          fontSize: 12,
+          lineHeight: 1,
+          letterSpacing: '-0.03em',
+          color: 'var(--accent-amber)',
+          marginBottom: 10,
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+        }}
+      >
+        <span style={{ flex: 1, overflow: 'hidden' }}>{bar}</span>
+        <span
+          style={{
+            color: 'var(--text-muted)',
+            fontSize: 10,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            fontVariantNumeric: 'tabular-nums',
+          }}
+        >
+          {Math.ceil(timeoutSecs - elapsed)}s remaining
+        </span>
       </div>
       <div style={{ display: 'flex', gap: 6 }}>
         <Button size="sm" variant="primary" onClick={() => respond('allow')}>
           Allow
         </Button>
-        <Button size="sm" variant="ghost" onClick={() => respond('always-allow')}>
+        <Button size="sm" variant="secondary" onClick={() => respond('always-allow')}>
           Always Allow
         </Button>
         <div style={{ flex: 1 }} />
@@ -207,47 +239,78 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
     removePermission(prompt.id);
   };
 
+  const SEGMENTS = 28;
+  const filled = Math.max(0, Math.min(SEGMENTS, Math.round(progress * SEGMENTS)));
+  const bar = '█'.repeat(filled) + '░'.repeat(SEGMENTS - filled);
+
   return (
     <div
       style={{
+        position: 'relative',
         backgroundColor: 'var(--bg-elevated)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
-        padding: 14,
+        border: '1px solid var(--border-strong)',
+        borderRadius: 0,
+        padding: '14px 14px 12px',
         marginBottom: 8,
-        boxShadow: 'var(--shadow-sm)',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10, gap: 8, userSelect: 'none', WebkitUserSelect: 'none' }}>
-        <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-primary)' }}>
-          Question
-        </span>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
-          from {prompt.sessionId}
-        </span>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-          {Math.ceil(timeoutSecs - elapsed)}s
-        </span>
-      </div>
-      <div
+      <span
         style={{
-          height: 3,
-          backgroundColor: 'var(--border)',
-          borderRadius: 'var(--radius-pill)',
-          marginBottom: 12,
-          overflow: 'hidden',
+          position: 'absolute',
+          top: -7,
+          left: 12,
+          background: 'var(--bg-elevated)',
+          padding: '0 6px',
+          fontSize: 9.5,
+          color: 'var(--accent-amber)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.18em',
+          fontWeight: 500,
         }}
       >
-        <div
+        question
+      </span>
+      <span
+        style={{
+          position: 'absolute',
+          top: -7,
+          right: 12,
+          background: 'var(--bg-elevated)',
+          padding: '0 6px',
+          fontSize: 9.5,
+          color: 'var(--text-faint)',
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
+        {Math.ceil(timeoutSecs - elapsed)}s · {prompt.sessionId.slice(0, 12)}
+      </span>
+      <div
+        style={{
+          fontFamily: 'inherit',
+          fontSize: 12,
+          lineHeight: 1,
+          letterSpacing: '-0.03em',
+          color: 'var(--accent-amber)',
+          marginBottom: 12,
+          display: 'flex',
+          alignItems: 'baseline',
+          gap: 8,
+        }}
+      >
+        <span style={{ flex: 1, overflow: 'hidden' }}>{bar}</span>
+        <span
           style={{
-            height: '100%',
-            backgroundColor: 'var(--accent-blue)',
-            borderRadius: 'var(--radius-pill)',
-            width: `${progress * 100}%`,
-            boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.35)',
-            transition: 'width 0.1s linear',
+            color: 'var(--text-muted)',
+            fontSize: 10,
+            letterSpacing: '0.1em',
+            textTransform: 'uppercase',
+            fontVariantNumeric: 'tabular-nums',
           }}
-        />
+        >
+          {Math.ceil(timeoutSecs - elapsed)}s remaining
+        </span>
       </div>
 
       {questions.map((q, qIdx) => {
@@ -281,9 +344,9 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
                       alignItems: 'flex-start',
                       gap: 8,
                       padding: 8,
-                      border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--border)'}`,
-                      borderRadius: 'var(--radius-md)',
-                      backgroundColor: selected ? 'color-mix(in srgb, var(--accent-blue) 10%, transparent)' : 'transparent',
+                      border: `1px solid ${selected ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
+                      borderRadius: 0,
+                      backgroundColor: selected ? 'color-mix(in srgb, var(--accent-amber) 10%, transparent)' : 'transparent',
                       cursor: 'pointer',
                       transition: 'background-color 0.12s, border-color 0.12s',
                     }}
@@ -319,7 +382,7 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
           Submit answer
         </Button>
         <div style={{ flex: 1 }} />
-        <Button size="sm" variant="ghost" onClick={skip}>
+        <Button size="sm" variant="secondary" onClick={skip}>
           Skip
         </Button>
       </div>
@@ -346,12 +409,10 @@ export function PermissionBar({ sessionId }: PermissionBarProps = {}) {
         right: 12,
         bottom: 12,
         padding: 12,
-        borderRadius: 'var(--radius-xl)',
-        border: '1px solid var(--border)',
-        backgroundColor: 'color-mix(in srgb, var(--bg-statusbar) 95%, transparent)',
-        backdropFilter: 'blur(12px) saturate(1.1)',
-        WebkitBackdropFilter: 'blur(12px) saturate(1.1)',
-        boxShadow: 'var(--shadow-lg)',
+        borderRadius: 0,
+        border: '1px solid var(--border-strong)',
+        backgroundColor: 'var(--bg-sidebar)',
+        boxShadow: 'none',
         zIndex: 10,
         maxHeight: '60%',
         overflowY: 'auto',

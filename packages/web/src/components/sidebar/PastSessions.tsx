@@ -235,7 +235,7 @@ export function PastSessions() {
       style={{
         borderTop: '1px solid var(--border)',
         paddingBottom: 8,
-        backgroundColor: 'color-mix(in srgb, var(--bg-primary) 60%, transparent)',
+        backgroundColor: 'transparent',
       }}
     >
       {/* Header */}
@@ -244,33 +244,34 @@ export function PastSessions() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '8px 12px',
+          padding: '6px 10px 6px 12px',
           cursor: 'pointer',
           userSelect: 'none',
           WebkitUserSelect: 'none',
-          transition: 'background-color var(--dur-fast) var(--ease-out)',
+          gap: 6,
         }}
       >
         <ChevronRight
-          size={12}
+          size={11}
           style={{
-            color: 'var(--text-muted)',
+            color: 'var(--text-faint)',
+            flexShrink: 0,
             transform: sectionCollapsed ? 'rotate(0deg)' : 'rotate(90deg)',
             transition: 'transform var(--dur-fast) var(--ease-out)',
           }}
         />
         <span
           style={{
-            fontSize: 10.5,
-            fontWeight: 700,
+            fontSize: 9.5,
+            fontWeight: 500,
             color: 'var(--text-muted)',
-            letterSpacing: '0.08em',
-            marginLeft: 6,
+            textTransform: 'uppercase',
+            letterSpacing: '0.18em',
           }}
         >
           PAST SESSIONS
         </span>
-        <div style={{ flex: 1, height: 1, backgroundColor: 'var(--border)', margin: '0 8px' }} />
+        <div style={{ flex: 1, height: 1, backgroundColor: 'var(--border)' }} />
       </div>
 
       {!sectionCollapsed && (
@@ -316,7 +317,7 @@ export function PastSessions() {
             </div>
           )}
           {error && (
-            <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--danger, #f55)' }}>{error}</div>
+            <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--status-error)' }}>{error}</div>
           )}
           {data && data.sessions.length === 0 && !loading && (
             <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--text-muted)' }}>

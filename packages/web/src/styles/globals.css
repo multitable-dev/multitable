@@ -2,41 +2,60 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ───────────────────────────────────────────────────────────
+   OBSIDIAN / ESSENCE v0.7 — canonical dark
+   ─────────────────────────────────────────────────────────── */
 :root {
-  --bg-primary: #1a1a1a;
-  --bg-sidebar: #141414;
-  --bg-statusbar: #1e1e1e;
-  --bg-elevated: #202020;
-  --bg-overlay: rgba(0, 0, 0, 0.55);
-  --text-primary: #e5e5e5;
-  --text-secondary: #9ca3af;
-  --text-muted: #6b7280;
-  --border: #2e2e2e;
-  --border-strong: #3d3d3d;
-  --accent-blue: #60a5fa;
-  --accent-glow: 0 0 0 3px color-mix(in srgb, #60a5fa 22%, transparent);
-  --status-running: #22c55e;
-  --status-idle: #22c55e;
-  --status-warning: #f59e0b;
-  --status-error: #ef4444;
-  --status-stopped: #6b7280;
-  --bg-hover: #2a2a2a;
+  /* Surface — bg-0 → bg-3 mapped onto historical names */
+  --bg-primary: #08080b;     /* bg-0 — canvas */
+  --bg-sidebar: #0e0e12;     /* bg-1 — sidebar / panels */
+  --bg-statusbar: #0e0e12;   /* bg-1 */
+  --bg-elevated: #16161c;    /* bg-2 — modals, cards */
+  --bg-hover: #1f1f27;       /* bg-3 */
+  --bg-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Text ramp — text-0 (faint) → text-3 (primary) */
+  --text-primary: #e6e6ed;   /* text-3 */
+  --text-secondary: #b8b8c4; /* text-2 */
+  --text-muted: #7a7a87;     /* text-1 */
+  --text-faint: #4a4a55;     /* text-0 — used for the dimmest hints */
+
+  /* Borders */
+  --border: #1a1a22;         /* border-0 */
+  --border-strong: #2a2a35;  /* border-1 */
+  --border-tab: #3d3d4a;     /* border-2 */
+
+  /* Single chromatic accent: AMBER. Historical name kept for ABI stability. */
+  --accent-blue: #ff8a00;    /* amber */
+  --accent-amber: #ff8a00;
+  --accent-amber-dim: #cc6e00;
+  --accent-glow: none;       /* no glows, ever */
+
+  /* Signal colors — appear ONLY on glyphs and exit codes */
+  --status-running: #2ecc71; /* live */
+  --status-idle: #7a7a87;    /* dim — text-1 */
+  --status-warning: #ff8a00; /* warnings unify into amber */
+  --status-error: #ff4d4f;   /* err */
+  --status-stopped: #4a4a55; /* text-0 */
+  --status-live: #2ecc71;
+  --status-err: #ff4d4f;
+
   --selection-bg: transparent;
-  --selection-border: #60a5fa;
+  --selection-border: #ff8a00;
 
-  /* Radii */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-  --radius-xl: 14px;
-  --radius-pill: 999px;
+  /* Radii — manifesto: nothing > 4px */
+  --radius-sm: 0;
+  --radius-md: 2px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-pill: 4px;
 
-  /* Shadows (deeper in dark) */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.5);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* Shadows — manifesto: none. Kept as variables so existing references resolve. */
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-inset: none;
 
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -45,40 +64,53 @@
   --dur-med: 180ms;
   --dur-slow: 260ms;
 
-  /* Focus ring (theme-aware) */
-  --focus-ring: 0 0 0 2px var(--bg-primary), 0 0 0 4px var(--accent-blue);
+  /* Focus ring — 1px amber border, no halo */
+  --focus-ring: 0 0 0 1px var(--accent-amber);
 
   color-scheme: dark;
 }
 
+/* ───────────────────────────────────────────────────────────
+   OBSIDIAN — light fallback (warm cream)
+   ─────────────────────────────────────────────────────────── */
 [data-theme="light"] {
-  --bg-primary: #d9d2bf;
-  --bg-sidebar: #cfc7b2;
-  --bg-statusbar: #c5bca5;
-  --bg-elevated: #e4ddcb;
-  --bg-overlay: rgba(90, 80, 60, 0.45);
-  --text-primary: #3d3830;
-  --text-secondary: #6b6457;
-  --text-muted: #8f887a;
-  --border: #b3a993;
-  --border-strong: #9a8f77;
-  --accent-blue: #3f6aa8;
-  --accent-glow: 0 0 0 3px color-mix(in srgb, #3f6aa8 22%, transparent);
-  --status-running: #3e8450;
-  --status-idle: #3e8450;
-  --status-warning: #b57a2c;
-  --status-error: #a8463f;
-  --status-stopped: #8f887a;
-  --bg-hover: #c7beaa;
-  --selection-bg: transparent;
-  --selection-border: #3f6aa8;
+  --bg-primary: #f5f1e8;
+  --bg-sidebar: #ebe6d8;
+  --bg-statusbar: #ebe6d8;
+  --bg-elevated: #fbf8ef;
+  --bg-hover: #e0d9c5;
+  --bg-overlay: rgba(40, 30, 18, 0.45);
 
-  /* Softer shadows in light */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.18), 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  --text-primary: #1a1a14;
+  --text-secondary: #4a4538;
+  --text-muted: #7a7468;
+  --text-faint: #a8a397;
+
+  --border: #d8d2c0;
+  --border-strong: #bcb4a0;
+  --border-tab: #9c9482;
+
+  --accent-blue: #ff8a00;
+  --accent-amber: #ff8a00;
+  --accent-amber-dim: #b35e00;
+  --accent-glow: none;
+
+  --status-running: #1f9d55;
+  --status-idle: #7a7468;
+  --status-warning: #c46a00;
+  --status-error: #c92a2a;
+  --status-stopped: #a8a397;
+  --status-live: #1f9d55;
+  --status-err: #c92a2a;
+
+  --selection-bg: transparent;
+  --selection-border: #ff8a00;
+
+  --shadow-sm: none;
+  --shadow-md: none;
+  --shadow-lg: none;
+  --shadow-xl: none;
+  --shadow-inset: none;
 
   color-scheme: light;
 }
@@ -112,10 +144,12 @@ html, body, #root {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  font-feature-settings: 'tnum' 1, 'calt' 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
@@ -132,7 +166,7 @@ body {
 /* ---------- Custom scrollbars ---------- */
 .mt-scroll {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 .mt-scroll::-webkit-scrollbar {
   width: 10px;
@@ -142,8 +176,8 @@ body {
   background: transparent;
 }
 .mt-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--border);
-  border-radius: 5px;
+  background-color: var(--border-strong);
+  border-radius: 0;
   border: 2px solid transparent;
   background-clip: padding-box;
   transition: background-color var(--dur-fast) var(--ease-out);
@@ -155,8 +189,6 @@ body {
   background: transparent;
 }
 
-/* Apply themed scrollbars globally for any overflow area that opts in via class,
-   but also gently style the default scrollbars. */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
@@ -165,8 +197,8 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--border) 85%, transparent);
-  border-radius: 5px;
+  background-color: var(--border-strong);
+  border-radius: 0;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -179,7 +211,7 @@ body {
 
 /* ---------- Selection ---------- */
 ::selection {
-  background-color: color-mix(in srgb, var(--accent-blue) 35%, transparent);
+  background-color: color-mix(in srgb, var(--accent-amber) 35%, transparent);
   color: inherit;
 }
 
@@ -194,7 +226,7 @@ select:focus-visible,
 [tabindex]:focus-visible {
   outline: none;
   box-shadow: var(--focus-ring);
-  border-radius: var(--radius-md);
+  border-radius: 0;
 }
 
 /* Remove default focus on xterm inner textarea — xterm handles caret itself */
@@ -219,8 +251,8 @@ select:focus-visible,
 }
 
 @keyframes mt-scale-in {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @keyframes mt-slide-up {
@@ -232,9 +264,17 @@ select:focus-visible,
   to { transform: rotate(360deg); }
 }
 
+@keyframes mt-blink {
+  50% { opacity: 0; }
+}
+
 .mt-spin {
   animation: mt-spin 1s linear infinite;
   transform-origin: center;
+}
+
+.mt-blink {
+  animation: mt-blink 1s steps(2) infinite;
 }
 
 /* ---------- Dashboard responsive padding ---------- */
@@ -259,6 +299,60 @@ select:focus-visible,
   }
 }
 
+/* ---------- Section header pattern (── LABEL  count ──) ---------- */
+.mt-section-rule {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.mt-section-rule::before,
+.mt-section-rule::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--border);
+}
+.mt-section-rule::before {
+  flex: 0 0 16px;
+}
+.mt-section-rule .mt-section-count {
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-left: 6px;
+}
+
+/* ---------- Panel border-tab title ----------
+ * A title that sits IN the panel's top border. Use on a relatively-positioned
+ * panel container together with .mt-panel-tab on a child element.
+ */
+.mt-panel-tab {
+  position: absolute;
+  top: -7px;
+  left: 12px;
+  background: var(--bg-primary);
+  padding: 0 6px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+  font-weight: 500;
+  pointer-events: none;
+}
+.mt-panel-tab.mt-panel-tab-right {
+  left: auto;
+  right: 12px;
+  color: var(--text-faint);
+  letter-spacing: 0.14em;
+}
+.mt-panel-tab.mt-panel-tab-amber {
+  color: var(--accent-amber);
+}
+
 /* ---------- CodeMirror 6 composer ---------- */
 .mt-cm-composer {
   width: 100%;
@@ -267,32 +361,29 @@ select:focus-visible,
   width: 100%;
   max-height: 100%;
   background: transparent;
+  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace;
 }
 .mt-cm-composer .cm-scroller {
   overflow-y: auto;
   overflow-x: hidden;
   max-height: 40vh;
+  font-family: inherit;
 }
 .mt-cm-composer .cm-content {
-  caret-color: var(--accent-blue);
+  caret-color: var(--accent-amber);
   min-height: 20px;
+  font-family: inherit;
 }
 
-/* ---------- CodeMirror autocomplete popup ----------
- * Minimal overrides so CM6's default layout still works. Earlier overrides
- * (`overflow: hidden`, `display: flex` on <li>, `padding-left` on detail)
- * caused the items to be invisible because they collapsed to width 0 when
- * the tooltip had no min-width and `display: flex` items had nothing to
- * stretch against. Only color/background/z-index needs forcing.
- */
+/* ---------- CodeMirror autocomplete popup ---------- */
 .cm-tooltip {
   z-index: 1000 !important;
   background-color: var(--bg-elevated) !important;
   color: var(--text-primary) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: 8px !important;
-  box-shadow: var(--shadow-lg) !important;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  border: 1px solid var(--border-strong) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace !important;
 }
 .cm-tooltip-autocomplete {
   min-width: 280px;
@@ -300,7 +391,7 @@ select:focus-visible,
 }
 .cm-tooltip-autocomplete > ul {
   max-height: 260px;
-  font-size: 12.5px;
+  font-size: 12px;
   font-family: inherit;
 }
 .cm-tooltip-autocomplete > ul > li {
@@ -310,9 +401,11 @@ select:focus-visible,
 .cm-tooltip-autocomplete > ul > li[aria-selected] {
   background-color: var(--bg-hover) !important;
   color: var(--text-primary) !important;
+  border-left: 2px solid var(--accent-amber);
+  padding-left: 8px;
 }
 .cm-completionLabel {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: inherit;
   color: var(--text-primary);
 }
 .cm-completionDetail {
@@ -323,8 +416,8 @@ select:focus-visible,
 }
 .cm-completionMatchedText {
   text-decoration: none;
-  color: var(--accent-blue);
-  font-weight: 600;
+  color: var(--accent-amber);
+  font-weight: 700;
 }
 .cm-completionIcon {
   opacity: 0.85;

@@ -20,11 +20,11 @@ const MD_COMPONENTS: Components = {
       return (
         <code
           style={{
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: 'inherit',
             fontSize: '0.92em',
-            padding: '1px 6px',
-            borderRadius: 4,
-            backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 80%, transparent)',
+            padding: '0 5px',
+            borderRadius: 0,
+            backgroundColor: 'var(--bg-sidebar)',
             border: '1px solid var(--border)',
             color: 'var(--text-primary)',
           }}
@@ -42,7 +42,7 @@ const MD_COMPONENTS: Components = {
         href={href}
         target="_blank"
         rel="noreferrer"
-        style={{ color: 'var(--accent-blue)', textDecoration: 'underline' }}
+        style={{ color: 'var(--accent-amber)', textDecoration: 'underline' }}
       >
         {children}
       </a>
@@ -90,7 +90,7 @@ export const AssistantMessage = memo(function AssistantMessage({ text, costLabel
       <div
         className="mt-chat-assistant"
         style={{
-          fontSize: 13.5,
+          fontSize: 12.5,
           lineHeight: 1.55,
           maxWidth: '100%',
         }}
@@ -102,10 +102,12 @@ export const AssistantMessage = memo(function AssistantMessage({ text, costLabel
       {costLabel && (
         <div
           style={{
-            fontSize: 10.5,
+            fontSize: 10,
             color: 'var(--text-muted)',
             marginTop: 4,
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+            fontFamily: 'inherit',
+            textTransform: 'uppercase',
+            letterSpacing: '0.14em',
           }}
         >
           {costLabel}

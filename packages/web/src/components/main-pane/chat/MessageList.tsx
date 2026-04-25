@@ -138,17 +138,19 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
             display: 'inline-flex',
             alignItems: 'center',
             gap: 4,
-            padding: '4px 10px',
-            fontSize: 11.5,
-            borderRadius: 'var(--radius-pill)',
+            padding: '3px 10px',
+            fontSize: 10.5,
+            borderRadius: 0,
             background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-primary)',
+            border: '1px solid var(--accent-amber)',
+            color: 'var(--accent-amber)',
             cursor: 'pointer',
-            boxShadow: 'var(--shadow-sm)',
+            fontFamily: 'inherit',
+            textTransform: 'uppercase',
+            letterSpacing: '0.08em',
           }}
         >
-          <ChevronDown size={12} /> Jump to latest
+          <ChevronDown size={11} /> Jump to latest
         </button>
       )}
     </div>

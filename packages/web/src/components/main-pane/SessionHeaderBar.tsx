@@ -104,15 +104,16 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
     display: 'inline-flex',
     alignItems: 'center',
     gap: 4,
-    padding: '2px 10px',
-    height: 20,
-    fontSize: 11.5,
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    padding: '1px 8px',
+    height: 18,
+    fontSize: 10.5,
+    fontFamily: 'inherit',
     color: 'var(--text-secondary)',
-    backgroundColor: 'var(--bg-elevated)',
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-pill)',
+    backgroundColor: 'transparent',
+    border: '1px solid var(--border-strong)',
+    borderRadius: 0,
     lineHeight: 1,
+    letterSpacing: '0.04em',
   };
 
   return (
@@ -151,15 +152,16 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
               style={{
                 flex: 1,
                 minWidth: 0,
-                fontSize: 14,
-                fontWeight: 600,
+                fontSize: 13.5,
+                fontWeight: 500,
                 color: 'var(--text-primary)',
                 background: 'var(--bg-elevated)',
-                border: '1px solid var(--accent-blue)',
-                borderRadius: 'var(--radius-sm)',
+                border: '1px solid var(--accent-amber)',
+                borderRadius: 0,
                 padding: '2px 8px',
                 outline: 'none',
                 lineHeight: 1.3,
+                fontFamily: 'inherit',
               }}
             />
           ) : (
@@ -167,9 +169,9 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
               onDoubleClick={() => setEditing(true)}
               title="Double-click to rename"
               style={{
-                fontSize: 14,
+                fontSize: 13.5,
                 color: 'var(--text-primary)',
-                fontWeight: 600,
+                fontWeight: 500,
                 lineHeight: 1.3,
                 display: '-webkit-box',
                 WebkitLineClamp: 2,
@@ -225,11 +227,11 @@ export function SessionHeaderBar({ session, onToggleDetailPanel }: Props) {
               transition: 'border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--accent-blue)';
+              (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--accent-amber)';
               (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-primary)';
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--border)';
+              (e.currentTarget as HTMLSpanElement).style.borderColor = 'var(--border-strong)';
               (e.currentTarget as HTMLSpanElement).style.color = 'var(--text-secondary)';
             }}
           >

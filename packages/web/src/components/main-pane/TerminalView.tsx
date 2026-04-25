@@ -66,12 +66,12 @@ export function TerminalView({ processId, process }: Props) {
           <div
             style={{
               flex: 1,
-              backgroundColor: '#1a1a1a',
+              backgroundColor: 'var(--bg-primary)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: 'var(--text-muted)',
-              fontSize: 14,
+              fontSize: 12.5,
             }}
           >
             Terminal unavailable — prior session not found
@@ -80,11 +80,11 @@ export function TerminalView({ processId, process }: Props) {
           <div
             style={{
               flex: showDetailPanel ? '1 1 60%' : '1',
-              backgroundColor: '#1a1a1a',
+              backgroundColor: 'var(--bg-primary)',
               overflow: 'hidden',
               minHeight: 0,
               position: 'relative',
-              boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.05), inset 0 -1px 0 rgba(0, 0, 0, 0.4)',
+              boxShadow: 'none',
             }}
           >
             <div

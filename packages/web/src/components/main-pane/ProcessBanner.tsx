@@ -55,7 +55,7 @@ export function ProcessBanner({ process }: Props) {
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <StatusDot state={process.state} size={10} />
-        <span style={{ fontSize: 13.5, color: 'var(--text-primary)' }}>{message}</span>
+        <span style={{ fontSize: 12.5, color: 'var(--text-primary)' }}>{message}</span>
       </div>
       {button && (
         <Button variant="primary" size="sm" onClick={button.onClick}>

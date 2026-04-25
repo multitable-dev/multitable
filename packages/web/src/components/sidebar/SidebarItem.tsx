@@ -52,23 +52,23 @@ export function SidebarItem({
       style={{
         display: 'flex',
         alignItems: 'flex-start',
-        padding: '6px 10px',
-        margin: '2px 8px',
+        padding: '4px 10px 4px 9px',
+        margin: '1px 0',
         cursor: 'pointer',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         position: 'relative',
-        borderRadius: 'var(--radius-md)',
+        borderRadius: 0,
         backgroundColor: isSelected
-          ? 'color-mix(in srgb, var(--accent-blue) 14%, transparent)'
+          ? 'var(--bg-elevated)'
           : hovered
             ? 'var(--bg-hover)'
             : 'transparent',
-        boxShadow: isSelected
-          ? 'inset 3px 0 0 var(--accent-blue)'
-          : 'inset 0 0 0 transparent',
+        borderLeft: isSelected
+          ? '3px solid var(--accent-amber)'
+          : '3px solid transparent',
         transition:
-          'background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
+          'background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out)',
       }}
     >
       <div style={{ marginTop: 4 }}>
@@ -113,14 +113,15 @@ export function SidebarItem({
                 alignItems: 'center',
                 gap: 3,
                 marginLeft: 6,
-                padding: '2px 7px',
-                borderRadius: 'var(--radius-pill)',
-                background: 'var(--accent-blue)',
-                color: 'white',
-                fontSize: 10,
-                fontWeight: 600,
+                padding: '1px 6px',
+                borderRadius: 0,
+                background: 'transparent',
+                color: 'var(--accent-amber)',
+                border: '1px solid var(--accent-amber)',
+                fontSize: 9.5,
+                fontWeight: 500,
+                letterSpacing: '0.06em',
                 flexShrink: 0,
-                boxShadow: 'var(--shadow-sm)',
                 animation: 'mt-pulse 1.6s ease-in-out infinite',
               }}
             >

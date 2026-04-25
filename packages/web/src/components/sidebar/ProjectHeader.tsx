@@ -79,15 +79,15 @@ export function ProjectHeader({
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: '8px 12px',
+        padding: '6px 10px',
         borderBottom: '1px solid var(--border)',
         cursor: editing ? 'text' : 'pointer',
         userSelect: 'none',
         WebkitUserSelect: 'none',
         backgroundColor: focused
-          ? 'var(--bg-hover)'
+          ? 'var(--bg-elevated)'
           : hover
-            ? 'color-mix(in srgb, var(--bg-hover) 55%, transparent)'
+            ? 'var(--bg-hover)'
             : 'transparent',
         transition: 'background-color var(--dur-fast) var(--ease-out)',
       }}
@@ -168,8 +168,8 @@ export function ProjectHeader({
             onEditingChange?.(true);
           }}
           style={{
-            fontSize: 15,
-            fontWeight: 600,
+            fontSize: 12.5,
+            fontWeight: 500,
             color: 'var(--text-primary)',
             flex: 1,
             overflow: 'hidden',

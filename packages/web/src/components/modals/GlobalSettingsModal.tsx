@@ -140,23 +140,27 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
-                  padding: '10px 12px',
-                  border: `1px solid ${isActive ? 'var(--accent-blue)' : 'var(--border)'}`,
-                  borderRadius: 'var(--radius-md)',
-                  backgroundColor: isActive ? 'color-mix(in srgb, var(--accent-blue) 10%, transparent)' : 'var(--bg-sidebar)',
-                  boxShadow: isActive ? 'var(--shadow-sm), 0 0 0 1px var(--accent-blue)' : 'var(--shadow-sm)',
-                  transition: 'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
+                  padding: '8px 10px',
+                  border: `1px solid ${isActive ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
+                  borderLeft: `3px solid ${isActive ? 'var(--accent-amber)' : 'transparent'}`,
+                  borderRadius: 0,
+                  backgroundColor: isActive ? 'var(--bg-elevated)' : 'var(--bg-sidebar)',
+                  transition: 'border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
                 }}
               >
                 <button
                   onClick={() => setActiveTheme(t.id)}
                   title={isActive ? 'Active theme' : 'Set as default'}
                   style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: '50%',
-                    border: '2px solid var(--accent-blue)',
-                    background: isActive ? 'var(--accent-blue)' : 'transparent',
+                    width: 16,
+                    height: 16,
+                    borderRadius: 0,
+                    border: `1px solid ${isActive ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
+                    background: 'transparent',
+                    color: 'var(--accent-amber)',
+                    fontFamily: 'inherit',
+                    fontSize: 11,
+                    lineHeight: 1,
                     cursor: 'pointer',
                     padding: 0,
                     display: 'flex',
@@ -165,7 +169,7 @@ export function GlobalSettingsModal({ onClose }: Props) {
                     flexShrink: 0,
                   }}
                 >
-                  {isActive && <Check size={12} color="white" />}
+                  {isActive && <Check size={10} />}
                 </button>
                 <span
                   style={{
@@ -358,12 +362,12 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
   return (
     <div
       style={{
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
+        border: '1px solid var(--border-strong)',
+        borderRadius: 0,
         padding: 14,
         marginBottom: 16,
         backgroundColor: 'var(--bg-sidebar)',
-        boxShadow: 'var(--shadow-sm)',
+        boxShadow: 'none',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>

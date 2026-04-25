@@ -296,50 +296,20 @@ export function ProjectSidebarItem({ project }: Props) {
     <div
       style={{
         position: 'relative',
-        margin: '14px 8px 2px',
+        margin: '10px 0 2px',
       }}
     >
-      {/* Folder tab — protruding colored chip anchoring the card to the project's color */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: -5,
-          left: 16,
-          width: 44,
-          height: 7,
-          backgroundColor: color.stripe,
-          borderRadius: '4px 4px 0 0',
-          boxShadow: focused
-            ? `0 -2px 6px color-mix(in srgb, ${color.stripe} 55%, transparent)`
-            : `0 -1px 2px color-mix(in srgb, ${color.stripe} 30%, transparent)`,
-          transition: 'box-shadow var(--dur-med) var(--ease-out), top var(--dur-med) var(--ease-out)',
-        }}
-      />
-      {/* Second tab, slightly offset — adds depth like stacked folder tabs */}
-      <div
-        aria-hidden
-        style={{
-          position: 'absolute',
-          top: -3,
-          left: 68,
-          width: 18,
-          height: 5,
-          backgroundColor: `color-mix(in srgb, ${color.stripe} 55%, transparent)`,
-          borderRadius: '3px 3px 0 0',
-        }}
-      />
-      {/* Card body */}
+      {/* Card body — flat, square. Project color is conveyed by the
+          inset left stripe and a thin top accent rule. */}
       <div
         style={{
           position: 'relative',
-          borderRadius: 'var(--radius-lg)',
+          borderRadius: 0,
           overflow: 'hidden',
-          backgroundColor: 'color-mix(in srgb, var(--bg-elevated) 58%, transparent)',
-          boxShadow: focused
-            ? `var(--shadow-md), inset 4px 0 0 ${color.stripe}, inset 0 0 0 1px color-mix(in srgb, ${color.stripe} 40%, transparent), 0 0 0 2px color-mix(in srgb, ${color.stripe} 16%, transparent)`
-            : `var(--shadow-sm), inset 4px 0 0 ${color.stripe}, inset 0 0 0 1px color-mix(in srgb, ${color.stripe} 22%, var(--border))`,
-          transition: 'box-shadow var(--dur-med) var(--ease-out)',
+          backgroundColor: 'transparent',
+          borderTop: `1px solid ${focused ? color.stripe : 'var(--border)'}`,
+          borderLeft: `3px solid ${color.stripe}`,
+          transition: 'border-color var(--dur-med) var(--ease-out)',
         }}
       >
       <ProjectHeader
