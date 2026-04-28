@@ -48,7 +48,7 @@ type HookEventName = 'PreToolUse' | 'PermissionRequest';
 type SdkResolver = (decision: SdkDecision) => void;
 
 type SdkDecision =
-  | { kind: 'allow'; updatedInput?: Record<string, any> }
+  | { kind: 'allow'; updatedInput: Record<string, any> }
   | { kind: 'deny'; message: string };
 
 export interface PermissionExtras {
@@ -58,10 +58,15 @@ export interface PermissionExtras {
   blockedPath?: string;
 }
 
-// SDK PermissionResult shape (verified Phase 0 against
-// @anthropic-ai/claude-agent-sdk@0.2.119): `message` is REQUIRED on deny.
+// SDK PermissionResult shape (verified against the bundled `claude` binary in
+// @anthropic-ai/claude-agent-sdk@0.2.119): the runtime Zod schema requires
+// `updatedInput: record` on allow and `message: string` on deny — even though
+// sdk.d.ts declares `updatedInput?` as optional. Returning `{ behavior: 'allow' }`
+// without `updatedInput` makes the binary throw and synthesize a deny with
+// `message: "Tool permission request failed: ZodError..."`, which kills every
+// tool call. Always pass the original tool input as `updatedInput`.
 export type PermissionResult =
-  | { behavior: 'allow'; updatedInput?: Record<string, any> }
+  | { behavior: 'allow'; updatedInput: Record<string, any> }
   | { behavior: 'deny'; message: string };
 
 interface PendingPermission {
@@ -350,7 +355,7 @@ export class PermissionManager extends EventEmitter {
     const approved = decision === 'allow' || decision === 'always-allow';
     if (approved) {
       sendAll(entry, (eventName) => buildAllowBody(eventName, updatedInput));
-      resolveAllSdk(entry, { kind: 'allow', updatedInput });
+      resolveAllSdk(entry, { kind: 'allow', updatedInput: updatedInput ?? entry.prompt.toolInput });
     } else {
       sendAll(entry, (eventName) => buildDenyBody(eventName));
       resolveAllSdk(entry, { kind: 'deny', message: 'Denied by user' });
@@ -409,7 +414,7 @@ export class PermissionManager extends EventEmitter {
     this.pending.delete(id);
     // On timeout, auto-approve to not block Claude
     sendAll(entry, (eventName) => buildAllowBody(eventName));
-    resolveAllSdk(entry, { kind: 'allow' });
+    resolveAllSdk(entry, { kind: 'allow', updatedInput: entry.prompt.toolInput });
 
     this.emit('permission:expired', id);
   }
@@ -493,12 +498,12 @@ export class PermissionManager extends EventEmitter {
     // auto-deferred; it always surfaces a structured prompt.
     const insideCwd = pathInsideCwd(toolName, input, cwd);
     if (!isAskQuestion && this.autoDeferTools.has(toolName) && insideCwd) {
-      return { behavior: 'allow' };
+      return { behavior: 'allow', updatedInput: input };
     }
 
     // sessionAllowList: same honor rules.
     if (!isAskQuestion && this.sessionAllowList.get(sessionId)?.has(toolName)) {
-      return { behavior: 'allow' };
+      return { behavior: 'allow', updatedInput: input };
     }
 
     // Dedup: attach to an existing pending prompt with the same key.
@@ -586,9 +591,7 @@ export class PermissionManager extends EventEmitter {
 
 function decisionToResult(decision: SdkDecision): PermissionResult {
   if (decision.kind === 'allow') {
-    return decision.updatedInput
-      ? { behavior: 'allow', updatedInput: decision.updatedInput }
-      : { behavior: 'allow' };
+    return { behavior: 'allow', updatedInput: decision.updatedInput };
   }
   return { behavior: 'deny', message: decision.message };
 }
