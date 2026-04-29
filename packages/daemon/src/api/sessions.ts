@@ -12,7 +12,11 @@ import {
 import { parseSessionCost } from '../hooks/costParser.js';
 import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
 import { generateSessionLabel } from '../hooks/labeler.js';
-import { parseTranscript, getSessionJsonlPath } from '../transcripts/parser.js';
+import {
+  parseTranscriptChain,
+  walkParentUuidChain,
+  getSessionJsonlPath,
+} from '../transcripts/parser.js';
 import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
 import type { AgentSessionManager } from '../agent/manager.js';
 
@@ -91,6 +95,7 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
         name: session.name,
         workingDir: session.workingDirectory || '',
         claudeSessionId: session.claudeSessionId ?? null,
+        claudeSessionIdHistory: session.claudeSessionIdHistory ?? [],
       });
       res.status(201).json(session);
     } catch (err) {
@@ -213,21 +218,55 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     res.json({ prompts: fallback, source: 'memory' });
   });
 
-  // GET /api/sessions/:id/messages — full parsed conversation from JSONL.
-  // Returns an empty array if the session has no claudeSessionId yet or the
-  // transcript file hasn't been created. The endOffset allows callers to tail
-  // the file from that point via the WS session:transcript-delta event.
+  // GET /api/sessions/:id/messages — full parsed conversation from JSONL(s).
+  //
+  // Reads every JSONL in the session's claudeSessionId chain (history first,
+  // current id last) and merges them, deduped by raw entry uuid. Required
+  // because the SDK assigns a new claudeSessionId on certain resume paths
+  // (claude-code#8069, closed not-planned) — without chain reads, a forked
+  // session shows no scrollback even though the agent has full context.
+  //
+  // For sessions whose chain wasn't tracked (rows that predate the chain
+  // column), falls back to walking the JSONL parentUuid chain across sibling
+  // files in the same encoded-cwd directory. This is best-effort; a warning
+  // is logged when the lookup yields zero messages despite a valid id.
   router.get('/:id/messages', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
     if (!session.claudeSessionId || !session.workingDirectory) {
       return res.json({ messages: [], endOffset: 0 });
     }
+
+    const workingDir = session.workingDirectory;
+    const currentSid = session.claudeSessionId;
+    const trackedChain = [...session.claudeSessionIdHistory, currentSid];
+
     try {
-      const jsonlPath = getSessionJsonlPath(session.workingDirectory, session.claudeSessionId);
-      const { messages, endOffset } = parseTranscript(jsonlPath, 0);
+      let { messages, endOffset } = parseTranscriptChain(workingDir, trackedChain);
+
+      if (messages.length === 0 && session.claudeSessionIdHistory.length === 0) {
+        // Legacy fallback: this row never had its chain tracked, so try
+        // discovering ancestors by walking parentUuid across sibling JSONLs.
+        const discovered = walkParentUuidChain(workingDir, currentSid);
+        if (discovered.length > 0) {
+          const fullChain = [...discovered, currentSid];
+          ({ messages, endOffset } = parseTranscriptChain(workingDir, fullChain));
+        }
+      }
+
+      if (messages.length === 0) {
+        const attempted = trackedChain
+          .map((sid) => getSessionJsonlPath(workingDir, sid))
+          .join(', ');
+        console.warn(
+          `[sessions] /messages returned empty for ${session.id} ` +
+            `(claudeSessionId=${currentSid}); tried: ${attempted}`
+        );
+      }
+
       res.json({ messages, endOffset });
-    } catch {
+    } catch (err) {
+      console.error(`[sessions] /messages failed for ${session.id}:`, err);
       res.json({ messages: [], endOffset: 0 });
     }
   });
@@ -256,10 +295,14 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
     agentManager.abortTurn(req.params.id);
-    updateSession(req.params.id, { claudeSessionId: null });
+    updateSession(req.params.id, {
+      claudeSessionId: null,
+      claudeSessionIdHistory: [],
+    });
     const agent = agentManager.get(req.params.id);
     if (agent) {
       agent.claudeSessionId = null;
+      agent.claudeSessionIdHistory = [];
       agent.userMessages = [];
       agent.toolCount = 0;
       agent.tokensIn = 0;

@@ -88,6 +88,7 @@ async function main() {
         name: session.name,
         workingDir: session.workingDirectory || project.path,
         claudeSessionId: session.claudeSessionId ?? null,
+        claudeSessionIdHistory: session.claudeSessionIdHistory ?? [],
       });
       console.log(`Registered session: ${session.name} (${session.id})`);
     }

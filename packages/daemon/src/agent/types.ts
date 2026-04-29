@@ -16,6 +16,11 @@ export interface AgentSession {
   workingDir: string;
   // === claude link ===
   claudeSessionId: string | null; // mirrored to DB; learned from SDK init
+  // Prior claudeSessionIds this session has held. The SDK assigns a new id
+  // every time it "forks" on resume (see GitHub claude-code#8069 — closed
+  // not-planned, so this is permanent SDK behavior). Older ids point to JSONLs
+  // that still hold prior turns; the messages endpoint reads the full chain.
+  claudeSessionIdHistory: string[];
   // === lifecycle ===
   state: ProcessState; // 'running' while a turn is in-flight, else 'idle'/'stopped'/'errored'
   startedAt: Date | null;

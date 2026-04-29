@@ -120,6 +120,7 @@ export function createServer(
         name: row.name,
         workingDir: row.workingDirectory || '',
         claudeSessionId: row.claudeSessionId,
+        claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
       });
     }
 

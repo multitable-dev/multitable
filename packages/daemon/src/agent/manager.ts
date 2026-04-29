@@ -80,6 +80,7 @@ export class AgentSessionManager extends EventEmitter {
       name: input.name,
       workingDir: input.workingDir,
       claudeSessionId: input.claudeSessionId,
+      claudeSessionIdHistory: [...input.claudeSessionIdHistory],
       state: 'stopped',
       startedAt: null,
       currentTurn: null,
@@ -208,9 +209,23 @@ export class AgentSessionManager extends EventEmitter {
             if (!info) return;
             const newSid = info.claudeSessionId;
             if (newSid && newSid !== s.claudeSessionId) {
+              // The SDK assigns a new claudeSessionId on certain resume paths
+              // (claude-code#8069, closed not-planned). The OLD id still names
+              // the JSONL containing prior history, so we must remember it —
+              // otherwise the messages endpoint reads only the post-fork file
+              // and the UI shows no scrollback.
+              const previousSid = s.claudeSessionId;
+              const nextHistory =
+                previousSid && !s.claudeSessionIdHistory.includes(previousSid)
+                  ? [...s.claudeSessionIdHistory, previousSid]
+                  : s.claudeSessionIdHistory;
               s.claudeSessionId = newSid;
+              s.claudeSessionIdHistory = nextHistory;
               try {
-                updateSession(sessionId, { claudeSessionId: newSid });
+                updateSession(sessionId, {
+                  claudeSessionId: newSid,
+                  claudeSessionIdHistory: nextHistory,
+                });
               } catch (err) {
                 console.error('[agent] failed to persist claudeSessionId:', err);
               }

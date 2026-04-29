@@ -99,6 +99,7 @@ function handleSubscribe(
         name: row.name,
         workingDir: row.workingDirectory || '',
         claudeSessionId: row.claudeSessionId ?? null,
+        claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
       });
     }
   }
@@ -269,6 +270,7 @@ function handleSessionSend(msg: WsMessage, agentManager: AgentSessionManager, ws
       name: row.name,
       workingDir: row.workingDirectory || '',
       claudeSessionId: row.claudeSessionId ?? null,
+      claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
     });
   }
   agentManager.sendTurn({ sessionId: processId, text }).catch((err: any) => {

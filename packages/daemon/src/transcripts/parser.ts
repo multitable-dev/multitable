@@ -31,15 +31,26 @@ export type Message =
     }
   | { id: string; ts: number; kind: 'system'; text: string };
 
-// Claude Code encodes the absolute project path by replacing every "/" with "-",
-// including the leading slash. /home/user/foo → -home-user-foo.
+// Claude Code encodes the absolute project path by replacing every
+// non-alphanumeric character with "-", including the leading slash and any
+// underscores, dots, or hyphens-from-the-source. /home/erick/bible_daily →
+// -home-erick-bible-daily (note: the underscore becomes a dash too). Per the
+// Anthropic SDK sessions docs:
+// https://code.claude.com/docs/en/agent-sdk/sessions
+// Replacing only "/" gets close on simple paths but mismatches whenever the
+// path contains "_", ".", or any other non-alphanumeric — leading us to look
+// in a directory that doesn't exist and silently return empty history.
 function encodePath(projectPath: string): string {
-  return projectPath.replace(/\//g, '-');
+  return projectPath.replace(/[^a-zA-Z0-9]/g, '-');
 }
 
 export function getSessionJsonlPath(projectPath: string, claudeSessionId: string): string {
   const claudeProjectsDir = path.join(os.homedir(), '.claude', 'projects');
   return path.join(claudeProjectsDir, encodePath(projectPath), `${claudeSessionId}.jsonl`);
+}
+
+function getSessionDir(projectPath: string): string {
+  return path.join(os.homedir(), '.claude', 'projects', encodePath(projectPath));
 }
 
 // Strip Claude's injected <system-reminder>, <ide_selection>, etc. so the
@@ -221,4 +232,144 @@ export function parseTranscript(jsonlPath: string, fromOffset = 0): ParseResult 
       fs.closeSync(fd);
     } catch {}
   }
+}
+
+// Read every JSONL in the given chain (oldest → newest claudeSessionId), merge
+// raw entries deduped by `entry.uuid`, sort chronologically, and parse the
+// joined stream. The dedupe is critical: when the SDK forks on resume, it
+// sometimes replicates ancestor history into the new file. Without dedupe,
+// every replicated entry would render twice. `endOffset` is the byte size of
+// the LAST file only — preserves the per-file offset contract for any caller
+// that still tails the current JSONL by offset.
+export function parseTranscriptChain(
+  projectPath: string,
+  claudeSessionIds: string[]
+): ParseResult {
+  if (claudeSessionIds.length === 0) return { messages: [], endOffset: 0 };
+
+  const seenUuids = new Set<string>();
+  type Entry = { ts: number; uuid: string | null; line: string };
+  const entries: Entry[] = [];
+  let endOffset = 0;
+
+  for (let i = 0; i < claudeSessionIds.length; i++) {
+    const sid = claudeSessionIds[i];
+    const isLast = i === claudeSessionIds.length - 1;
+    const jsonlPath = getSessionJsonlPath(projectPath, sid);
+    let content: string;
+    try {
+      content = fs.readFileSync(jsonlPath, 'utf8');
+    } catch {
+      continue;
+    }
+    if (isLast) {
+      endOffset = Buffer.byteLength(content, 'utf8');
+    }
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      const uuid = typeof parsed.uuid === 'string' ? parsed.uuid : null;
+      if (uuid) {
+        if (seenUuids.has(uuid)) continue;
+        seenUuids.add(uuid);
+      }
+      const ts =
+        typeof parsed.timestamp === 'string' ? Date.parse(parsed.timestamp) || 0 : 0;
+      entries.push({ ts, uuid, line: trimmed });
+    }
+  }
+
+  // Stable sort by timestamp; entries without a timestamp keep insertion order
+  // relative to themselves (sorted to 0, but Array.prototype.sort is stable in
+  // modern V8 so JSONL-write-order is preserved within the same ts).
+  entries.sort((a, b) => a.ts - b.ts);
+
+  const joined = entries.map((e) => e.line).join('\n') + '\n';
+  return { messages: parseTranscriptContent(joined), endOffset };
+}
+
+// Legacy backfill: when a session's claudeSessionIdHistory is empty (the row
+// predates chain tracking), we may still be able to discover the ancestor
+// chain by walking parentUuid links across JSONL files in the same encoded-cwd
+// directory. The first user/assistant entry of a forked session has a
+// parentUuid that points into the ancestor's JSONL; we scan sibling files for
+// a match, then recurse on that ancestor's filename stem.
+//
+// Returns the ancestor session ids in chronological order (oldest first), NOT
+// including the starting id. Capped at depth 10 to bound runtime on projects
+// with hundreds of JSONLs.
+export function walkParentUuidChain(
+  projectPath: string,
+  claudeSessionId: string
+): string[] {
+  const dir = getSessionDir(projectPath);
+  const ancestors: string[] = [];
+  const visited = new Set<string>([claudeSessionId]);
+  let currentSid = claudeSessionId;
+
+  for (let depth = 0; depth < 10; depth++) {
+    const currentPath = path.join(dir, `${currentSid}.jsonl`);
+    let content: string;
+    try {
+      content = fs.readFileSync(currentPath, 'utf8');
+    } catch {
+      break;
+    }
+
+    let firstParent: string | null = null;
+    const localUuids = new Set<string>();
+    for (const line of content.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        continue;
+      }
+      if (typeof parsed.uuid === 'string') localUuids.add(parsed.uuid);
+      if (firstParent === null && (parsed.type === 'user' || parsed.type === 'assistant')) {
+        firstParent =
+          typeof parsed.parentUuid === 'string' && parsed.parentUuid
+            ? parsed.parentUuid
+            : null;
+      }
+    }
+
+    if (!firstParent || localUuids.has(firstParent)) break;
+
+    let siblings: string[];
+    try {
+      siblings = fs.readdirSync(dir).filter((f) => f.endsWith('.jsonl'));
+    } catch {
+      break;
+    }
+
+    const needle = `"uuid":"${firstParent}"`;
+    let foundSid: string | null = null;
+    for (const filename of siblings) {
+      const sid = filename.slice(0, -'.jsonl'.length);
+      if (visited.has(sid)) continue;
+      try {
+        const siblingContent = fs.readFileSync(path.join(dir, filename), 'utf8');
+        if (siblingContent.includes(needle)) {
+          foundSid = sid;
+          break;
+        }
+      } catch {}
+    }
+
+    if (!foundSid) break;
+    ancestors.unshift(foundSid);
+    visited.add(foundSid);
+    currentSid = foundSid;
+  }
+
+  return ancestors;
 }

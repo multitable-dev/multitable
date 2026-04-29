@@ -23,6 +23,12 @@ export function initDb(): void {
     : path.join(__dirname, '../../src/db/schema.sql');
   const schema = fs.readFileSync(schemaPath, 'utf8');
   db.exec(schema);
+
+  // Idempotent column add for DBs that predate claude_session_id_history.
+  // SQLite throws "duplicate column" when re-run; that's the no-op signal.
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN claude_session_id_history TEXT DEFAULT '[]'");
+  } catch {}
 }
 
 export function getDb(): Database.Database {
@@ -116,6 +122,7 @@ export interface SessionRow {
   terminal_alerts: number;
   file_watch_patterns: string;
   claude_session_id: string | null;
+  claude_session_id_history: string | null;
   scrollback_data: Buffer | null;
   scratchpad: string;
   created_at: number;
@@ -138,10 +145,25 @@ export interface SessionRecord {
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
   claudeSessionId: string | null;
+  claudeSessionIdHistory: string[];
   scrollbackData: Buffer | null;
   scratchpad: string;
   createdAt: number;
   lastActiveAt: number | null;
+}
+
+// Parse the JSON-encoded chain of prior claude_session_ids the SDK has assigned
+// to this session over its lifetime. Tolerates legacy NULL columns and any
+// shape that isn't a flat string array (returns []).
+function parseClaudeSessionIdHistory(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === 'string');
+  } catch {
+    return [];
+  }
 }
 
 function rowToSession(row: SessionRow): SessionRecord {
@@ -161,6 +183,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     terminalAlerts: row.terminal_alerts === 1,
     fileWatchPatterns: JSON.parse(row.file_watch_patterns || '[]'),
     claudeSessionId: row.claude_session_id,
+    claudeSessionIdHistory: parseClaudeSessionIdHistory(row.claude_session_id_history),
     scrollbackData: row.scrollback_data,
     scratchpad: row.scratchpad || '',
     createdAt: row.created_at,
@@ -240,6 +263,7 @@ export function updateSession(id: string, data: Partial<{
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
   claudeSessionId: string | null;
+  claudeSessionIdHistory: string[];
   scratchpad: string;
   lastActiveAt: number;
 }>): SessionRecord | null {
@@ -277,6 +301,11 @@ export function updateSession(id: string, data: Partial<{
   if (data.fileWatchPatterns !== undefined) {
     fields.push('file_watch_patterns = ?');
     values.push(JSON.stringify(data.fileWatchPatterns));
+  }
+
+  if (data.claudeSessionIdHistory !== undefined) {
+    fields.push('claude_session_id_history = ?');
+    values.push(JSON.stringify(data.claudeSessionIdHistory));
   }
 
   if (fields.length === 0) return getSessionById(id);
