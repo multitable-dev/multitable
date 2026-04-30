@@ -112,6 +112,21 @@ export interface Project {
   createdAt: number;
 }
 
+export interface TelegramIntegrationConfig {
+  enabled?: boolean;
+  chatIds?: number[];
+  sendNotifications?: boolean;
+  sendAlerts?: boolean;
+  // Public base URL the user's phone can reach (e.g. via Tailscale).
+  // When set, Telegram messages include an "Open in dashboard" deep link
+  // pointing at <dashboardUrl>/#permission=<id> for rich interaction.
+  dashboardUrl?: string;
+}
+
+export interface IntegrationsConfig {
+  telegram?: TelegramIntegrationConfig;
+}
+
 export interface GlobalConfig {
   theme: 'light' | 'dark' | 'system';
   defaultEditor: string;
@@ -122,6 +137,7 @@ export interface GlobalConfig {
   port: number;
   host: string;
   projects: Array<{ path: string; shortcut?: number }>;
+  integrations?: IntegrationsConfig;
 }
 
 export interface ProjectConfig {

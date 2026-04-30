@@ -1,4 +1,14 @@
-import type { Project, Session, Command, Terminal, GlobalConfig, Note, Message } from './types';
+import type {
+  Project,
+  Session,
+  Command,
+  Terminal,
+  GlobalConfig,
+  Note,
+  Message,
+  TelegramIntegrationView,
+  TelegramIntegrationUpdate,
+} from './types';
 
 const BASE = '';  // same origin
 
@@ -113,6 +123,13 @@ export const api = {
   config: {
     get: () => get<GlobalConfig>('/api/config'),
     update: (data: Partial<GlobalConfig>) => put<GlobalConfig>('/api/config', data),
+  },
+  integrations: {
+    telegram: {
+      get: () => get<TelegramIntegrationView>('/api/integrations/telegram'),
+      update: (data: TelegramIntegrationUpdate) =>
+        put<TelegramIntegrationView>('/api/integrations/telegram', data),
+    },
   },
   notes: {
     listForSession: (sessionId: string, projectId: string) =>

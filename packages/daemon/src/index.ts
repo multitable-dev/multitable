@@ -9,6 +9,8 @@ import { FileWatcher } from './watcher/index.js';
 import { createServer } from './server.js';
 import { checkOrphanedPids } from './pids.js';
 import { loadProjectConfig } from './config/loader.js';
+import { TelegramBridge } from './notifications/telegramBridge.js';
+import { getTelegramToken } from './config/secrets.js';
 import type { SpawnConfig, ProcessConfig } from './types.js';
 
 function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig {
@@ -58,9 +60,33 @@ async function main() {
     }
   }
 
-  // 5. Create Express/WS server
-  const serverInstance = createServer(config, manager, permManager, agentManager, elicitManager);
+  // 5a. Telegram bridge — second channel for permission prompts and alerts.
+  // Token comes from MULTITABLE_TELEGRAM_BOT_TOKEN env var (preferred) or
+  // ~/.config/multitable/secrets.yml. Chat allowlist + per-category toggles
+  // live in config.integrations.telegram and are editable from the GUI.
+  // start() is a no-op when token or chatIds are missing.
+  const tgConfig = config.integrations?.telegram ?? {};
+  const tgBridge = new TelegramBridge({
+    token: getTelegramToken(),
+    chatIds: Array.isArray(tgConfig.chatIds) ? tgConfig.chatIds : [],
+    sendNotifications: tgConfig.sendNotifications !== false,
+    sendAlerts: tgConfig.sendAlerts !== false,
+    dashboardUrl: typeof tgConfig.dashboardUrl === 'string' ? tgConfig.dashboardUrl : '',
+    permManager,
+    agentManager,
+  });
+
+  // 5b. Express/WS server (mounts /api/integrations using the bridge above).
+  const serverInstance = createServer(
+    config,
+    manager,
+    permManager,
+    agentManager,
+    elicitManager,
+    tgBridge,
+  );
   const { server, broadcast } = serverInstance;
+  tgBridge.start();
 
   // 7. Load projects from DB, start autostart processes
   const fileWatcher = new FileWatcher();
@@ -146,6 +172,7 @@ async function main() {
     fileWatcher.unwatchAll();
     manager.destroy();
     serverInstance.closeAllClients();
+    void tgBridge.stop();
     server.close(() => process.exit(0));
   }
 

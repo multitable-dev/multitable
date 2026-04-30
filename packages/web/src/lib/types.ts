@@ -215,3 +215,21 @@ export interface GlobalConfig {
   port: number;
   host: string;
 }
+
+export interface TelegramIntegrationView {
+  hasToken: boolean;
+  tokenSource: 'env' | 'file' | 'none';
+  chatIds: number[];
+  sendNotifications: boolean;
+  sendAlerts: boolean;
+  dashboardUrl: string;
+  running: boolean;
+}
+
+export interface TelegramIntegrationUpdate {
+  token?: string | null;
+  chatIds?: number[];
+  sendNotifications?: boolean;
+  sendAlerts?: boolean;
+  dashboardUrl?: string;
+}

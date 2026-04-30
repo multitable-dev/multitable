@@ -20,6 +20,8 @@ import { createConfigRouter } from './api/config.js';
 import { createSearchRouter } from './api/search.js';
 import { createTranscriptsRouter } from './api/transcripts.js';
 import { createNotesRouter } from './api/notes.js';
+import { createIntegrationsRouter } from './api/integrations.js';
+import type { TelegramBridge } from './notifications/telegramBridge.js';
 import { getSessionById } from './db/store.js';
 
 export interface ServerInstance {
@@ -36,7 +38,8 @@ export function createServer(
   manager: PtyManager,
   permManager: PermissionManager,
   agentManager: AgentSessionManager,
-  elicitManager: ElicitationManager
+  elicitManager: ElicitationManager,
+  tgBridge: TelegramBridge,
 ): ServerInstance {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -92,6 +95,7 @@ export function createServer(
   app.use('/api/search', createSearchRouter(manager));
   app.use('/api/transcripts', createTranscriptsRouter(manager));
   app.use('/api/notes', createNotesRouter());
+  app.use('/api/integrations', createIntegrationsRouter(tgBridge, permManager, agentManager));
 
   // ─── Internal agent-turn endpoint (Phase 2) ────────────────────────────────
   //

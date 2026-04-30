@@ -14,6 +14,7 @@ import {
 import { Check, Copy, Pencil, Trash2, Plus } from 'lucide-react';
 import { Modal, Input, Button, IconButton, Divider, Badge } from '../ui';
 import { NotificationsSection } from './NotificationsSection';
+import { IntegrationsSection } from './IntegrationsSection';
 
 interface Props {
   onClose: () => void;
@@ -293,6 +294,12 @@ export function GlobalSettingsModal({ onClose }: Props) {
         {/* Notifications */}
         <h3 style={sectionTitleStyle}>Notifications</h3>
         <NotificationsSection />
+
+        <Divider margin={18} />
+
+        {/* Integrations */}
+        <h3 style={sectionTitleStyle}>Integrations</h3>
+        <IntegrationsSection />
 
         <Divider margin={18} />
 

@@ -40,6 +40,75 @@ function App() {
     if (isMobile) setMobileDrawerOpen(false);
   }, [store.selectedProcessId, isMobile, setMobileDrawerOpen]);
 
+  // Hash-based deep links from external pagers (e.g. Telegram "Open in
+  // dashboard" buttons). Supported:
+  //   #permission=<promptId>  → navigate to the prompt's session
+  //   #session=<sessionId>    → navigate directly to the session
+  // For permission links we may arrive before the WS has populated
+  // pendingPermissions, so we subscribe and resolve when the prompt shows
+  // up (with a 30s timeout to give up cleanly).
+  useEffect(() => {
+    function parseHash(): { kind: 'permission' | 'session'; id: string } | null {
+      const raw = window.location.hash.replace(/^#/, '');
+      if (!raw) return null;
+      const params = new URLSearchParams(raw);
+      const permId = params.get('permission');
+      if (permId) return { kind: 'permission', id: permId };
+      const sessId = params.get('session');
+      if (sessId) return { kind: 'session', id: sessId };
+      return null;
+    }
+
+    function clearHash(): void {
+      // Don't leave the deep-link in the URL after we've consumed it —
+      // browser back/forward shouldn't re-trigger.
+      try {
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } catch {}
+    }
+
+    function tryResolve(target: { kind: 'permission' | 'session'; id: string }): boolean {
+      const state = useAppStore.getState();
+      if (target.kind === 'session') {
+        if (state.sessions[target.id]) {
+          state.setSelectedProcess(target.id);
+          return true;
+        }
+        return false;
+      }
+      const prompt = state.pendingPermissions.find((p) => p.id === target.id);
+      if (prompt) {
+        state.setSelectedProcess(prompt.sessionId);
+        return true;
+      }
+      return false;
+    }
+
+    const target = parseHash();
+    if (!target) return;
+
+    if (tryResolve(target)) {
+      clearHash();
+      return;
+    }
+
+    // Subscribe to store changes; resolve as soon as the relevant data lands.
+    const unsub = useAppStore.subscribe(() => {
+      if (tryResolve(target)) {
+        clearHash();
+        unsub();
+      }
+    });
+    const timeout = setTimeout(() => {
+      unsub();
+      clearHash();
+    }, 30_000);
+    return () => {
+      clearTimeout(timeout);
+      unsub();
+    };
+  }, []);
+
   // Clear per-session unread alert badge when the session becomes selected.
   useEffect(() => {
     if (store.selectedProcessId) {
