@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   HookCallback,
   HookCallbackMatcher,
@@ -143,8 +144,27 @@ export class AgentSessionManager extends EventEmitter {
     };
     this.emit('user-message', { sessionId, messages: [userMsg] });
 
+    // Watchdog: if the SDK iterator yields no message for this long, abort
+    // the turn and surface a clear error. Catches silent hangs (TLS retry
+    // loops, stuck subprocess, network drops) that would otherwise leave the
+    // UI spinning forever.
+    const NO_PROGRESS_MS = 60_000;
+    let stuckTimer: NodeJS.Timeout | null = null;
+    let abortedDueToStuck = false;
+    let sawAnyMessage = false;
+    const armStuckTimer = () => {
+      if (stuckTimer) clearTimeout(stuckTimer);
+      stuckTimer = setTimeout(() => {
+        abortedDueToStuck = true;
+        try {
+          ctrl.abort();
+        } catch {
+          /* ignore */
+        }
+      }, NO_PROGRESS_MS);
+    };
+
     try {
-      const { query } = await import('@anthropic-ai/claude-agent-sdk');
       const it = query({
         prompt: text,
         options: {
@@ -160,7 +180,10 @@ export class AgentSessionManager extends EventEmitter {
           abortController: ctrl,
         },
       });
+      armStuckTimer();
       for await (const msg of it) {
+        sawAnyMessage = true;
+        armStuckTimer();
         try {
           this.handleSdkMessage(sessionId, msg);
         } catch (handlerErr) {
@@ -168,8 +191,22 @@ export class AgentSessionManager extends EventEmitter {
           console.error('[agent] handler error:', handlerErr);
         }
       }
+      if (abortedDueToStuck) {
+        throw new Error(
+          sawAnyMessage
+            ? `Claude API went silent for ${NO_PROGRESS_MS / 1000}s mid-turn — aborted.`
+            : `No response from Claude API in ${NO_PROGRESS_MS / 1000}s. ` +
+              `Check NODE_EXTRA_CA_CERTS (corporate TLS), ANTHROPIC_API_KEY, or network connection.`,
+        );
+      }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
+      const baseMessage = err instanceof Error ? err.message : String(err);
+      const message =
+        abortedDueToStuck && !/Claude API/.test(baseMessage)
+          ? `No response from Claude API in ${NO_PROGRESS_MS / 1000}s. ` +
+            `Check NODE_EXTRA_CA_CERTS (corporate TLS), ANTHROPIC_API_KEY, or network connection. ` +
+            `(${baseMessage})`
+          : baseMessage;
       s.state = 'errored';
       this.emit('turn-error', { sessionId, error: message });
       this.emit('state-changed', { sessionId, state: 'errored' as ProcessState });
@@ -181,6 +218,7 @@ export class AgentSessionManager extends EventEmitter {
         body: message,
       });
     } finally {
+      if (stuckTimer) clearTimeout(stuckTimer);
       s.currentTurn = null;
       if (s.state === 'running') {
         s.state = 'idle';
