@@ -13,6 +13,7 @@ import {
   getSessionById,
   updateSession,
   insertSessionEvent,
+  getClaudeSessionLoader,
 } from '../db/store.js';
 import type { PtyManager } from '../pty/manager.js';
 import type { ProcessConfig, SpawnConfig } from '../types.js';
@@ -388,12 +389,17 @@ export function createTranscriptsRouter(manager: PtyManager): Router {
         .replace(/\s+/g, ' ')
         .trim();
 
+      // Reuse the loader the session originally owned, if recorded. Falls
+      // through to a fresh pick from the unused pool when the transcript
+      // predates loader_variant tracking.
+      const recordedVariant = getClaudeSessionLoader(claudeSessionId) ?? undefined;
       sessionRecord = createSession({
         projectId: project.id,
         name: promptPreview || 'Claude Code',
         command: 'claude',
         workingDirectory: cwd,
         type: 'session',
+        loaderVariant: recordedVariant,
       });
       updateSession(sessionRecord.id, { claudeSessionId });
       sessionRecord = getSessionById(sessionRecord.id) || sessionRecord;

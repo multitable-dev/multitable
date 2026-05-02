@@ -28,7 +28,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   scrollback_data BLOB,
   scratchpad TEXT DEFAULT '',
   created_at INTEGER NOT NULL,
-  last_active_at INTEGER
+  last_active_at INTEGER,
+  loader_variant TEXT
+);
+
+CREATE TABLE IF NOT EXISTS claude_session_loaders (
+  claude_session_id TEXT PRIMARY KEY,
+  loader_variant TEXT NOT NULL,
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS session_events (

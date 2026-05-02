@@ -195,6 +195,9 @@ export function SessionChat({ sessionId, session }: Props) {
             loading={loading}
             emptyHint={emptyHint}
             thinking={session.state === 'running'}
+            sessionId={session.id}
+            projectId={session.projectId}
+            loaderVariant={session.loaderVariant}
           />
           <ChatInputCM
             processId={sessionId}

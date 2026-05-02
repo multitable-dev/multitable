@@ -49,6 +49,7 @@ export interface Session extends ManagedProcess {
   claudeSessionId?: string | null; // from DB — persists across daemon restarts
   claudeState?: ClaudeSessionState; // in-memory — lost on daemon restart
   scratchpad?: string;
+  loaderVariant?: string | null; // dot-matrix loader assigned at session creation
 }
 
 export interface Command extends ManagedProcess {

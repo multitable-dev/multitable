@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getConfigDir } from '../config/loader.js';
+import { pickLoaderVariant } from '../loaders.js';
 import type { Project, ManagedProcess } from '../types.js';
 
 let db: Database.Database;
@@ -29,6 +30,87 @@ export function initDb(): void {
   try {
     db.exec("ALTER TABLE sessions ADD COLUMN claude_session_id_history TEXT DEFAULT '[]'");
   } catch {}
+  try {
+    db.exec('ALTER TABLE sessions ADD COLUMN loader_variant TEXT');
+  } catch {}
+
+  // Backfill loader_variant for any session missing one. Runs once per process
+  // start; cheap (single SELECT + at most N UPDATEs). Each session gets a
+  // unique variant from the unused pool until all 60 are taken; further
+  // assignments fall back to uniform random reuse.
+  backfillSessionLoaderVariants();
+}
+
+function backfillSessionLoaderVariants(): void {
+  const usedRows = db
+    .prepare('SELECT loader_variant FROM sessions WHERE loader_variant IS NOT NULL')
+    .all() as Array<{ loader_variant: string }>;
+  const used = new Set(usedRows.map((r) => r.loader_variant));
+  const missing = db
+    .prepare('SELECT id FROM sessions WHERE loader_variant IS NULL ORDER BY created_at ASC')
+    .all() as Array<{ id: string }>;
+  if (missing.length > 0) {
+    const update = db.prepare('UPDATE sessions SET loader_variant = ? WHERE id = ?');
+    for (const { id } of missing) {
+      const variant = pickLoaderVariant(used);
+      update.run(variant, id);
+      used.add(variant);
+    }
+  }
+
+  // Walk every existing session and ensure every claudeSessionId it has ever
+  // touched (current + history) is recorded in claude_session_loaders. This
+  // means deleting a session and resuming its transcript later will pick up
+  // the same loader. INSERT OR IGNORE preserves the first recorded mapping,
+  // so a freshly-recreated session never overwrites historical bindings.
+  const sessions = db
+    .prepare(
+      'SELECT id, loader_variant, claude_session_id, claude_session_id_history FROM sessions WHERE loader_variant IS NOT NULL',
+    )
+    .all() as Array<{
+    id: string;
+    loader_variant: string;
+    claude_session_id: string | null;
+    claude_session_id_history: string | null;
+  }>;
+  const recordStmt = db.prepare(
+    'INSERT OR IGNORE INTO claude_session_loaders (claude_session_id, loader_variant, created_at) VALUES (?, ?, ?)',
+  );
+  const now = Date.now();
+  for (const s of sessions) {
+    const ids = new Set<string>();
+    if (s.claude_session_id) ids.add(s.claude_session_id);
+    if (s.claude_session_id_history) {
+      try {
+        const arr = JSON.parse(s.claude_session_id_history);
+        if (Array.isArray(arr)) {
+          for (const id of arr) if (typeof id === 'string') ids.add(id);
+        }
+      } catch {}
+    }
+    for (const cid of ids) recordStmt.run(cid, s.loader_variant, now);
+  }
+}
+
+/**
+ * Bind a claudeSessionId to a loader variant permanently. INSERT OR IGNORE
+ * means the first binding wins — a claudeSessionId is "owned" by whichever
+ * loader was assigned to the session that first saw it. Survives session-row
+ * deletion, so resuming a transcript reuses the prior loader.
+ */
+export function recordClaudeSessionLoader(claudeSessionId: string, loaderVariant: string): void {
+  getDb()
+    .prepare(
+      'INSERT OR IGNORE INTO claude_session_loaders (claude_session_id, loader_variant, created_at) VALUES (?, ?, ?)',
+    )
+    .run(claudeSessionId, loaderVariant, Date.now());
+}
+
+export function getClaudeSessionLoader(claudeSessionId: string): string | null {
+  const row = getDb()
+    .prepare('SELECT loader_variant FROM claude_session_loaders WHERE claude_session_id = ?')
+    .get(claudeSessionId) as { loader_variant: string } | undefined;
+  return row?.loader_variant ?? null;
 }
 
 export function getDb(): Database.Database {
@@ -127,6 +209,7 @@ export interface SessionRow {
   scratchpad: string;
   created_at: number;
   last_active_at: number | null;
+  loader_variant: string | null;
 }
 
 export interface SessionRecord {
@@ -150,6 +233,7 @@ export interface SessionRecord {
   scratchpad: string;
   createdAt: number;
   lastActiveAt: number | null;
+  loaderVariant: string | null;
 }
 
 // Parse the JSON-encoded chain of prior claude_session_ids the SDK has assigned
@@ -188,6 +272,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     scratchpad: row.scratchpad || '',
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
+    loaderVariant: row.loader_variant,
   };
 }
 
@@ -220,16 +305,29 @@ export function createSession(data: {
   autorespawn?: boolean;
   terminalAlerts?: boolean;
   fileWatchPatterns?: string[];
+  /**
+   * Optional explicit loader variant. Used by the transcript-resume flow to
+   * reattach the same loader to a respawned session. When omitted, a variant
+   * is picked from the unused pool (random reuse once all 60 are taken).
+   */
+  loaderVariant?: string;
 }): SessionRecord {
   const id = uuidv4();
   const now = Date.now();
+  let loaderVariant = data.loaderVariant;
+  if (!loaderVariant) {
+    const usedRows = getDb()
+      .prepare('SELECT loader_variant FROM sessions WHERE loader_variant IS NOT NULL')
+      .all() as Array<{ loader_variant: string }>;
+    loaderVariant = pickLoaderVariant(usedRows.map((r) => r.loader_variant));
+  }
   getDb().prepare(`
     INSERT INTO sessions (
       id, project_id, name, command, working_directory, type,
       autostart, autorestart, autorestart_max, autorestart_delay_ms,
       autorestart_window_secs, autorespawn, terminal_alerts, file_watch_patterns,
-      scratchpad, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?)
+      scratchpad, created_at, loader_variant
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
   `).run(
     id,
     data.projectId,
@@ -245,7 +343,8 @@ export function createSession(data: {
     data.autorespawn !== false ? 1 : 0,
     data.terminalAlerts ? 1 : 0,
     JSON.stringify(data.fileWatchPatterns ?? []),
-    now
+    now,
+    loaderVariant
   );
   return getSessionById(id)!;
 }
@@ -311,7 +410,23 @@ export function updateSession(id: string, data: Partial<{
   if (fields.length === 0) return getSessionById(id);
   values.push(id);
   getDb().prepare(`UPDATE sessions SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-  return getSessionById(id);
+  const updated = getSessionById(id);
+
+  // Whenever a claudeSessionId (current or historical) becomes known for a
+  // session, bind it to that session's loader variant in the persistence
+  // table. The binding survives session-row deletion, so transcript-resume
+  // recovers the same loader for the same conversation.
+  if (
+    updated?.loaderVariant &&
+    (data.claudeSessionId !== undefined || data.claudeSessionIdHistory !== undefined)
+  ) {
+    const ids = new Set<string>();
+    if (updated.claudeSessionId) ids.add(updated.claudeSessionId);
+    for (const hid of updated.claudeSessionIdHistory) ids.add(hid);
+    for (const cid of ids) recordClaudeSessionLoader(cid, updated.loaderVariant);
+  }
+
+  return updated;
 }
 
 export function saveScrollback(sessionId: string, data: Buffer): void {
