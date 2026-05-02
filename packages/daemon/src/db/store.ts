@@ -314,13 +314,21 @@ export function createSession(data: {
 }): SessionRecord {
   const id = uuidv4();
   const now = Date.now();
-  let loaderVariant = data.loaderVariant;
-  if (!loaderVariant) {
-    const usedRows = getDb()
-      .prepare('SELECT loader_variant FROM sessions WHERE loader_variant IS NOT NULL')
-      .all() as Array<{ loader_variant: string }>;
-    loaderVariant = pickLoaderVariant(usedRows.map((r) => r.loader_variant));
-  }
+  // The "used" set is built only from live session rows. Sessions deleted via
+  // the GUI are gone from this query, which immediately frees their loader.
+  const usedRows = getDb()
+    .prepare('SELECT loader_variant FROM sessions WHERE loader_variant IS NOT NULL')
+    .all() as Array<{ loader_variant: string }>;
+  const used = new Set(usedRows.map((r) => r.loader_variant));
+  // If a specific variant was requested (transcript-resume restoring the
+  // session's prior loader) and it isn't currently held by another active
+  // session, honor it. Otherwise pick a random unused variant. Avoiding
+  // collisions with active sessions takes priority over respawn identity —
+  // the recorded binding in claude_session_loaders is preserved either way,
+  // so the original loader returns the next time it's free.
+  const preferred = data.loaderVariant;
+  const loaderVariant =
+    preferred && !used.has(preferred) ? preferred : pickLoaderVariant(used);
   getDb().prepare(`
     INSERT INTO sessions (
       id, project_id, name, command, working_directory, type,
