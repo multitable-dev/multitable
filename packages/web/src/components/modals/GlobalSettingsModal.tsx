@@ -144,7 +144,7 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   padding: '8px 10px',
                   border: `1px solid ${isActive ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
                   borderLeft: `3px solid ${isActive ? 'var(--accent-amber)' : 'transparent'}`,
-                  borderRadius: 0,
+                  borderRadius: 'var(--radius-snug)',
                   backgroundColor: isActive ? 'var(--bg-elevated)' : 'var(--bg-sidebar)',
                   transition: 'border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
                 }}
@@ -155,7 +155,7 @@ export function GlobalSettingsModal({ onClose }: Props) {
                   style={{
                     width: 16,
                     height: 16,
-                    borderRadius: 0,
+                    borderRadius: 'var(--radius-snug)',
                     border: `1px solid ${isActive ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
                     background: 'transparent',
                     color: 'var(--accent-amber)',
@@ -370,7 +370,7 @@ function ThemeEditor({ theme, onChange, onClose }: EditorProps) {
     <div
       style={{
         border: '1px solid var(--border-strong)',
-        borderRadius: 0,
+        borderRadius: 'var(--radius-soft)',
         padding: 14,
         marginBottom: 16,
         backgroundColor: 'var(--bg-sidebar)',

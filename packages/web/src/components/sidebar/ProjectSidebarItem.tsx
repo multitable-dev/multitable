@@ -3,6 +3,7 @@ import { useAppStore } from '../../stores/appStore';
 import { ProjectHeader } from './ProjectHeader';
 import { SidebarSection } from './SidebarSection';
 import { SidebarItem } from './SidebarItem';
+import { ProjectPastAgents } from './ProjectPastAgents';
 import { AddProcessModal } from '../modals/AddProcessModal';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import type { MenuItem } from '../context-menu/ContextMenu';
@@ -299,12 +300,12 @@ export function ProjectSidebarItem({ project }: Props) {
         margin: '10px 0 2px',
       }}
     >
-      {/* Card body — flat, square. Project color is conveyed by the
-          inset left stripe and a thin top accent rule. */}
+      {/* Project card body — structural group container; stays at radius-none so the
+          left project-color stripe and top accent rule run edge-to-edge. */}
       <div
         style={{
           position: 'relative',
-          borderRadius: 0,
+          borderRadius: 'var(--radius-none)',
           overflow: 'hidden',
           backgroundColor: 'transparent',
           borderTop: `1px solid ${focused ? color.stripe : 'transparent'}`,
@@ -355,6 +356,7 @@ export function ProjectSidebarItem({ project }: Props) {
                 No agents yet
               </div>
             )}
+            <ProjectPastAgents projectPath={project.path} projectId={project.id} />
           </SidebarSection>
 
           <SidebarSection

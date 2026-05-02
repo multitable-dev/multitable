@@ -6,6 +6,8 @@ import { CodeBlock } from './CodeBlock';
 interface Props {
   text: string;
   costLabel?: string | null;
+  /** True for the in-flight streaming partial — appends a blinking caret. */
+  streaming?: boolean;
 }
 
 // Module-level so the reference is stable across every AssistantMessage
@@ -13,28 +15,34 @@ interface Props {
 // to discard memoized children — a key cause of flicker during unrelated
 // parent re-renders (e.g. metrics ticks).
 const MD_COMPONENTS: Components = {
+  // react-markdown v9 dropped the `inline` boolean on the `code` component.
+  // Distinguish by className: fenced blocks carry `language-X`, inline `code`
+  // does not. We also override `pre` to a passthrough so it doesn't wrap our
+  // CodeBlock in an extra <pre>.
+  pre({ children }) {
+    return <>{children}</>;
+  },
   code(props) {
-    const { inline, className, children } = props as typeof props & { inline?: boolean };
+    const { className, children } = props;
     const code = String(children ?? '').replace(/\n$/, '');
-    if (inline) {
-      return (
-        <code
-          style={{
-            fontFamily: 'inherit',
-            fontSize: '0.92em',
-            padding: '0 5px',
-            borderRadius: 0,
-            backgroundColor: 'var(--bg-sidebar)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-primary)',
-          }}
-        >
-          {code}
-        </code>
-      );
-    }
     const match = /language-([\w-]+)/.exec(className ?? '');
-    return <CodeBlock code={code} lang={match?.[1]} />;
+    if (match) {
+      return <CodeBlock code={code} lang={match[1]} />;
+    }
+    return (
+      <code
+        style={{
+          fontFamily: 'inherit',
+          fontSize: '0.92em',
+          padding: '0 4px',
+          borderRadius: 'var(--radius-snug)',
+          backgroundColor: 'var(--bg-hover)',
+          color: 'var(--text-primary)',
+        }}
+      >
+        {code}
+      </code>
+    );
   },
   a({ children, href }) {
     return (
@@ -107,7 +115,7 @@ const MD_COMPONENTS: Components = {
   th: ({ children }) => (
     <th
       style={{
-        border: '1px solid var(--border)',
+        borderBottom: '1px solid var(--border-strong)',
         padding: '4px 8px',
         textAlign: 'left',
         fontWeight: 600,
@@ -117,7 +125,7 @@ const MD_COMPONENTS: Components = {
     </th>
   ),
   td: ({ children }) => (
-    <td style={{ border: '1px solid var(--border)', padding: '4px 8px' }}>{children}</td>
+    <td style={{ padding: '4px 8px' }}>{children}</td>
   ),
   // Lists
   ul: ({ children }) => <ul style={{ paddingLeft: 22, margin: '6px 0' }}>{children}</ul>,
@@ -176,7 +184,7 @@ const MD_COMPONENTS: Components = {
 // which auto-closes unclosed code fences during streaming. Code fences are
 // handed off to the shiki-backed CodeBlock. Inline code uses a compact chip.
 // Memoized so unrelated parent re-renders don't re-parse the markdown.
-export const AssistantMessage = memo(function AssistantMessage({ text, costLabel }: Props) {
+export const AssistantMessage = memo(function AssistantMessage({ text, costLabel, streaming }: Props) {
   return (
     <div style={{ margin: '8px 0', color: 'var(--text-primary)' }}>
       <div
@@ -188,7 +196,7 @@ export const AssistantMessage = memo(function AssistantMessage({ text, costLabel
         }}
       >
         <Streamdown components={MD_COMPONENTS} parseIncompleteMarkdown>
-          {text}
+          {streaming ? `${text}▍` : text}
         </Streamdown>
       </div>
       {costLabel && (

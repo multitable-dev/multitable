@@ -73,7 +73,7 @@ export function buildCmTheme(isDark: boolean): Extension {
         backgroundColor: 'transparent',
         color: accent,
         outline: `1px solid color-mix(in srgb, ${accent} 40%, transparent)`,
-        borderRadius: '2px',
+        borderRadius: 'var(--radius-snug)',
       },
       // Search panel
       '.cm-panels': {

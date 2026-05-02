@@ -151,7 +151,7 @@ export function ProjectHeader({
             color: 'var(--text-primary)',
             background: 'var(--bg-input, var(--bg-elevated))',
             border: '1px solid var(--border)',
-            borderRadius: 2,
+            borderRadius: 'var(--radius-snug)',
             padding: '1px 4px',
             margin: 0,
             outline: 'none',

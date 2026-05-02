@@ -60,7 +60,7 @@ export function Modal({
           maxHeight: 'calc(100vh - 32px)',
           backgroundColor: 'var(--bg-elevated)',
           border: '1px solid var(--border-strong)',
-          borderRadius: 0,
+          borderRadius: 'var(--radius-soft)',
           boxShadow: 'none',
           display: 'flex',
           flexDirection: 'column',

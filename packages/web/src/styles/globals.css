@@ -43,12 +43,23 @@
   --selection-bg: transparent;
   --selection-border: #ff8a00;
 
-  /* Radii — manifesto: nothing > 4px */
-  --radius-sm: 0;
-  --radius-md: 2px;
-  --radius-lg: 4px;
-  --radius-xl: 4px;
-  --radius-pill: 4px;
+  /* Radii — manifesto: structural seams sharp, primitives snug, containers soft, circles pill.
+     Tier semantics:
+       --radius-none : structural seams (panel borders, status bar, dividers)
+       --radius-snug : interactive primitives (buttons, inputs, kbd, chips, tooltips)
+       --radius-soft : content containers (cards, modals, tool cards)
+       --radius-pill : true circles only (status dots, loader dots, avatars)
+     Nothing > 4px except --radius-pill. */
+  --radius-none: 0;
+  --radius-snug: 2px;
+  --radius-soft: 4px;
+  --radius-pill: 9999px;
+
+  /* Legacy aliases — kept so existing references resolve during migration. */
+  --radius-sm: var(--radius-none);
+  --radius-md: var(--radius-snug);
+  --radius-lg: var(--radius-soft);
+  --radius-xl: var(--radius-soft);
 
   /* Shadows — manifesto: none. Kept as variables so existing references resolve. */
   --shadow-sm: none;
@@ -422,4 +433,16 @@ select:focus-visible,
 .cm-completionIcon {
   opacity: 0.85;
   margin-right: 4px;
+}
+
+/* ---------- Shiki code blocks ----------
+ * Shiki renders <pre class="shiki ..."><code>...</code></pre> with no padding
+ * by default, and an inline background-color from the chosen theme. The chat
+ * code block wraps this in a marginalia-style container; we add inner padding
+ * here so highlighted code clears the left marker without overriding shiki's
+ * own background.
+ */
+.mt-shiki pre {
+  padding: 10px 16px;
+  margin: 0;
 }

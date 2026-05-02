@@ -3,7 +3,7 @@ import React, { forwardRef } from 'react';
 interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   interactive?: boolean;
   padding?: number | string;
-  /** Retained for ABI compatibility; all variants render with 0 radius. */
+  /** Retained for ABI compatibility; all variants render with --radius-soft. */
   radius?: 'md' | 'lg' | 'xl';
   elevated?: boolean;
 }
@@ -21,7 +21,7 @@ export const Card = forwardRef<HTMLDivElement, CardProps>(function Card(
       style={{
         backgroundColor: elevated ? 'var(--bg-elevated)' : 'var(--bg-sidebar)',
         border: `1px solid ${interactive && hover ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
-        borderRadius: 0,
+        borderRadius: 'var(--radius-soft)',
         padding,
         transition: 'border-color var(--dur-fast) var(--ease-out)',
         cursor: interactive ? 'pointer' : 'default',

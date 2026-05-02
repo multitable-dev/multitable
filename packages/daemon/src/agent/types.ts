@@ -41,6 +41,12 @@ export interface AgentSession {
   activeSubagents: number;
   lastActivity: number;
   userMessages: string[]; // accumulated user prompts (used by AI rename)
+  // === streaming (in-flight assistant text) ===
+  // Accumulated text of the current text content block as it arrives via
+  // stream_event deltas. Reset to '' on each content_block_start of type=text;
+  // cleared on message_stop or turn-complete.
+  streamingText: string;
+  streamingBlockIndex: number | null;
 }
 
 export interface SendTurnInput {

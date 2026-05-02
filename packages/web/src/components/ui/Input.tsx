@@ -28,7 +28,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           padding: leftIcon || rightIcon ? '0 10px' : 0,
           backgroundColor: disabled ? 'var(--bg-sidebar)' : 'var(--bg-elevated)',
           border: `1px solid ${borderColor}`,
-          borderRadius: 0,
+          borderRadius: 'var(--radius-snug)',
           transition: 'border-color var(--dur-fast) var(--ease-out)',
           opacity: disabled ? 0.65 : 1,
           ...wrapperStyle,

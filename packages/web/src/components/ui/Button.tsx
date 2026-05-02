@@ -120,7 +120,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           whiteSpace: 'nowrap',
           userSelect: 'none',
           WebkitUserSelect: 'none',
-          borderRadius: 0,
+          borderRadius: 'var(--radius-snug)',
           fontWeight: 500,
           textTransform: 'uppercase',
           fontFamily: 'inherit',

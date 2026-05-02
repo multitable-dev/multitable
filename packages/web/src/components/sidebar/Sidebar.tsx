@@ -2,7 +2,6 @@ import React from 'react';
 import { LayoutGrid, Plus } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { ProjectSidebarItem } from './ProjectSidebarItem';
-import { PastSessions } from './PastSessions';
 import { LogoArt } from './LogoArt';
 import { Button } from '../ui';
 
@@ -126,10 +125,6 @@ export function Sidebar() {
           <ProjectSidebarItem key={project.id} project={project} />
         ))
       )}
-
-      <div style={{ marginTop: 'auto' }}>
-        <PastSessions />
-      </div>
     </div>
   );
 }

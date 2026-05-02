@@ -59,7 +59,7 @@ export function SidebarItem({
         userSelect: 'none',
         WebkitUserSelect: 'none',
         position: 'relative',
-        borderRadius: 0,
+        borderRadius: 'var(--radius-snug)',
         backgroundColor: isSelected
           ? 'var(--bg-elevated)'
           : hovered
@@ -132,7 +132,7 @@ export function SidebarItem({
                 gap: 3,
                 marginLeft: 6,
                 padding: '1px 6px',
-                borderRadius: 0,
+                borderRadius: 'var(--radius-snug)',
                 background: 'transparent',
                 color: 'var(--accent-amber)',
                 border: '1px solid var(--accent-amber)',

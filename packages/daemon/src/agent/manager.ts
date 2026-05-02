@@ -54,6 +54,8 @@ type RegisterInput = Omit<
   | 'activeSubagents'
   | 'lastActivity'
   | 'userMessages'
+  | 'streamingText'
+  | 'streamingBlockIndex'
 >;
 
 export class AgentSessionManager extends EventEmitter {
@@ -95,6 +97,8 @@ export class AgentSessionManager extends EventEmitter {
       activeSubagents: 0,
       lastActivity: 0,
       userMessages: [],
+      streamingText: '',
+      streamingBlockIndex: null,
     };
     this.sessions.set(session.id, session);
     return session;
@@ -175,7 +179,7 @@ export class AgentSessionManager extends EventEmitter {
           canUseTool: this.makeCanUseTool(sessionId),
           onElicitation: this.makeOnElicitation(sessionId),
           hooks: this.makeHooks(sessionId),
-          includePartialMessages: false,
+          includePartialMessages: true,
           // NOTE: Phase 0 correction — SDK accepts the controller, NOT just its signal.
           abortController: ctrl,
         },
@@ -220,11 +224,92 @@ export class AgentSessionManager extends EventEmitter {
     } finally {
       if (stuckTimer) clearTimeout(stuckTimer);
       s.currentTurn = null;
+      // Safety: turn ended (success or error) — wipe any leftover streaming
+      // text so the UI doesn't keep showing a stale partial.
+      if (s.streamingText !== '' || s.streamingBlockIndex !== null) {
+        s.streamingText = '';
+        s.streamingBlockIndex = null;
+        this.emit('assistant-delta', { sessionId, text: '' });
+      }
       if (s.state === 'running') {
         s.state = 'idle';
         this.emit('state-changed', { sessionId, state: 'idle' as ProcessState });
       }
       this.emit('turn-complete', { sessionId });
+    }
+  }
+
+  /**
+   * Handle a `stream_event` SDK message — the SDK forwards the raw Anthropic
+   * SSE event stream when `includePartialMessages: true`. We only react to
+   * text deltas (the most useful streaming signal in a chat UI). Tool-input
+   * JSON deltas and metadata events fall through as no-ops; the canonical
+   * `assistant` message arrives at the end and remains the source of truth
+   * for rendering the final turn.
+   *
+   * Event shapes (Anthropic SSE):
+   *   message_start          — start of an assistant message
+   *   content_block_start    — { index, content_block: { type: 'text' | 'tool_use', ... } }
+   *   content_block_delta    — { index, delta: { type: 'text_delta', text } | { type: 'input_json_delta', partial_json } }
+   *   content_block_stop     — { index }
+   *   message_delta          — { delta: { stop_reason }, usage }
+   *   message_stop           — terminator
+   */
+  private handleStreamEvent(sessionId: string, msg: unknown): void {
+    const s = this.sessions.get(sessionId);
+    if (!s) return;
+    if (!msg || typeof msg !== 'object') return;
+    const wrapper = msg as { event?: unknown };
+    // The SDK either passes the SSE event verbatim under msg.event or inlines
+    // it on the top-level. Be defensive about both shapes.
+    const inner = (wrapper.event ?? msg) as { type?: string; index?: number; delta?: unknown; content_block?: unknown };
+    const t = inner.type;
+    switch (t) {
+      case 'content_block_start': {
+        const cb = inner.content_block as { type?: string } | undefined;
+        const idx = typeof inner.index === 'number' ? inner.index : null;
+        if (cb && cb.type === 'text') {
+          s.streamingBlockIndex = idx;
+          s.streamingText = '';
+          this.emit('assistant-delta', { sessionId, text: '' });
+        } else {
+          // tool_use or other block — clear any previously displayed text
+          // partial so the UI doesn't show stale text while a tool is forming.
+          if (s.streamingText !== '' || s.streamingBlockIndex !== null) {
+            s.streamingText = '';
+            s.streamingBlockIndex = null;
+            this.emit('assistant-delta', { sessionId, text: '' });
+          }
+        }
+        return;
+      }
+      case 'content_block_delta': {
+        const idx = typeof inner.index === 'number' ? inner.index : null;
+        if (s.streamingBlockIndex !== idx) return; // delta for non-text block
+        const delta = inner.delta as { type?: string; text?: unknown } | undefined;
+        if (!delta || delta.type !== 'text_delta') return;
+        if (typeof delta.text !== 'string') return;
+        s.streamingText += delta.text;
+        s.lastActivity = Date.now();
+        this.emit('assistant-delta', { sessionId, text: s.streamingText });
+        return;
+      }
+      case 'content_block_stop': {
+        const idx = typeof inner.index === 'number' ? inner.index : null;
+        if (s.streamingBlockIndex !== idx) return;
+        // Leave the accumulated text on screen until the canonical `assistant`
+        // message arrives and replaces it. Just close the block tracker.
+        s.streamingBlockIndex = null;
+        return;
+      }
+      case 'message_stop': {
+        s.streamingText = '';
+        s.streamingBlockIndex = null;
+        this.emit('assistant-delta', { sessionId, text: '' });
+        return;
+      }
+      default:
+        return;
     }
   }
 
@@ -324,7 +409,19 @@ export class AgentSessionManager extends EventEmitter {
           }
         }
         s.lastActivity = Date.now();
+        // Final assistant message arrived — clear any in-flight streaming
+        // text so the UI replaces the partial preview with the canonical
+        // rendered messages.
+        if (s.streamingText !== '' || s.streamingBlockIndex !== null) {
+          s.streamingText = '';
+          s.streamingBlockIndex = null;
+          this.emit('assistant-delta', { sessionId, text: '' });
+        }
         this.emit('assistant-message', { sessionId, messages });
+        return;
+      }
+      case 'stream_event': {
+        this.handleStreamEvent(sessionId, msg);
         return;
       }
       case 'user': {

@@ -25,7 +25,7 @@ const buttonStyle: React.CSSProperties = {
   minWidth: 44,
   height: 40,
   padding: '0 10px',
-  borderRadius: 0,
+  borderRadius: 'var(--radius-snug)',
   border: '1px solid var(--border-strong)',
   backgroundColor: 'var(--bg-elevated)',
   color: 'var(--text-primary)',

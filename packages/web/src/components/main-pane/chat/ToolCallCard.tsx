@@ -82,7 +82,7 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
       style={{
         margin: '6px 0',
         border: `1px solid ${isError ? 'var(--status-error)' : 'var(--border-strong)'}`,
-        borderRadius: 0,
+        borderRadius: 'var(--radius-soft)',
         backgroundColor: 'var(--bg-elevated)',
         overflow: 'hidden',
       }}
@@ -163,7 +163,7 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
       </button>
 
       {open && (
-        <div style={{ padding: '4px 10px 10px', borderTop: '1px solid var(--border)' }}>
+        <div style={{ padding: '4px 10px 10px' }}>
           <div
             style={{
               fontSize: 9.5,

@@ -303,6 +303,16 @@ function App() {
         const messages = msg.payload?.messages;
         if (pid && Array.isArray(messages) && messages.length > 0) {
           store.appendMessages(pid, messages);
+          // Final canonical message arrived — drop any in-flight streaming
+          // partial so the UI doesn't render the same text twice for a beat.
+          store.setStreamingText(pid, '');
+        }
+      }),
+      wsClient.on('session:assistant-delta', (msg: any) => {
+        const pid = msg.processId || msg.payload?.processId;
+        const text = msg.payload?.text;
+        if (pid && typeof text === 'string') {
+          store.setStreamingText(pid, text);
         }
       }),
       wsClient.on('session:tool-event', (msg: any) => {
@@ -325,6 +335,7 @@ function App() {
         const session = pid ? store.sessions[pid] : null;
         const name = session?.name ?? 'Agent';
         toast.error(`${name}: ${message}`, { duration: 6000, style: { maxWidth: 480 } });
+        if (pid) store.setStreamingText(pid, '');
       }),
       wsClient.on('session:send-error', (msg: any) => {
         const message = msg.payload?.message || 'Send failed';
@@ -385,6 +396,7 @@ function App() {
         if (typeof sessionId === 'string') {
           useAppStore.getState().setToolProgress(sessionId, null);
           useAppStore.getState().setSessionStatus(sessionId, { status: null });
+          useAppStore.getState().setStreamingText(sessionId, '');
         }
       }),
       wsClient.on('session:state-updated', (msg: any) => {

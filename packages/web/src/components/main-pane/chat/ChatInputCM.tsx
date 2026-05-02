@@ -629,7 +629,7 @@ export const ChatInputCM = memo(function ChatInputCM({
                 color: 'var(--text-secondary)',
                 backgroundColor: 'var(--bg-elevated)',
                 border: '1px dashed var(--border-strong)',
-                borderRadius: 0,
+                borderRadius: 'var(--radius-snug)',
               }}
             >
               <Clock size={11} style={{ color: 'var(--accent-amber)', flexShrink: 0 }} />
@@ -687,7 +687,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             justifyContent: 'center',
             width: 26,
             height: 26,
-            borderRadius: 0,
+            borderRadius: 'var(--radius-snug)',
             border: 'none',
             background: attachHover && !disabled ? 'var(--bg-hover)' : 'transparent',
             color: 'var(--text-muted)',
@@ -741,7 +741,7 @@ export const ChatInputCM = memo(function ChatInputCM({
             justifyContent: 'center',
             width: 28,
             height: 28,
-            borderRadius: 0,
+            borderRadius: 'var(--radius-snug)',
             border: 'none',
             backgroundColor: sendHover && canSend ? 'var(--bg-hover)' : 'transparent',
             color: canSend ? 'var(--accent-amber)' : 'var(--text-faint)',

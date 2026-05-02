@@ -9,12 +9,13 @@ interface Props {
   messages: Message[];
   loading?: boolean;
   emptyHint?: React.ReactNode;
-}
-
-function formatCost(tokens: number | undefined, model: string | undefined): string | null {
-  if (!tokens || tokens <= 0) return null;
-  const out = tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : `${tokens}`;
-  return model ? `${out} tokens · ${model}` : `${out} tokens`;
+  projectId: string;
+  /**
+   * In-flight assistant text being streamed from the SDK. Rendered as a
+   * trailing live bubble; replaced by the canonical assistant message the
+   * moment the SDK's `assistant` event lands.
+   */
+  streamingText?: string;
 }
 
 // Builds a map from tool_use id → its matching tool_result (if seen). The
@@ -29,7 +30,7 @@ function indexResults(messages: Message[]) {
   return byUseId;
 }
 
-export function MessageList({ messages, loading, emptyHint }: Props) {
+export function MessageList({ messages, loading, emptyHint, projectId, streamingText }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const resultsByUseId = useMemo(() => indexResults(messages), [messages]);
@@ -42,7 +43,7 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
     if (atBottom) {
       el.scrollTop = el.scrollHeight;
     }
-  }, [messages, atBottom]);
+  }, [messages, streamingText, atBottom]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -79,15 +80,13 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
       >
         {renderable.length === 0 && !loading && emptyHint}
         {renderable.map((m) => {
-          if (m.kind === 'user') return <UserMessage key={m.id} text={m.text} />;
+          if (m.kind === 'user') return <UserMessage key={m.id} text={m.text} projectId={projectId} />;
           if (m.kind === 'assistant') {
             if (!m.text) return null;
-            const usage = m.usage;
-            const tokens = usage
-              ? (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0)
-              : 0;
-            const costLabel = formatCost(tokens, m.model);
-            return <AssistantMessage key={m.id} text={m.text} costLabel={costLabel} />;
+            // Per-message usage is unreliable when includePartialMessages is on
+            // (the SDK splits a turn into chunks each carrying partial tokens).
+            // Accurate totals live in SessionDetailPanel.
+            return <AssistantMessage key={m.id} text={m.text} costLabel={null} />;
           }
           if (m.kind === 'tool_use') {
             const result = resultsByUseId.get(m.toolUseId);
@@ -121,6 +120,14 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
           }
           return null;
         })}
+        {streamingText && (
+          <AssistantMessage
+            key="__streaming__"
+            text={streamingText}
+            costLabel={null}
+            streaming
+          />
+        )}
         {loading && renderable.length === 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 12, padding: 20, textAlign: 'center' }}>
             Loading conversation…
@@ -140,7 +147,7 @@ export function MessageList({ messages, loading, emptyHint }: Props) {
             gap: 4,
             padding: '3px 10px',
             fontSize: 10.5,
-            borderRadius: 0,
+            borderRadius: 'var(--radius-snug)',
             background: 'var(--bg-elevated)',
             border: '1px solid var(--accent-amber)',
             color: 'var(--accent-amber)',

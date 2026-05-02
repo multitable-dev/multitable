@@ -268,7 +268,7 @@ export function CommandPalette() {
         style={{
           backgroundColor: 'var(--bg-elevated)',
           border: '1px solid var(--border-strong)',
-          borderRadius: 0,
+          borderRadius: 'var(--radius-soft)',
           width: '100%',
           maxWidth: 620,
           boxShadow: 'none',
@@ -349,7 +349,7 @@ export function CommandPalette() {
                     }}
                     style={{
                       padding: '5px 10px',
-                      borderRadius: 0,
+                      borderRadius: 'var(--radius-snug)',
                       cursor: 'pointer',
                       fontSize: 12.5,
                       color: 'var(--text-primary)',

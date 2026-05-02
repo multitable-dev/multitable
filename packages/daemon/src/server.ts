@@ -278,6 +278,10 @@ export function createServer(
     broadcastForProcess(sessionId, 'session:assistant-message', { messages });
   });
 
+  agentManager.on('assistant-delta', ({ sessionId, text }: { sessionId: string; text: string }) => {
+    broadcastForProcess(sessionId, 'session:assistant-delta', { text });
+  });
+
   agentManager.on('user-message', ({ sessionId, messages }: { sessionId: string; messages: any[] }) => {
     broadcastForProcess(sessionId, 'session:user-message', { messages });
   });

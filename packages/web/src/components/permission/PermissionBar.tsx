@@ -35,8 +35,6 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
       style={{
         position: 'relative',
         backgroundColor: 'var(--bg-elevated)',
-        border: '1px solid var(--border-strong)',
-        borderRadius: 0,
         padding: '14px 14px 12px',
         marginBottom: 8,
       }}
@@ -44,10 +42,8 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
       <span
         style={{
           position: 'absolute',
-          top: -7,
+          top: 8,
           left: 12,
-          background: 'var(--bg-elevated)',
-          padding: '0 6px',
           fontSize: 9.5,
           color: 'var(--accent-amber)',
           textTransform: 'uppercase',
@@ -60,10 +56,8 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
       <span
         style={{
           position: 'absolute',
-          top: -7,
+          top: 8,
           right: 12,
-          background: 'var(--bg-elevated)',
-          padding: '0 6px',
           fontSize: 9.5,
           color: 'var(--text-faint)',
           letterSpacing: '0.14em',
@@ -73,7 +67,7 @@ function PermissionCard({ prompt }: { prompt: PermissionPrompt }) {
       >
         {Math.ceil(timeoutSecs - elapsed)}s · {prompt.sessionId.slice(0, 12)}
       </span>
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ marginTop: 18, marginBottom: 10 }}>
         <ToolInputPreview toolName={prompt.toolName} input={prompt.toolInput} />
       </div>
       {/* ASCII countdown bar */}
@@ -138,9 +132,7 @@ function Preview({ text }: { text: string }) {
           color: 'var(--text-muted)',
           margin: '6px 0 0',
           padding: '6px 8px',
-          backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 60%, transparent)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius-sm)',
+          backgroundColor: 'var(--bg-sidebar)',
           fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
           whiteSpace: 'pre',
           overflow: 'auto',
@@ -170,9 +162,7 @@ function Preview({ text }: { text: string }) {
         gap: 4,
         marginTop: 6,
         padding: 6,
-        backgroundColor: 'color-mix(in srgb, var(--bg-sidebar) 60%, transparent)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-sm)',
+        backgroundColor: 'var(--bg-sidebar)',
       }}
     >
       {swatches.map((s, i) => (
@@ -182,7 +172,7 @@ function Preview({ text }: { text: string }) {
           style={{
             width: 18,
             height: 18,
-            borderRadius: 3,
+            borderRadius: 'var(--radius-snug)',
             backgroundColor: s.hex,
             border: '1px solid color-mix(in srgb, var(--text-primary) 20%, transparent)',
             flexShrink: 0,
@@ -248,8 +238,6 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
       style={{
         position: 'relative',
         backgroundColor: 'var(--bg-elevated)',
-        border: '1px solid var(--border-strong)',
-        borderRadius: 0,
         padding: '14px 14px 12px',
         marginBottom: 8,
       }}
@@ -257,10 +245,8 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
       <span
         style={{
           position: 'absolute',
-          top: -7,
+          top: 8,
           left: 12,
-          background: 'var(--bg-elevated)',
-          padding: '0 6px',
           fontSize: 9.5,
           color: 'var(--accent-amber)',
           textTransform: 'uppercase',
@@ -273,10 +259,8 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
       <span
         style={{
           position: 'absolute',
-          top: -7,
+          top: 8,
           right: 12,
-          background: 'var(--bg-elevated)',
-          padding: '0 6px',
           fontSize: 9.5,
           color: 'var(--text-faint)',
           letterSpacing: '0.14em',
@@ -293,6 +277,7 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
           lineHeight: 1,
           letterSpacing: '-0.03em',
           color: 'var(--accent-amber)',
+          marginTop: 18,
           marginBottom: 12,
           display: 'flex',
           alignItems: 'baseline',
@@ -345,7 +330,7 @@ function AskQuestionCard({ prompt }: { prompt: PermissionPrompt }) {
                       gap: 8,
                       padding: 8,
                       border: `1px solid ${selected ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
-                      borderRadius: 0,
+                      borderRadius: 'var(--radius-snug)',
                       backgroundColor: selected ? 'color-mix(in srgb, var(--accent-amber) 10%, transparent)' : 'transparent',
                       cursor: 'pointer',
                       transition: 'background-color 0.12s, border-color 0.12s',
@@ -409,7 +394,7 @@ export function PermissionBar({ sessionId }: PermissionBarProps = {}) {
         right: 12,
         bottom: 12,
         padding: 12,
-        borderRadius: 0,
+        borderRadius: 'var(--radius-soft)',
         border: '1px solid var(--border-strong)',
         backgroundColor: 'var(--bg-sidebar)',
         boxShadow: 'none',

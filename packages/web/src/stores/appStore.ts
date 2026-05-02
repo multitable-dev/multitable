@@ -111,6 +111,16 @@ interface AppState {
   mergeMessages: (sessionId: string, messages: Message[]) => void;
   clearMessages: (sessionId: string) => void;
 
+  /**
+   * In-flight streaming text for the current assistant turn (one per session,
+   * non-empty only while the SDK is emitting `text_delta` events). The chat
+   * view renders this as an extra "live" assistant bubble at the end of the
+   * messages list; cleared the moment the canonical `assistant-message` lands
+   * or the turn ends.
+   */
+  streamingBySession: Record<string, string>;
+  setStreamingText: (sessionId: string, text: string) => void;
+
   // Alerts (notification history + per-session unread counts)
   alerts: SessionAlert[];
   unreadBySession: Record<string, number>;
@@ -429,6 +439,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       const next = { ...s.messagesBySession };
       delete next[sessionId];
       return { messagesBySession: next };
+    }),
+
+  streamingBySession: {},
+  setStreamingText: (sessionId, text) =>
+    set((s) => {
+      const prev = s.streamingBySession[sessionId] ?? '';
+      if (prev === text) return s;
+      const next = { ...s.streamingBySession };
+      if (text === '') {
+        if (!(sessionId in next)) return s;
+        delete next[sessionId];
+      } else {
+        next[sessionId] = text;
+      }
+      return { streamingBySession: next };
     }),
 
   // Alerts

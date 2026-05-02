@@ -52,7 +52,7 @@ export function Badge({
         gap: 4,
         userSelect: 'none',
         WebkitUserSelect: 'none',
-        borderRadius: 1,
+        borderRadius: 'var(--radius-snug)',
         fontWeight: 500,
         color,
         backgroundColor: 'transparent',

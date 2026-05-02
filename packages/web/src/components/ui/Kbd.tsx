@@ -22,7 +22,7 @@ export function Kbd({ children, style, ...rest }: KbdProps) {
         color: 'var(--text-muted)',
         backgroundColor: 'transparent',
         border: '1px solid var(--border-strong)',
-        borderRadius: 0,
+        borderRadius: 'var(--radius-snug)',
         boxShadow: 'none',
         lineHeight: 1,
         letterSpacing: '0.05em',

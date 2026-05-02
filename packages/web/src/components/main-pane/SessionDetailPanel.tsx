@@ -459,7 +459,7 @@ function DiffLineContent({ segments, type }: { segments: { text: string; highlig
           key={i}
           style={seg.highlight ? {
             backgroundColor: type === 'add' ? 'rgba(34, 197, 94, 0.35)' : 'rgba(239, 68, 68, 0.35)',
-            borderRadius: 2,
+            borderRadius: 'var(--radius-snug)',
           } : undefined}
         >
           {seg.text || ' '}
@@ -567,10 +567,10 @@ function DiffFileSection({ file, defaultExpanded }: { file: DiffFile; defaultExp
         {/* Mini stats blocks */}
         <span style={{ display: 'flex', gap: 1, marginLeft: 4 }}>
           {Array.from({ length: addBlocks }).map((_, i) => (
-            <span key={`a${i}`} style={{ width: 8, height: 8, borderRadius: 1, backgroundColor: 'var(--status-running)', display: 'inline-block' }} />
+            <span key={`a${i}`} style={{ width: 8, height: 8, borderRadius: 'var(--radius-snug)', backgroundColor: 'var(--status-running)', display: 'inline-block' }} />
           ))}
           {Array.from({ length: delBlocks }).map((_, i) => (
-            <span key={`d${i}`} style={{ width: 8, height: 8, borderRadius: 1, backgroundColor: 'var(--status-error)', display: 'inline-block' }} />
+            <span key={`d${i}`} style={{ width: 8, height: 8, borderRadius: 'var(--radius-snug)', backgroundColor: 'var(--status-error)', display: 'inline-block' }} />
           ))}
         </span>
       </div>
@@ -866,7 +866,7 @@ function CostTab({ session }: { session: Session }) {
       {/* Big cost display */}
       <div style={{
         backgroundColor: 'var(--bg-hover)',
-        borderRadius: 6,
+        borderRadius: 'var(--radius-soft)',
         padding: '12px 16px',
         marginBottom: 16,
         textAlign: 'center',
@@ -1277,7 +1277,7 @@ function NoteCard({
             textTransform: 'uppercase',
             letterSpacing: 0.5,
             padding: '3px 8px',
-            borderRadius: 'var(--radius-pill)',
+            borderRadius: 'var(--radius-snug)',
             border: '1px solid',
             borderColor: isSession ? 'var(--border)' : 'var(--accent-blue)',
             color: isSession ? 'var(--text-muted)' : 'var(--accent-blue)',
@@ -1394,7 +1394,7 @@ function NoteCard({
               style={{
                 fontSize: 10.5,
                 padding: '3px 10px',
-                borderRadius: 0,
+                borderRadius: 'var(--radius-snug)',
                 backgroundColor: 'transparent',
                 color: 'var(--accent-amber)',
                 border: '1px solid var(--accent-amber)',
@@ -1658,7 +1658,7 @@ export function SessionDetailPanel({ session, projectId }: Props) {
                   bottom: 0,
                   height: 2,
                   backgroundColor: 'var(--accent-blue)',
-                  borderRadius: '2px 2px 0 0',
+                  borderRadius: 'var(--radius-snug) var(--radius-snug) 0 0',
                   transform: active ? 'scaleX(1)' : 'scaleX(0)',
                   transformOrigin: 'center',
                   transition: 'transform var(--dur-med) var(--ease-out)',

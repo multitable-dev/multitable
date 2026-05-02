@@ -53,7 +53,7 @@ function StateBadge({ state }: { state: TaskEntry['state'] }) {
         alignItems: 'center',
         gap: 4,
         padding: '2px 8px',
-        borderRadius: 'var(--radius-pill)',
+        borderRadius: 'var(--radius-snug)',
         background: s.bg,
         color: s.fg,
         fontSize: 11,

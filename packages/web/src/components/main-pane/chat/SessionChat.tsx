@@ -36,6 +36,7 @@ export function SessionChat({ sessionId, session }: Props) {
     (s) => (s.pendingSendsBySession[sessionId] ?? EMPTY_PENDING)[0],
   );
   const popPendingSend = useAppStore((s) => s.popPendingSend);
+  const streamingText = useAppStore((s) => s.streamingBySession[sessionId] ?? '');
 
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
@@ -194,6 +195,8 @@ export function SessionChat({ sessionId, session }: Props) {
             messages={messages}
             loading={loading}
             emptyHint={emptyHint}
+            projectId={session.projectId}
+            streamingText={streamingText}
           />
           <ChatInputCM
             processId={sessionId}
