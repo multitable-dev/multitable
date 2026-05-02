@@ -20,7 +20,7 @@ interface JsonlEntry {
 function encodePath(projectPath: string): string {
   // Claude Code encodes the absolute path by replacing every non-alphanumeric
   // character with "-", INCLUDING the leading slash, underscores, dots, and
-  // existing hyphens. /home/erick/bible_daily → -home-erick-bible-daily. Per
+  // existing hyphens. /home/user/my_project → -home-user-my-project. Per
   // the SDK sessions docs:
   // https://code.claude.com/docs/en/agent-sdk/sessions
   // Replacing only "/" misses paths with underscores or dots and lands on a

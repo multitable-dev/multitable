@@ -50,8 +50,8 @@ export interface CostAggregate {
 
 function encodePath(projectPath: string): string {
   // Claude Code replaces every non-alphanumeric character with "-" including
-  // the leading slash, underscores, and dots. /home/erick/bible_daily ->
-  // -home-erick-bible-daily. See SDK sessions docs:
+  // the leading slash, underscores, and dots. /home/user/my_project ->
+  // -home-user-my-project. See SDK sessions docs:
   // https://code.claude.com/docs/en/agent-sdk/sessions
   return projectPath.replace(/[^a-zA-Z0-9]/g, '-');
 }

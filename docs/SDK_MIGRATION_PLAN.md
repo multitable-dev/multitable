@@ -655,8 +655,8 @@ for (const session of sessions) {
 
 ### Critical Files for Implementation
 
-- /home/erick/Documents/multitable/packages/daemon/src/agent/manager.ts (NEW — owns `query()`, hooks, canUseTool, all session state)
-- /home/erick/Documents/multitable/packages/daemon/src/pty/stream.ts (route `session:send`; stop spawning sessions on subscribe; remove tailer wiring)
-- /home/erick/Documents/multitable/packages/daemon/src/index.ts (replace session autostart spawn with `agentManager.register`; delete hook installer call)
-- /home/erick/Documents/multitable/packages/daemon/src/hooks/permissionManager.ts (add `requestFromSdk` Promise-resolving entry point; HTTP responders go away)
-- /home/erick/Documents/multitable/packages/web/src/components/main-pane/chat/ChatInputCM.tsx (swap `wsClient.sendInput(... + '\r')` for `wsClient.sendTurn`)
+- packages/daemon/src/agent/manager.ts (NEW — owns `query()`, hooks, canUseTool, all session state)
+- packages/daemon/src/pty/stream.ts (route `session:send`; stop spawning sessions on subscribe; remove tailer wiring)
+- packages/daemon/src/index.ts (replace session autostart spawn with `agentManager.register`; delete hook installer call)
+- packages/daemon/src/hooks/permissionManager.ts (add `requestFromSdk` Promise-resolving entry point; HTTP responders go away)
+- packages/web/src/components/main-pane/chat/ChatInputCM.tsx (swap `wsClient.sendInput(... + '\r')` for `wsClient.sendTurn`)

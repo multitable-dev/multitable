@@ -33,8 +33,8 @@ export type Message =
 
 // Claude Code encodes the absolute project path by replacing every
 // non-alphanumeric character with "-", including the leading slash and any
-// underscores, dots, or hyphens-from-the-source. /home/erick/bible_daily →
-// -home-erick-bible-daily (note: the underscore becomes a dash too). Per the
+// underscores, dots, or hyphens-from-the-source. /home/user/my_project →
+// -home-user-my-project (note: the underscore becomes a dash too). Per the
 // Anthropic SDK sessions docs:
 // https://code.claude.com/docs/en/agent-sdk/sessions
 // Replacing only "/" gets close on simple paths but mismatches whenever the
