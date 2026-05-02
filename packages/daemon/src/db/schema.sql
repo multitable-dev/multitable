@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   terminal_alerts INTEGER DEFAULT 0,
   file_watch_patterns TEXT DEFAULT '[]',
   agent_provider TEXT DEFAULT 'claude',
+  model TEXT,
   agent_session_id TEXT,
   agent_session_id_history TEXT DEFAULT '[]',
   claude_session_id TEXT,

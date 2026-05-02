@@ -98,6 +98,7 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
         name: session.name,
         workingDir: session.workingDirectory || '',
         provider: session.agentProvider,
+        model: session.model,
         agentSessionId: session.agentSessionId ?? null,
         agentSessionIdHistory: session.agentSessionIdHistory ?? [],
         claudeSessionId: session.claudeSessionId ?? null,

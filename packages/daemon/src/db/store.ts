@@ -45,6 +45,9 @@ export function initDb(): void {
   try {
     db.exec('ALTER TABLE sessions ADD COLUMN git_baseline_commit TEXT');
   } catch {}
+  try {
+    db.exec('ALTER TABLE sessions ADD COLUMN model TEXT');
+  } catch {}
 
   // Sessions no longer use a PTY (they go through the Claude/Codex SDK). The
   // pre-SDK PTY scrollback column accumulated stale BLOBs that ballooned
@@ -229,6 +232,7 @@ export interface SessionRow {
   terminal_alerts: number;
   file_watch_patterns: string;
   agent_provider: string | null;
+  model: string | null;
   agent_session_id: string | null;
   agent_session_id_history: string | null;
   claude_session_id: string | null;
@@ -256,6 +260,7 @@ export interface SessionRecord {
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
   agentProvider: 'claude' | 'codex';
+  model: string | null;
   agentSessionId: string | null;
   agentSessionIdHistory: string[];
   claudeSessionId: string | null;
@@ -304,6 +309,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     terminalAlerts: row.terminal_alerts === 1,
     fileWatchPatterns: JSON.parse(row.file_watch_patterns || '[]'),
     agentProvider: provider,
+    model: row.model ?? null,
     agentSessionId,
     agentSessionIdHistory,
     claudeSessionId: row.claude_session_id,
@@ -351,6 +357,7 @@ export function createSession(data: {
   terminalAlerts?: boolean;
   fileWatchPatterns?: string[];
   agentProvider?: 'claude' | 'codex';
+  model?: string | null;
   /**
    * Optional explicit loader variant. Used by the transcript-resume flow to
    * reattach the same loader to a respawned session. When omitted, a variant
@@ -381,8 +388,8 @@ export function createSession(data: {
       id, project_id, name, command, working_directory, type,
       autostart, autorestart, autorestart_max, autorestart_delay_ms,
       autorestart_window_secs, autorespawn, terminal_alerts, file_watch_patterns,
-      agent_provider, scratchpad, created_at, loader_variant, git_baseline_commit
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
+      agent_provider, model, scratchpad, created_at, loader_variant, git_baseline_commit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
   `).run(
     id,
     data.projectId,
@@ -399,6 +406,7 @@ export function createSession(data: {
     data.terminalAlerts ? 1 : 0,
     JSON.stringify(data.fileWatchPatterns ?? []),
     data.agentProvider ?? inferAgentProvider(data.command),
+    data.model ?? null,
     now,
     loaderVariant,
     data.gitBaselineCommit ?? null
@@ -425,6 +433,7 @@ export function updateSession(id: string, data: Partial<{
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
   agentProvider: 'claude' | 'codex';
+  model: string | null;
   agentSessionId: string | null;
   agentSessionIdHistory: string[];
   claudeSessionId: string | null;
@@ -447,6 +456,7 @@ export function updateSession(id: string, data: Partial<{
     autorespawn: 'autorespawn',
     terminalAlerts: 'terminal_alerts',
     agentProvider: 'agent_provider',
+    model: 'model',
     agentSessionId: 'agent_session_id',
     claudeSessionId: 'claude_session_id',
     scratchpad: 'scratchpad',

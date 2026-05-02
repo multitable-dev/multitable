@@ -53,6 +53,10 @@ export interface ClaudeSessionState {
 export interface Session extends ManagedProcess {
   type: 'session';
   agentProvider: AgentProvider;
+  // Provider model id selected when the session was created. Null when the
+  // user accepted the provider default. Sent on every turn so the daemon
+  // pins the same model across resumes.
+  model: string | null;
   agentSessionId: string | null;
   agentSessionIdHistory: string[];
   // Legacy alias of agentSessionId — the daemon still emits both during the

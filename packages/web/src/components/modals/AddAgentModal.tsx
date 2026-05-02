@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
@@ -34,6 +34,19 @@ interface Props {
   projectId: string;
 }
 
+interface DiscoveredModel {
+  id: string;
+  displayName: string;
+  description?: string;
+  isDefault?: boolean;
+}
+
+type ModelsState =
+  | { status: 'idle' }
+  | { status: 'loading' }
+  | { status: 'ready'; models: DiscoveredModel[] }
+  | { status: 'error'; message: string };
+
 export function AddAgentModal({ onClose, projectId }: Props) {
   const store = useAppStore();
   const projectPath = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.path);
@@ -41,6 +54,13 @@ export function AddAgentModal({ onClose, projectId }: Props) {
   const [selectedAgent, setSelectedAgent] = useState('Claude Code');
   const [agentProvider, setAgentProvider] = useState<AgentProviderOption>('claude');
   const [searchQuery, setSearchQuery] = useState('');
+  // Per-provider model catalog and the user's pick. The catalog is fetched
+  // every time a provider is selected — never cached across modal opens —
+  // so a model added on the server side shows up the next time the user
+  // creates a session.
+  const [modelsState, setModelsState] = useState<ModelsState>({ status: 'idle' });
+  const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const modelFetchSeq = useRef(0);
   // Two mutually exclusive intents: either "create a fresh session with the
   // selected preset" (selectedPastSession === null) or "resume this past
   // chat" (selectedPastSession set). Start button switches behavior on this.
@@ -88,6 +108,42 @@ export function AddAgentModal({ onClose, projectId }: Props) {
     setSelectedPastSession(null);
   };
 
+  // Refresh the model catalog every time the provider changes (and on first
+  // open). The seq guard discards the result of an in-flight request whose
+  // provider is no longer selected — prevents a slow Claude fetch from
+  // overwriting a faster Codex one if the user toggles between them.
+  useEffect(() => {
+    if (selectedPastSession) {
+      // Resuming a past session inherits the model recorded on that row;
+      // model picker is hidden, so skip the fetch.
+      return;
+    }
+    if (!agentProvider) {
+      setModelsState({ status: 'idle' });
+      setSelectedModel(null);
+      return;
+    }
+    const provider = agentProvider;
+    const seq = ++modelFetchSeq.current;
+    setModelsState({ status: 'loading' });
+    setSelectedModel(null);
+    api.providers
+      .models(provider)
+      .then((res) => {
+        if (modelFetchSeq.current !== seq) return;
+        const models = (res.models ?? []) as DiscoveredModel[];
+        setModelsState({ status: 'ready', models });
+        const def = models.find((m) => m.isDefault) ?? models[0];
+        setSelectedModel(def?.id ?? null);
+      })
+      .catch((err: unknown) => {
+        if (modelFetchSeq.current !== seq) return;
+        const message = err instanceof Error ? err.message : String(err);
+        setModelsState({ status: 'error', message });
+        setSelectedModel(null);
+      });
+  }, [agentProvider, selectedPastSession]);
+
   const handleSubmit = async () => {
     if (loading) return;
     setLoading(true);
@@ -104,10 +160,15 @@ export function AddAgentModal({ onClose, projectId }: Props) {
         return;
       }
       if (!selectedPreset || !selectedPreset.command) return;
+      if (!selectedModel) {
+        toast.error('Pick a model first');
+        return;
+      }
       const session = await api.sessions.create(projectId, {
         name: selectedPreset.name,
         command: selectedPreset.command,
         ...(agentProvider ? { agentProvider } : {}),
+        model: selectedModel,
       });
       store.upsertSession(session);
       store.setSelectedProcess(session.id);
@@ -124,9 +185,11 @@ export function AddAgentModal({ onClose, projectId }: Props) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
   };
 
+  const needsModel = !selectedPastSession && !!selectedPreset && !!selectedPreset.command;
   const submitDisabled =
     loading ||
-    (!selectedPastSession && (!selectedPreset || !selectedPreset.command));
+    (!selectedPastSession && (!selectedPreset || !selectedPreset.command)) ||
+    (needsModel && !selectedModel);
   const startLabel = selectedPastSession
     ? loading
       ? 'Resuming…'
@@ -238,6 +301,15 @@ export function AddAgentModal({ onClose, projectId }: Props) {
           })}
         </div>
 
+        {!selectedPastSession && agentProvider && (
+          <ModelPicker
+            provider={agentProvider}
+            state={modelsState}
+            selected={selectedModel}
+            onSelect={setSelectedModel}
+          />
+        )}
+
         {projectPath && (
           <PastSessionsMerged
             claudeSessions={pastGroup?.sessions ?? []}
@@ -266,6 +338,149 @@ export function AddAgentModal({ onClose, projectId }: Props) {
         )}
       </div>
     </Modal>
+  );
+}
+
+// ─── Model picker ─────────────────────────────────────────────────────────────
+// Renders the runtime-discovered model catalog for the selected provider as a
+// vertical list of selectable rows. The catalog comes from the daemon's
+// /api/providers/:provider/models endpoint, which probes the provider's CLI
+// each call (codex: `codex debug models`; claude: Anthropic API or alias set).
+// We do not cache it on the client — picking a provider always re-fetches.
+
+interface ModelPickerProps {
+  provider: 'claude' | 'codex';
+  state: ModelsState;
+  selected: string | null;
+  onSelect: (id: string) => void;
+}
+
+function ModelPicker({ provider, state, selected, onSelect }: ModelPickerProps) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 500,
+          color: 'var(--text-faint)',
+          textTransform: 'uppercase',
+          letterSpacing: '0.18em',
+          marginBottom: 8,
+        }}
+      >
+        Model · {provider}
+      </div>
+      {state.status === 'loading' && (
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 11.5,
+            color: 'var(--text-muted)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          <Spinner size="sm" /> Fetching available models…
+        </div>
+      )}
+      {state.status === 'error' && (
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 11.5,
+            color: 'var(--status-error)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+            backgroundColor:
+              'color-mix(in srgb, var(--status-error) 6%, transparent)',
+          }}
+          title={state.message}
+        >
+          Couldn't load {provider} models: {state.message}
+        </div>
+      )}
+      {state.status === 'ready' && state.models.length === 0 && (
+        <div
+          style={{
+            padding: '10px 12px',
+            fontSize: 11.5,
+            color: 'var(--text-muted)',
+            border: '1px solid var(--border)',
+            borderRadius: 'var(--radius-md)',
+          }}
+        >
+          No models reported by {provider}.
+        </div>
+      )}
+      {state.status === 'ready' && state.models.length > 0 && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+            gap: 6,
+          }}
+        >
+          {state.models.map((m) => {
+            const isSelected = selected === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => onSelect(m.id)}
+                title={m.description || m.displayName}
+                style={{
+                  padding: '8px 10px',
+                  borderRadius: 'var(--radius-md)',
+                  border: `1px solid ${
+                    isSelected ? 'var(--accent-amber)' : 'var(--border)'
+                  }`,
+                  backgroundColor: isSelected
+                    ? 'color-mix(in srgb, var(--accent-amber) 10%, transparent)'
+                    : 'var(--bg-sidebar)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontSize: 11.5,
+                  fontWeight: isSelected ? 600 : 500,
+                  textAlign: 'left',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 2,
+                  boxShadow: isSelected ? '0 0 0 1px var(--accent-amber)' : 'none',
+                  transition:
+                    'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
+                }}
+              >
+                <span
+                  style={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {m.displayName}
+                </span>
+                {m.description && (
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 400,
+                      color: 'var(--text-muted)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {m.description}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 

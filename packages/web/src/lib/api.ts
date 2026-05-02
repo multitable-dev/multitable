@@ -80,7 +80,12 @@ export const api = {
     list: (projectId: string) => get<Session[]>(`/api/projects/${projectId}/sessions`),
     create: (
       projectId: string,
-      data: { name: string; command: string; agentProvider?: 'claude' | 'codex' },
+      data: {
+        name: string;
+        command: string;
+        agentProvider?: 'claude' | 'codex';
+        model?: string;
+      },
     ) => post<Session>(`/api/projects/${projectId}/sessions`, data),
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
@@ -124,6 +129,18 @@ export const api = {
     stop: (id: string) => post<void>(`/api/processes/${id}/stop`),
     restart: (id: string) => post<void>(`/api/processes/${id}/restart`),
     clearScrollback: (id: string) => del(`/api/processes/${id}/scrollback`),
+  },
+  providers: {
+    models: (provider: 'claude' | 'codex') =>
+      get<{
+        provider: string;
+        models: Array<{
+          id: string;
+          displayName: string;
+          description?: string;
+          isDefault?: boolean;
+        }>;
+      }>(`/api/providers/${provider}/models`),
   },
   config: {
     get: () => get<GlobalConfig>('/api/config'),

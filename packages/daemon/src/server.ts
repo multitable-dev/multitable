@@ -22,6 +22,7 @@ import { createTranscriptsRouter } from './api/transcripts.js';
 import { createNotesRouter } from './api/notes.js';
 import { createIntegrationsRouter } from './api/integrations.js';
 import { createGitRouter } from './api/git.js';
+import { createProvidersRouter } from './api/providers.js';
 import type { TelegramBridge } from './notifications/telegramBridge.js';
 import type { GitWatcher } from './git/watcher.js';
 import { getSessionById } from './db/store.js';
@@ -100,6 +101,7 @@ export function createServer(
   app.use('/api/notes', createNotesRouter());
   app.use('/api/integrations', createIntegrationsRouter(tgBridge, permManager, agentManager));
   app.use('/api/projects/:projectId/git', createGitRouter());
+  app.use('/api/providers', createProvidersRouter({ getDaemonEnv: () => process.env }));
 
   // ─── Internal agent-turn endpoint (Phase 2) ────────────────────────────────
   //
@@ -128,6 +130,7 @@ export function createServer(
         name: row.name,
         workingDir: row.workingDirectory || '',
         provider: row.agentProvider,
+        model: row.model,
         agentSessionId: row.agentSessionId,
         agentSessionIdHistory: row.agentSessionIdHistory ?? [],
         claudeSessionId: row.claudeSessionId,

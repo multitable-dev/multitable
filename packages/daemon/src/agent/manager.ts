@@ -74,6 +74,7 @@ type RegisterInput = Omit<
   | 'currentTurn'
   | 'startedAt'
   | 'provider'
+  | 'model'
   | 'agentSessionId'
   | 'agentSessionIdHistory'
   | 'claudeSessionId'
@@ -96,6 +97,7 @@ type RegisterInput = Omit<
     Pick<
       AgentSession,
       | 'provider'
+      | 'model'
       | 'agentSessionId'
       | 'agentSessionIdHistory'
       | 'claudeSessionId'
@@ -129,6 +131,7 @@ export class AgentSessionManager extends EventEmitter {
       name: input.name,
       workingDir: input.workingDir,
       provider: input.provider ?? 'claude',
+      model: input.model ?? null,
       agentSessionId: input.agentSessionId ?? input.claudeSessionId ?? null,
       agentSessionIdHistory: [
         ...(input.agentSessionIdHistory ?? input.claudeSessionIdHistory ?? []),
@@ -255,6 +258,7 @@ export class AgentSessionManager extends EventEmitter {
             cwd: s.workingDir,
             ...(s.claudeSessionId ? { resume: s.claudeSessionId } : {}),
             ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+            ...(s.model ? { model: s.model } : {}),
             settingSources: ['project', 'user'],
             permissionMode: 'default',
             canUseTool: this.makeCanUseTool(sessionId),

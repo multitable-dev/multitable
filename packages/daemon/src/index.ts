@@ -151,6 +151,7 @@ async function main() {
         name: session.name,
         workingDir: session.workingDirectory || project.path,
         provider: session.agentProvider,
+        model: session.model,
         agentSessionId: session.agentSessionId ?? null,
         agentSessionIdHistory: session.agentSessionIdHistory ?? [],
         claudeSessionId: session.claudeSessionId ?? null,

@@ -17,6 +17,10 @@ export interface AgentSession {
   name: string;
   workingDir: string;
   provider: AgentProvider;
+  // Model id picked at session-create time. Passed through to the SDK on every
+  // turn (Claude `query()` options.model, Codex `Thread` options.model). Null
+  // means "let the provider use its own default".
+  model: string | null;
   // === provider link ===
   agentSessionId: string | null; // mirrored to DB; Claude session id or Codex thread id
   agentSessionIdHistory: string[];

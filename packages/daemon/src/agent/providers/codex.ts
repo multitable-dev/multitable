@@ -67,12 +67,18 @@ export class CodexAdapter implements ProviderAdapter {
     const existing = this.threads.get(s.id);
     if (existing) return existing;
     const codex = await this.getClient();
-    const opts = {
+    const opts: Record<string, unknown> = {
       workingDirectory: s.workingDir,
       sandboxMode: 'workspace-write' as const,
       approvalPolicy: 'never' as const,
       skipGitRepoCheck: true,
     };
+    // The Codex SDK forwards unknown option keys to the spawned `codex exec`
+    // child as CLI flags, and `model` is the documented flag name (-m,
+    // --model). Setting it per-thread means the user's pick from the
+    // AddAgentModal is honored on every turn without depending on
+    // ~/.codex/config.toml.
+    if (s.model) opts.model = s.model;
     const thread = s.agentSessionId
       ? codex.resumeThread(s.agentSessionId, opts)
       : codex.startThread(opts);

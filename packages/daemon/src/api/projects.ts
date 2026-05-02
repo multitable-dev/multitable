@@ -362,6 +362,7 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
       terminalAlerts,
       fileWatchPatterns,
       agentProvider,
+      model,
     } = req.body || {};
     if (!name || !command) {
       return res.status(400).json({ error: 'name and command are required' });
@@ -379,6 +380,8 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
     try {
       const provider: 'claude' | 'codex' | undefined =
         agentProvider === 'claude' || agentProvider === 'codex' ? agentProvider : undefined;
+      const modelId =
+        typeof model === 'string' && model.trim().length > 0 ? model.trim() : null;
       const session = createSession({
         projectId: req.params.id,
         name,
@@ -392,6 +395,7 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
         fileWatchPatterns,
         gitBaselineCommit,
         agentProvider: provider,
+        model: modelId,
       });
       res.status(201).json(session);
     } catch (err) {
