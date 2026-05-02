@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
-import { Modal, Button, ProviderLogo, AgentBadge, Spinner } from '../ui';
+import { Search } from 'lucide-react';
+import { Modal, Button, Input, ProviderLogo, Spinner } from '../ui';
 import { useTranscripts, type TranscriptSession } from '../../hooks/useTranscripts';
 import { useCodexTranscripts } from '../../hooks/useCodexTranscripts';
 import { resumePastSession, resumePastCodexThread, selectPinnedSession } from '../../lib/pastAgents';
@@ -341,118 +342,116 @@ function PastSessionsMerged({
   return (
     <div
       style={{
-        marginTop: 14,
-        paddingTop: 12,
+        marginTop: 16,
+        paddingTop: 14,
         borderTop: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
         minHeight: 0,
       }}
     >
+      {/* Header — section title with subtle count, search occupies its own row.
+          Title + count uses dot-separator (cleaner than parens) and lives at
+          a small caps weight so it reads as label, not heading. */}
       <div
         style={{
           display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          marginBottom: 8,
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: 12,
+          marginBottom: 10,
         }}
       >
-        <span
+        <div
           style={{
-            fontSize: 9.5,
+            display: 'flex',
+            alignItems: 'baseline',
+            gap: 8,
+            fontSize: 10,
             fontWeight: 500,
             color: 'var(--text-faint)',
             textTransform: 'uppercase',
             letterSpacing: '0.18em',
-            flexShrink: 0,
           }}
         >
-          Or resume a past agent
-        </span>
-        {merged.length > 0 && (
-          <span
-            style={{
-              fontSize: 10,
-              color: 'var(--text-faint)',
-              fontVariantNumeric: 'tabular-nums',
-              flexShrink: 0,
-            }}
-          >
-            ({searchQuery.trim() ? `${filtered.length} of ${merged.length}` : merged.length})
-          </span>
-        )}
-        <div style={{ flex: 1 }} />
-        <input
+          <span>Past agents</span>
+          {merged.length > 0 && (
+            <span
+              style={{
+                color: 'var(--text-muted)',
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: 0,
+                textTransform: 'none',
+              }}
+            >
+              · {searchQuery.trim() ? `${filtered.length} of ${merged.length}` : merged.length}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <Input
           value={searchQuery}
           onChange={(e) => {
             onSearchChange(e.target.value);
             triggerPull();
           }}
-          placeholder="Search history…"
-          style={{
-            width: 200,
-            padding: '4px 8px',
-            fontSize: 11,
-            borderRadius: 'var(--radius-snug)',
-            border: '1px solid var(--border)',
-            backgroundColor: 'var(--bg-primary)',
-            color: 'var(--text-primary)',
-            outline: 'none',
-            transition: 'border-color var(--dur-fast) var(--ease-out)',
-          }}
-          onFocus={(e) => {
-            (e.target as HTMLInputElement).style.borderColor = 'var(--accent-amber)';
-          }}
-          onBlur={(e) => {
-            (e.target as HTMLInputElement).style.borderColor = 'var(--border)';
-          }}
+          placeholder="Search history"
+          leftIcon={<Search size={13} />}
         />
       </div>
 
+      {/* Scrollable list. Rows are grouped visually by a 3px transparent strip
+          on the left — the strip flips to the accent color when selected,
+          giving a clear "this is your pick" without the gaudy full-row tint. */}
       <div
         className="mt-scroll"
         onScroll={(e) => {
           const el = e.currentTarget;
-          // Pre-fetch the rest of the server-side list as the user scrolls
-          // toward the bottom, so they don't hit a hard stop at the page
-          // boundary.
           if (el.scrollTop + el.clientHeight > el.scrollHeight - 80) triggerPull();
         }}
-        style={{ maxHeight: 360, overflowY: 'auto', flex: 1 }}
+        style={{
+          maxHeight: 360,
+          overflowY: 'auto',
+          flex: 1,
+          // Subtle inset feel: very faint border + a slightly recessed bg so
+          // the list feels like a panel, not loose body text.
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-md)',
+          backgroundColor: 'var(--bg-primary)',
+        }}
       >
         {isLoading && merged.length === 0 && (
           <div
             style={{
-              padding: '6px 12px',
-              fontSize: 11,
+              padding: '14px 16px',
+              fontSize: 11.5,
               color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
+              gap: 8,
             }}
           >
-            <Spinner size="sm" /> Scanning…
+            <Spinner size="sm" /> Scanning history…
           </div>
         )}
         {!isLoading && filtered.length === 0 && (
           <div
             style={{
-              padding: '4px 12px 6px',
-              fontSize: 11,
+              padding: '14px 16px',
+              fontSize: 11.5,
               color: 'var(--text-muted)',
-              fontStyle: 'italic',
             }}
           >
-            {searchQuery.trim()
-              ? 'No matches.'
-              : 'No past agents for this project.'}
+            {searchQuery.trim() ? 'No matches.' : 'No past agents for this project yet.'}
           </div>
         )}
         {error && (
           <div
             style={{
-              padding: '4px 12px 6px',
-              fontSize: 11,
+              padding: '12px 16px',
+              fontSize: 11.5,
               color: 'var(--status-error)',
             }}
           >
@@ -460,9 +459,10 @@ function PastSessionsMerged({
           </div>
         )}
 
-        {filtered.map((row) => {
+        {filtered.map((row, idx) => {
           const rowKey = `${row.provider}:${row.sessionId}`;
           const isSelected = selectedKey === rowKey;
+          const isLast = idx === filtered.length - 1;
           return (
             <div
               key={rowKey}
@@ -470,23 +470,16 @@ function PastSessionsMerged({
               title={
                 (row.firstPrompt || '(no prompt yet)') +
                 `\n\n${row.cwd}\n${row.provider}: ${row.sessionId}` +
-                '\n\nClick to select, then press Start to resume.'
+                '\n\nClick to select · Start to resume'
               }
               style={{
-                padding: '8px 10px',
+                position: 'relative',
+                padding: '11px 14px 11px 16px',
                 cursor: 'pointer',
-                fontSize: 12,
                 color: 'var(--text-primary)',
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-                borderRadius: 'var(--radius-snug)',
-                backgroundColor: isSelected
-                  ? 'color-mix(in srgb, var(--accent-amber) 12%, transparent)'
-                  : 'transparent',
-                boxShadow: isSelected ? '0 0 0 1px var(--accent-amber)' : 'none',
-                transition:
-                  'background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
+                borderBottom: isLast ? 'none' : '1px solid var(--border)',
+                backgroundColor: isSelected ? 'var(--bg-elevated)' : 'transparent',
+                transition: 'background-color var(--dur-fast) var(--ease-out)',
               }}
               onMouseEnter={(e) => {
                 if (isSelected) return;
@@ -497,36 +490,78 @@ function PastSessionsMerged({
                 (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
               }}
             >
-              <AgentBadge
-                provider={row.provider}
-                size="chip"
-                style={{ flexShrink: 0, marginTop: 1 }}
-              />
+              {/* Left-edge accent strip — invisible by default, amber when
+                  selected. 3px wide, full row height, sits flush left so it
+                  reads as a list-item indicator, not a border. */}
               <span
+                aria-hidden
                 style={{
-                  flex: 1,
-                  minWidth: 0,
+                  position: 'absolute',
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 3,
+                  backgroundColor: isSelected ? 'var(--accent-amber)' : 'transparent',
+                  transition: 'background-color var(--dur-fast) var(--ease-out)',
+                }}
+              />
+
+              {/* Prompt text — the hero. Two-line clamp, primary color. */}
+              <div
+                style={{
+                  fontSize: 12.5,
+                  lineHeight: 1.4,
+                  color: 'var(--text-primary)',
                   display: '-webkit-box',
                   WebkitLineClamp: 2,
                   WebkitBoxOrient: 'vertical',
                   overflow: 'hidden',
                   wordBreak: 'break-word',
-                  lineHeight: 1.35,
                 }}
               >
                 {row.firstPrompt || '(no prompt)'}
-              </span>
-              <span
+              </div>
+
+              {/* Metadata row — provider monogram + name + relative time, all
+                  at the same low-contrast tier so it doesn't compete with
+                  the prompt. Provider name is the only color cue. */}
+              <div
                 style={{
-                  fontSize: 10,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  marginTop: 5,
+                  fontSize: 10.5,
                   color: 'var(--text-muted)',
-                  flexShrink: 0,
-                  fontVariantNumeric: 'tabular-nums',
-                  marginTop: 2,
+                  letterSpacing: '0.04em',
                 }}
               >
-                {relativeTime(row.mtime)}
-              </span>
+                <span
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    color:
+                      row.provider === 'claude'
+                        ? 'var(--accent-amber)'
+                        : 'var(--text-secondary)',
+                    opacity: 0.85,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  <ProviderLogo provider={row.provider} size={11} />
+                  {row.provider}
+                </span>
+                <span
+                  aria-hidden
+                  style={{ color: 'var(--text-faint)', opacity: 0.6 }}
+                >
+                  ·
+                </span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {relativeTime(row.mtime)}
+                </span>
+              </div>
             </div>
           );
         })}
