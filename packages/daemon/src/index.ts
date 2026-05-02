@@ -28,6 +28,27 @@ function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig
   };
 }
 
+// Chokidar 3.6 has a known race in `setFsWatchListener` (nodefs-handler.js:159)
+// where attaching a watch to a file that's been atomically rewritten/deleted
+// throws `Cannot read properties of undefined (reading 'close')`. The error
+// is harmless — chokidar recovers and the watcher keeps working — but it
+// surfaces as an unhandled rejection and spams the daemon log. We swallow
+// just this one pattern; everything else still bubbles up.
+//
+// Heavy editor activity in the watched project (HMR cache invalidations,
+// `git stash`, `npm install`) is the usual trigger. A clean fix requires
+// chokidar 4.x.
+process.on('unhandledRejection', (reason) => {
+  const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  if (
+    /chokidar\/lib\/nodefs-handler\.js/.test(msg) &&
+    /Cannot read properties of undefined \(reading 'close'\)/.test(msg)
+  ) {
+    return; // known harmless chokidar 3.6 race
+  }
+  console.error('[daemon] Unhandled rejection:', reason);
+});
+
 async function main() {
   console.log('Starting MultiTable daemon...');
 

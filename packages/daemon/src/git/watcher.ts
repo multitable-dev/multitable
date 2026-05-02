@@ -35,6 +35,9 @@ export class GitWatcher {
       ignoreInitial: true,
       ignored: [
         '**/node_modules/**',
+        '**/.vite/**',           // Vite dev-server cache; rewrites constantly during HMR
+        '**/.turbo/**',
+        '**/.parcel-cache/**',
         '**/dist/**',
         '**/build/**',
         '**/.next/**',

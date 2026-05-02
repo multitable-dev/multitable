@@ -2,11 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
-import { Modal, Input, Button, Badge } from '../ui';
+import { Modal, Button, ProviderLogo, AgentBadge, Spinner } from '../ui';
 import { useTranscripts, type TranscriptSession } from '../../hooks/useTranscripts';
 import { useCodexTranscripts } from '../../hooks/useCodexTranscripts';
-import { PastAgentsList } from '../sidebar/PastAgentsList';
 import { resumePastSession, resumePastCodexThread, selectPinnedSession } from '../../lib/pastAgents';
+import { relativeTime } from '../../lib/relativeTime';
+import type { AgentProvider } from '../../lib/types';
 
 type AgentProviderOption = 'claude' | 'codex' | undefined;
 
@@ -14,16 +15,17 @@ const AGENTS: Array<{
   name: string;
   command: string;
   provider?: AgentProviderOption;
-  recommended?: boolean;
   comingSoon?: boolean;
 }> = [
-  { name: 'Claude Code', command: 'claude', provider: 'claude', recommended: true },
+  { name: 'Claude Code', command: 'claude', provider: 'claude' },
   { name: 'Codex', command: 'codex', provider: 'codex' },
   { name: 'Gemini CLI', command: 'gemini', comingSoon: true },
+  { name: 'GitHub Copilot', command: 'copilot', comingSoon: true },
+  { name: 'opencode', command: 'opencode', comingSoon: true },
   { name: 'Amp', command: 'amp', comingSoon: true },
   { name: 'Aider', command: 'aider', comingSoon: true },
   { name: 'Goose', command: 'goose', comingSoon: true },
-  { name: 'Custom', command: '', comingSoon: true },
+  { name: 'Pi', command: 'pi', comingSoon: true },
 ];
 
 interface Props {
@@ -34,84 +36,84 @@ interface Props {
 export function AddAgentModal({ onClose, projectId }: Props) {
   const store = useAppStore();
   const projectPath = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.path);
-  const [command, setCommand] = useState('claude');
-  const [name, setName] = useState('Claude Code');
-  const [autostart, setAutostart] = useState(true);
   const [loading, setLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState('Claude Code');
   const [agentProvider, setAgentProvider] = useState<AgentProviderOption>('claude');
-  const [resumingId, setResumingId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  // Two mutually exclusive intents: either "create a fresh session with the
+  // selected preset" (selectedPastSession === null) or "resume this past
+  // chat" (selectedPastSession set). Start button switches behavior on this.
+  const [selectedPastSession, setSelectedPastSession] = useState<{
+    provider: AgentProvider;
+    sessionId: string;
+    pinnedSessionId: string | null;
+  } | null>(null);
 
-  const { data, loading: pastLoading, error: pastError, grouped, loadMoreForCwd } = useTranscripts({
+  // Selected preset is the source of truth for `name` and `command`. Sessions
+  // get auto-renamed from the first user prompt anyway, so the initial name is
+  // just metadata until then.
+  const selectedPreset = useMemo(
+    () => AGENTS.find((a) => a.name === selectedAgent),
+    [selectedAgent],
+  );
+
+  const { loading: pastLoading, error: pastError, grouped, loadMoreForCwd } = useTranscripts({
     cwd: projectPath,
     enabled: !!projectPath,
     limit: 20,
   });
   const pastGroup = useMemo(() => grouped[0] ?? null, [grouped]);
-  const visiblePastCount = useMemo(() => {
-    if (!pastGroup) return 0;
-    return pastGroup.sessions.filter((s) => !s.pinnedSessionId).length;
-  }, [pastGroup]);
 
   const {
     group: codexGroup,
     loading: codexLoading,
     error: codexError,
   } = useCodexTranscripts({ cwd: projectPath, enabled: !!projectPath, limit: 20 });
-  const visibleCodexCount = useMemo(() => codexGroup?.sessions.length ?? 0, [codexGroup]);
 
-  const handlePickPast = async (session: TranscriptSession) => {
-    if (resumingId || loading) return;
-    setResumingId(session.sessionId);
-    try {
-      const ok = session.pinnedSessionId
-        ? await selectPinnedSession(session.pinnedSessionId)
-        : await resumePastSession(session.sessionId);
-      if (ok) onClose();
-    } finally {
-      setResumingId(null);
-    }
-  };
-
-  const handlePickCodex = async (session: TranscriptSession) => {
-    if (resumingId || loading) return;
-    setResumingId(session.sessionId);
-    try {
-      const ok = await resumePastCodexThread(session.sessionId);
-      if (ok) onClose();
-    } finally {
-      setResumingId(null);
-    }
+  const handlePickPastRow = (session: TranscriptSession, provider: AgentProvider) => {
+    setSelectedPastSession({
+      provider,
+      sessionId: session.sessionId,
+      pinnedSessionId: session.pinnedSessionId,
+    });
   };
 
   const handlePresetClick = (agent: typeof AGENTS[number]) => {
-    if ((agent as any).comingSoon) return;
+    if (agent.comingSoon) return;
     setSelectedAgent(agent.name);
-    setName(agent.name === 'Custom' ? '' : agent.name);
-    setCommand(agent.command);
     setAgentProvider(agent.provider);
+    // Picking a preset clears any past-row selection — they're mutually
+    // exclusive intents.
+    setSelectedPastSession(null);
   };
 
   const handleSubmit = async () => {
-    if (!command.trim()) return;
+    if (loading) return;
     setLoading(true);
     try {
+      if (selectedPastSession) {
+        const { provider, sessionId, pinnedSessionId } = selectedPastSession;
+        const ok =
+          provider === 'codex'
+            ? await resumePastCodexThread(sessionId)
+            : pinnedSessionId
+              ? await selectPinnedSession(pinnedSessionId)
+              : await resumePastSession(sessionId);
+        if (ok) onClose();
+        return;
+      }
+      if (!selectedPreset || !selectedPreset.command) return;
       const session = await api.sessions.create(projectId, {
-        name: name || command,
-        command,
+        name: selectedPreset.name,
+        command: selectedPreset.command,
         ...(agentProvider ? { agentProvider } : {}),
       });
       store.upsertSession(session);
       store.setSelectedProcess(session.id);
-
-      // Sessions are SDK-driven now: no spawn/start step. The first user turn
-      // sent through the chat composer auto-starts the agent. Until then the
-      // session sits idle, which is the correct state.
-
       toast.success('Agent added');
       onClose();
     } catch {
-      toast.error('Failed to add agent');
+      toast.error('Failed to start');
     } finally {
       setLoading(false);
     }
@@ -121,11 +123,21 @@ export function AddAgentModal({ onClose, projectId }: Props) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit();
   };
 
+  const submitDisabled =
+    loading ||
+    (!selectedPastSession && (!selectedPreset || !selectedPreset.command));
+  const startLabel = selectedPastSession
+    ? loading
+      ? 'Resuming…'
+      : 'Resume'
+    : loading
+      ? 'Starting…'
+      : 'Start';
+
   return (
     <Modal
       open
       onClose={onClose}
-      title="Add Agent"
       width={620}
       footer={
         <>
@@ -133,259 +145,392 @@ export function AddAgentModal({ onClose, projectId }: Props) {
           <Button
             variant="primary"
             onClick={handleSubmit}
-            disabled={!command.trim()}
+            disabled={submitDisabled}
             loading={loading}
           >
-            {loading ? 'Adding...' : 'Add Agent'}
+            {startLabel}
           </Button>
         </>
       }
     >
       <div onKeyDown={handleKeyDown}>
+        {/* Compact agent picker. Each tile is logo + name; coming-soon
+            entries are dimmed without a separate badge to keep the row tight. */}
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))',
-            gap: 8,
-            marginBottom: 20,
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: 6,
+            marginBottom: 12,
           }}
         >
-          {AGENTS.map(agent => {
-            const comingSoon = (agent as any).comingSoon;
-            const selected = selectedAgent === agent.name;
+          {AGENTS.map((agent) => {
+            const comingSoon = !!agent.comingSoon;
+            // The preset is "active" only when no past row is staged for resume.
+            // When a past row is selected, dim the preset row so it's clear
+            // which intent Start will follow.
+            const selected = !selectedPastSession && selectedAgent === agent.name;
+            const desaturated = !!selectedPastSession;
             return (
               <button
                 key={agent.name}
                 onClick={() => handlePresetClick(agent)}
                 disabled={comingSoon}
-                title={comingSoon ? 'Coming soon' : undefined}
+                title={comingSoon ? `${agent.name} — coming soon` : agent.name}
                 style={{
-                  padding: '12px 10px',
+                  padding: '8px 8px',
+                  height: 56,
                   borderRadius: 'var(--radius-md)',
-                  border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--border)'}`,
+                  border: `1px solid ${selected ? 'var(--accent-amber)' : 'var(--border)'}`,
                   backgroundColor: selected
-                    ? 'color-mix(in srgb, var(--accent-blue) 12%, transparent)'
+                    ? 'color-mix(in srgb, var(--accent-amber) 10%, transparent)'
                     : 'var(--bg-sidebar)',
-                  color: 'var(--text-primary)',
+                  color: comingSoon ? 'var(--text-faint)' : 'var(--text-primary)',
                   cursor: comingSoon ? 'not-allowed' : 'pointer',
-                  fontSize: 13,
+                  opacity: comingSoon ? 0.45 : desaturated ? 0.55 : 1,
+                  fontSize: 11.5,
                   fontWeight: selected ? 600 : 500,
                   textAlign: 'center',
-                  opacity: comingSoon ? 0.5 : 1,
                   display: 'flex',
-                  flexDirection: 'column',
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
-                  boxShadow: selected ? 'var(--shadow-sm), 0 0 0 1px var(--accent-blue)' : 'none',
-                  transition: 'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
+                  justifyContent: 'flex-start',
+                  gap: 8,
+                  boxShadow: selected ? '0 0 0 1px var(--accent-amber)' : 'none',
+                  transition:
+                    'box-shadow var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out)',
                 }}
               >
-                <span>{agent.name}</span>
-                {comingSoon ? (
-                  <Badge variant="muted" size="sm">Coming soon</Badge>
-                ) : (agent as any).recommended ? (
-                  <Badge variant="accent" size="sm">Recommended</Badge>
-                ) : null}
+                {agent.provider ? (
+                  <ProviderLogo
+                    provider={agent.provider}
+                    size={18}
+                    style={{
+                      color: selected ? 'var(--accent-amber)' : 'var(--text-secondary)',
+                      flexShrink: 0,
+                    }}
+                  />
+                ) : (
+                  <span
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: 'var(--radius-snug)',
+                      border: '1px dashed var(--border-strong)',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 10,
+                      color: 'var(--text-faint)',
+                      flexShrink: 0,
+                    }}
+                    aria-hidden
+                  >
+                    ?
+                  </span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {agent.name}
+                </span>
               </button>
             );
           })}
         </div>
-        <div style={{ marginBottom: 14 }}>
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              display: 'block',
-              marginBottom: 6,
-              color: 'var(--text-primary)',
-            }}
-          >
-            Name
-          </label>
-          <Input
-            value={name}
-            onChange={e => setName(e.target.value)}
-            placeholder="e.g., Claude Code"
-            autoFocus
-          />
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <label
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              display: 'block',
-              marginBottom: 6,
-              color: 'var(--text-primary)',
-            }}
-          >
-            Command
-          </label>
-          <textarea
-            value={command}
-            onChange={e => setCommand(e.target.value)}
-            placeholder="e.g., claude"
-            rows={2}
-            style={{
-              width: '100%',
-              padding: '8px 12px',
-              borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border)',
-              backgroundColor: 'var(--bg-primary)',
-              color: 'var(--text-primary)',
-              fontSize: 13,
-              fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-              resize: 'vertical',
-              outline: 'none',
-              boxSizing: 'border-box',
-              transition: 'border-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
-            }}
-          />
-        </div>
-        <div style={{ display: 'flex', gap: 20 }}>
-          <label
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              fontSize: 13,
-              cursor: 'pointer',
-              color: 'var(--text-primary)',
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={autostart}
-              onChange={e => setAutostart(e.target.checked)}
-            />
-            Auto-start
-          </label>
-        </div>
 
         {projectPath && (
-          <div
-            style={{
-              marginTop: 20,
-              paddingTop: 14,
-              borderTop: '1px solid var(--border)',
+          <PastSessionsMerged
+            claudeSessions={pastGroup?.sessions ?? []}
+            codexSessions={codexGroup?.sessions ?? []}
+            claudeLoading={pastLoading}
+            codexLoading={codexLoading}
+            error={pastError ?? codexError}
+            selectedKey={
+              selectedPastSession
+                ? `${selectedPastSession.provider}:${selectedPastSession.sessionId}`
+                : null
+            }
+            onPickRow={handlePickPastRow}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            // Claude transcripts list is server-paginated; pull the rest in one
+            // shot when the user actually starts searching or scrolling so the
+            // search covers the full project history.
+            onPullAllClaude={() => {
+              if (pastGroup) loadMoreForCwd(pastGroup.cwd, pastGroup.totalCount);
             }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'baseline',
-                gap: 8,
-                marginBottom: 8,
-              }}
-            >
-              <span
-                style={{
-                  fontSize: 9.5,
-                  fontWeight: 500,
-                  color: 'var(--text-faint)',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.18em',
-                }}
-              >
-                Or resume a past agent
-              </span>
-              {visiblePastCount > 0 && (
-                <span
-                  style={{
-                    fontSize: 10,
-                    color: 'var(--text-faint)',
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  ({visiblePastCount})
-                </span>
-              )}
-            </div>
-            <div
-              className="mt-scroll"
-              style={{
-                maxHeight: 220,
-                overflowY: 'auto',
-                marginLeft: -16,
-              }}
-            >
-              <PastAgentsList
-                mode="project"
-                group={pastGroup}
-                loading={pastLoading}
-                error={pastError}
-                hasFetched={!!data && !pastLoading}
-                hidePinned
-                perGroupLimit={5}
-                inFlightSessionId={resumingId}
-                onPickSession={handlePickPast}
-                onLoadMore={() => {
-                  if (pastGroup) loadMoreForCwd(pastGroup.cwd, pastGroup.totalCount);
-                }}
-                emptyText="No past agents for this project"
-              />
-            </div>
-
-            {(visibleCodexCount > 0 || codexLoading || codexError) && (
-              <div style={{ marginTop: 14 }}>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'baseline',
-                    gap: 8,
-                    marginBottom: 8,
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: 9.5,
-                      fontWeight: 500,
-                      color: 'var(--text-faint)',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.18em',
-                    }}
-                  >
-                    Or resume a Codex thread
-                  </span>
-                  {visibleCodexCount > 0 && (
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: 'var(--text-faint)',
-                        fontVariantNumeric: 'tabular-nums',
-                      }}
-                    >
-                      ({visibleCodexCount})
-                    </span>
-                  )}
-                </div>
-                <div
-                  className="mt-scroll"
-                  style={{
-                    maxHeight: 220,
-                    overflowY: 'auto',
-                    marginLeft: -16,
-                  }}
-                >
-                  <PastAgentsList
-                    mode="project"
-                    group={codexGroup}
-                    loading={codexLoading}
-                    error={codexError}
-                    hasFetched={!codexLoading}
-                    hidePinned
-                    perGroupLimit={5}
-                    inFlightSessionId={resumingId}
-                    onPickSession={handlePickCodex}
-                    onLoadMore={() => { /* codex list is unpaginated for now */ }}
-                    emptyText="No past Codex threads for this project"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
+            claudeHasMoreOnServer={
+              !!pastGroup && pastGroup.totalCount > pastGroup.sessions.length
+            }
+          />
         )}
       </div>
     </Modal>
+  );
+}
+
+// ─── Merged past-sessions list ────────────────────────────────────────────────
+// Interleaves Claude + Codex past sessions for the current project, sorted by
+// recency. Each row shows a tiny `claude`/`codex` pill so you can tell which
+// runtime authored it before clicking. Click routes to the right resume API.
+
+interface MergedRow extends TranscriptSession {
+  provider: AgentProvider;
+}
+
+interface MergedProps {
+  claudeSessions: TranscriptSession[];
+  codexSessions: TranscriptSession[];
+  claudeLoading: boolean;
+  codexLoading: boolean;
+  error: string | null;
+  /** `${provider}:${sessionId}` of the row currently staged for resume. */
+  selectedKey: string | null;
+  /** Stage a row as the resume target. The actual resume fires from the
+   * Start button — clicking a row never auto-opens the session. */
+  onPickRow: (s: TranscriptSession, provider: AgentProvider) => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  onPullAllClaude: () => void;
+  claudeHasMoreOnServer: boolean;
+}
+
+function PastSessionsMerged({
+  claudeSessions,
+  codexSessions,
+  claudeLoading,
+  codexLoading,
+  error,
+  selectedKey,
+  onPickRow,
+  searchQuery,
+  onSearchChange,
+  onPullAllClaude,
+  claudeHasMoreOnServer,
+}: MergedProps) {
+  // When the user starts searching, pull the rest of the server-paginated
+  // Claude transcript list so the filter sees the full project history. Same
+  // when the scroller approaches the bottom — keeps the scroll feel of a
+  // single continuous list rather than a paginated one.
+  const pulledRef = React.useRef(false);
+  const triggerPull = () => {
+    if (pulledRef.current) return;
+    if (!claudeHasMoreOnServer) return;
+    pulledRef.current = true;
+    onPullAllClaude();
+  };
+
+  const merged: MergedRow[] = useMemo(() => {
+    const claudeRows: MergedRow[] = claudeSessions
+      .filter((s) => !s.pinnedSessionId)
+      .map((s) => ({ ...s, provider: 'claude' as const }));
+    const codexRows: MergedRow[] = codexSessions.map((s) => ({
+      ...s,
+      provider: 'codex' as const,
+    }));
+    return [...claudeRows, ...codexRows].sort((a, b) => b.mtime - a.mtime);
+  }, [claudeSessions, codexSessions]);
+
+  const filtered = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return merged;
+    return merged.filter((row) => (row.firstPrompt ?? '').toLowerCase().includes(q));
+  }, [merged, searchQuery]);
+
+  const isLoading = claudeLoading || codexLoading;
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        paddingTop: 12,
+        borderTop: '1px solid var(--border)',
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: 0,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          marginBottom: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 9.5,
+            fontWeight: 500,
+            color: 'var(--text-faint)',
+            textTransform: 'uppercase',
+            letterSpacing: '0.18em',
+            flexShrink: 0,
+          }}
+        >
+          Or resume a past agent
+        </span>
+        {merged.length > 0 && (
+          <span
+            style={{
+              fontSize: 10,
+              color: 'var(--text-faint)',
+              fontVariantNumeric: 'tabular-nums',
+              flexShrink: 0,
+            }}
+          >
+            ({searchQuery.trim() ? `${filtered.length} of ${merged.length}` : merged.length})
+          </span>
+        )}
+        <div style={{ flex: 1 }} />
+        <input
+          value={searchQuery}
+          onChange={(e) => {
+            onSearchChange(e.target.value);
+            triggerPull();
+          }}
+          placeholder="Search history…"
+          style={{
+            width: 200,
+            padding: '4px 8px',
+            fontSize: 11,
+            borderRadius: 'var(--radius-snug)',
+            border: '1px solid var(--border)',
+            backgroundColor: 'var(--bg-primary)',
+            color: 'var(--text-primary)',
+            outline: 'none',
+            transition: 'border-color var(--dur-fast) var(--ease-out)',
+          }}
+          onFocus={(e) => {
+            (e.target as HTMLInputElement).style.borderColor = 'var(--accent-amber)';
+          }}
+          onBlur={(e) => {
+            (e.target as HTMLInputElement).style.borderColor = 'var(--border)';
+          }}
+        />
+      </div>
+
+      <div
+        className="mt-scroll"
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          // Pre-fetch the rest of the server-side list as the user scrolls
+          // toward the bottom, so they don't hit a hard stop at the page
+          // boundary.
+          if (el.scrollTop + el.clientHeight > el.scrollHeight - 80) triggerPull();
+        }}
+        style={{ maxHeight: 360, overflowY: 'auto', flex: 1 }}
+      >
+        {isLoading && merged.length === 0 && (
+          <div
+            style={{
+              padding: '6px 12px',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Spinner size="sm" /> Scanning…
+          </div>
+        )}
+        {!isLoading && filtered.length === 0 && (
+          <div
+            style={{
+              padding: '4px 12px 6px',
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              fontStyle: 'italic',
+            }}
+          >
+            {searchQuery.trim()
+              ? 'No matches.'
+              : 'No past agents for this project.'}
+          </div>
+        )}
+        {error && (
+          <div
+            style={{
+              padding: '4px 12px 6px',
+              fontSize: 11,
+              color: 'var(--status-error)',
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {filtered.map((row) => {
+          const rowKey = `${row.provider}:${row.sessionId}`;
+          const isSelected = selectedKey === rowKey;
+          return (
+            <div
+              key={rowKey}
+              onClick={() => onPickRow(row, row.provider)}
+              title={
+                (row.firstPrompt || '(no prompt yet)') +
+                `\n\n${row.cwd}\n${row.provider}: ${row.sessionId}` +
+                '\n\nClick to select, then press Start to resume.'
+              }
+              style={{
+                padding: '8px 10px',
+                cursor: 'pointer',
+                fontSize: 12,
+                color: 'var(--text-primary)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: 8,
+                borderRadius: 'var(--radius-snug)',
+                backgroundColor: isSelected
+                  ? 'color-mix(in srgb, var(--accent-amber) 12%, transparent)'
+                  : 'transparent',
+                boxShadow: isSelected ? '0 0 0 1px var(--accent-amber)' : 'none',
+                transition:
+                  'background-color var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out)',
+              }}
+              onMouseEnter={(e) => {
+                if (isSelected) return;
+                (e.currentTarget as HTMLDivElement).style.backgroundColor = 'var(--bg-hover)';
+              }}
+              onMouseLeave={(e) => {
+                if (isSelected) return;
+                (e.currentTarget as HTMLDivElement).style.backgroundColor = 'transparent';
+              }}
+            >
+              <AgentBadge
+                provider={row.provider}
+                size="chip"
+                style={{ flexShrink: 0, marginTop: 1 }}
+              />
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden',
+                  wordBreak: 'break-word',
+                  lineHeight: 1.35,
+                }}
+              >
+                {row.firstPrompt || '(no prompt)'}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-muted)',
+                  flexShrink: 0,
+                  fontVariantNumeric: 'tabular-nums',
+                  marginTop: 2,
+                }}
+              >
+                {relativeTime(row.mtime)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
