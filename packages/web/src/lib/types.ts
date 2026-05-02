@@ -50,6 +50,8 @@ export interface Session extends ManagedProcess {
   claudeState?: ClaudeSessionState; // in-memory — lost on daemon restart
   scratchpad?: string;
   loaderVariant?: string | null; // dot-matrix loader assigned at session creation
+  createdAt?: number;
+  lastActiveAt?: number | null; // bumped per turn boundary so the sidebar can sort by recency
 }
 
 export interface Command extends ManagedProcess {

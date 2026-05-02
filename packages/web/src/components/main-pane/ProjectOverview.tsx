@@ -294,7 +294,13 @@ export function ProjectOverview({ projectId }: Props) {
   const store = useAppStore();
   const project = store.projects.find((p) => p.id === projectId);
 
-  const sessions = Object.values(store.sessions).filter((s) => s.projectId === projectId);
+  const sessions = Object.values(store.sessions)
+    .filter((s) => s.projectId === projectId)
+    .sort((a, b) => {
+      const recency = (s: typeof a) =>
+        s.claudeState?.lastActivity || s.lastActiveAt || s.createdAt || 0;
+      return recency(b) - recency(a);
+    });
   const commands = Object.values(store.commands).filter((c) => c.projectId === projectId);
   const terminals = Object.values(store.terminals).filter((t) => t.projectId === projectId);
 

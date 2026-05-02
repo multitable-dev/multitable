@@ -134,6 +134,12 @@ export class AgentSessionManager extends EventEmitter {
     s.userMessages.push(text);
     if (!s.startedAt) s.startedAt = new Date();
 
+    try {
+      updateSession(sessionId, { lastActiveAt: s.lastActivity });
+    } catch {
+      /* don't let a DB hiccup block the turn */
+    }
+
     this.emit('state-changed', { sessionId, state: 'running' as ProcessState });
 
     // Optimistically push the user's own message so the UI can render without
@@ -234,6 +240,12 @@ export class AgentSessionManager extends EventEmitter {
       if (s.state === 'running') {
         s.state = 'idle';
         this.emit('state-changed', { sessionId, state: 'idle' as ProcessState });
+      }
+      s.lastActivity = Date.now();
+      try {
+        updateSession(sessionId, { lastActiveAt: s.lastActivity });
+      } catch {
+        /* see note above */
       }
       this.emit('turn-complete', { sessionId });
     }

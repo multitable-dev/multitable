@@ -6,6 +6,7 @@ import type { ManagedProcess, Session } from '../../lib/types';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { IconButton } from '../ui';
+import { relativeTime } from '../../lib/relativeTime';
 
 interface Props {
   process: ManagedProcess;
@@ -43,6 +44,14 @@ export function SidebarItem({
     process.type === 'session' &&
     process.state === 'running' &&
     !(process as any).claudeState?.currentTool;
+
+  const sessionRecency =
+    process.type === 'session'
+      ? (process as Session).claudeState?.lastActivity ||
+        (process as Session).lastActiveAt ||
+        (process as Session).createdAt ||
+        0
+      : 0;
 
   return (
     <div
@@ -172,6 +181,21 @@ export function SidebarItem({
                 }}
               >
                 {metrics}
+              </span>
+            )}
+            {!metrics && process.type === 'session' && sessionRecency > 0 && (
+              <span
+                title={new Date(sessionRecency).toLocaleString()}
+                style={{
+                  fontSize: 10,
+                  color: 'var(--text-muted)',
+                  fontVariantNumeric: 'tabular-nums',
+                  opacity: hovered && process.state === 'running' ? 0 : 1,
+                  transition: 'opacity var(--dur-fast) var(--ease-out)',
+                  pointerEvents: 'none',
+                }}
+              >
+                {relativeTime(sessionRecency)}
               </span>
             )}
             {process.state === 'running' && (

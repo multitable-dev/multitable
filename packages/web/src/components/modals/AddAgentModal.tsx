@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import toast from 'react-hot-toast';
 import { Modal, Input, Button, Badge } from '../ui';
+import { useTranscripts, type TranscriptSession } from '../../hooks/useTranscripts';
+import { PastAgentsList } from '../sidebar/PastAgentsList';
+import { resumePastSession, selectPinnedSession } from '../../lib/pastAgents';
 
 const AGENTS = [
   { name: 'Claude Code', command: 'claude', recommended: true },
@@ -21,11 +24,37 @@ interface Props {
 
 export function AddAgentModal({ onClose, projectId }: Props) {
   const store = useAppStore();
+  const projectPath = useAppStore((s) => s.projects.find((p) => p.id === projectId)?.path);
   const [command, setCommand] = useState('claude');
   const [name, setName] = useState('Claude Code');
   const [autostart, setAutostart] = useState(true);
   const [loading, setLoading] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState('Claude Code');
+  const [resumingId, setResumingId] = useState<string | null>(null);
+
+  const { data, loading: pastLoading, error: pastError, grouped, loadMoreForCwd } = useTranscripts({
+    cwd: projectPath,
+    enabled: !!projectPath,
+    limit: 20,
+  });
+  const pastGroup = useMemo(() => grouped[0] ?? null, [grouped]);
+  const visiblePastCount = useMemo(() => {
+    if (!pastGroup) return 0;
+    return pastGroup.sessions.filter((s) => !s.pinnedSessionId).length;
+  }, [pastGroup]);
+
+  const handlePickPast = async (session: TranscriptSession) => {
+    if (resumingId || loading) return;
+    setResumingId(session.sessionId);
+    try {
+      const ok = session.pinnedSessionId
+        ? await selectPinnedSession(session.pinnedSessionId)
+        : await resumePastSession(session.sessionId);
+      if (ok) onClose();
+    } finally {
+      setResumingId(null);
+    }
+  };
 
   const handlePresetClick = (agent: typeof AGENTS[number]) => {
     if ((agent as any).comingSoon) return;
@@ -199,6 +228,72 @@ export function AddAgentModal({ onClose, projectId }: Props) {
             Auto-start
           </label>
         </div>
+
+        {projectPath && (
+          <div
+            style={{
+              marginTop: 20,
+              paddingTop: 14,
+              borderTop: '1px solid var(--border)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: 8,
+                marginBottom: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 9.5,
+                  fontWeight: 500,
+                  color: 'var(--text-faint)',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.18em',
+                }}
+              >
+                Or resume a past agent
+              </span>
+              {visiblePastCount > 0 && (
+                <span
+                  style={{
+                    fontSize: 10,
+                    color: 'var(--text-faint)',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  ({visiblePastCount})
+                </span>
+              )}
+            </div>
+            <div
+              className="mt-scroll"
+              style={{
+                maxHeight: 220,
+                overflowY: 'auto',
+                marginLeft: -16,
+              }}
+            >
+              <PastAgentsList
+                mode="project"
+                group={pastGroup}
+                loading={pastLoading}
+                error={pastError}
+                hasFetched={!!data && !pastLoading}
+                hidePinned
+                perGroupLimit={5}
+                inFlightSessionId={resumingId}
+                onPickSession={handlePickPast}
+                onLoadMore={() => {
+                  if (pastGroup) loadMoreForCwd(pastGroup.cwd, pastGroup.totalCount);
+                }}
+                emptyText="No past agents for this project"
+              />
+            </div>
+          </div>
+        )}
       </div>
     </Modal>
   );

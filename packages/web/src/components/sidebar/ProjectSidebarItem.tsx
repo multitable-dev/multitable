@@ -3,7 +3,6 @@ import { useAppStore } from '../../stores/appStore';
 import { ProjectHeader } from './ProjectHeader';
 import { SidebarSection } from './SidebarSection';
 import { SidebarItem } from './SidebarItem';
-import { ProjectPastAgents } from './ProjectPastAgents';
 import { AddProcessModal } from '../modals/AddProcessModal';
 import { ContextMenu } from '../context-menu/ContextMenu';
 import type { MenuItem } from '../context-menu/ContextMenu';
@@ -52,7 +51,13 @@ export function ProjectSidebarItem({ project }: Props) {
     process?: ManagedProcess;
   } | null>(null);
 
-  const projectSessions = Object.values(sessions).filter((s) => s.projectId === project.id);
+  const projectSessions = Object.values(sessions)
+    .filter((s) => s.projectId === project.id)
+    .sort((a, b) => {
+      const recency = (s: typeof a) =>
+        s.claudeState?.lastActivity || s.lastActiveAt || s.createdAt || 0;
+      return recency(b) - recency(a);
+    });
   const projectCommands = Object.values(commands).filter((c) => c.projectId === project.id);
   const projectTerminals = Object.values(terminals).filter((t) => t.projectId === project.id);
   const runningSessions = projectSessions.filter((s) => s.state === 'running').length;
@@ -356,7 +361,6 @@ export function ProjectSidebarItem({ project }: Props) {
                 No agents yet
               </div>
             )}
-            <ProjectPastAgents projectPath={project.path} projectId={project.id} />
           </SidebarSection>
 
           <SidebarSection
