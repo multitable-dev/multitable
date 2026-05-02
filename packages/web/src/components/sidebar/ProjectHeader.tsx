@@ -80,7 +80,6 @@ export function ProjectHeader({
         display: 'flex',
         alignItems: 'center',
         padding: '6px 10px',
-        borderBottom: '1px solid var(--border)',
         cursor: editing ? 'text' : 'pointer',
         userSelect: 'none',
         WebkitUserSelect: 'none',

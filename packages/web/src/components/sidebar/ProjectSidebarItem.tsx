@@ -113,16 +113,16 @@ export function ProjectSidebarItem({ project }: Props) {
         divider: true,
       },
       {
-        label: 'Delete session',
+        label: 'Delete agent',
         action: async () => {
           try {
             await api.sessions.delete(process.id);
             store.removeSession(process.id);
             routeAwayIfSelected(process.id);
             window.dispatchEvent(new Event('mt:past-sessions-refresh'));
-            toast.success('Session deleted');
+            toast.success('Agent deleted');
           } catch {
-            toast.error('Failed to delete session');
+            toast.error('Failed to delete agent');
           }
         },
         divider: true,
@@ -307,7 +307,7 @@ export function ProjectSidebarItem({ project }: Props) {
           borderRadius: 0,
           overflow: 'hidden',
           backgroundColor: 'transparent',
-          borderTop: `1px solid ${focused ? color.stripe : 'var(--border)'}`,
+          borderTop: `1px solid ${focused ? color.stripe : 'transparent'}`,
           borderLeft: `3px solid ${color.stripe}`,
           transition: 'border-color var(--dur-med) var(--ease-out)',
         }}
@@ -329,7 +329,7 @@ export function ProjectSidebarItem({ project }: Props) {
       {expanded && (
         <>
           <SidebarSection
-            title="SESSIONS"
+            title="AGENTS"
             running={runningSessions}
             total={projectSessions.length}
             onAdd={() => {
@@ -352,7 +352,7 @@ export function ProjectSidebarItem({ project }: Props) {
               ))
             ) : (
               <div style={{ padding: '6px 16px 8px 34px', fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
-                No sessions yet
+                No agents yet
               </div>
             )}
           </SidebarSection>

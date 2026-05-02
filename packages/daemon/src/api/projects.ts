@@ -76,12 +76,88 @@ async function pickFolderDialog(): Promise<string | null> {
     return p ? p.replace(/\/+$/, '') : null;
   }
   if (platform === 'win32') {
-    const ps =
-      "Add-Type -AssemblyName System.Windows.Forms | Out-Null; " +
-      "$f = New-Object System.Windows.Forms.FolderBrowserDialog; " +
-      "$f.Description = 'Select Project Folder'; " +
-      "if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }";
-    return runDialog('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps]);
+    // Modern Explorer-style picker via IFileOpenDialog (FOS_PICKFOLDERS).
+    // The legacy WinForms FolderBrowserDialog is kept as a catch-branch
+    // fallback for ancient Windows boxes (PS < 5.1, .NET < 4.5).
+    //
+    // We base64-encode the script and pass it via `-EncodedCommand` to
+    // sidestep the triple-nested quoting problem (Node string -> PowerShell
+    // -> C# heredoc inside Add-Type). PowerShell expects UTF-16LE for
+    // -EncodedCommand.
+    const ps = `
+try {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+
+public static class MtFolderPicker {
+  [ComImport, Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+  public class FileOpenDialogRCW { }
+
+  [ComImport, Guid("D57C7288-D4AD-4768-BE02-9D969532D960"),
+   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IFileOpenDialog {
+    [PreserveSig] int Show([In] IntPtr parent);
+    void SetFileTypes(); void SetFileTypeIndex(); void GetFileTypeIndex();
+    void Advise(); void Unadvise();
+    void SetOptions(uint fos);
+    void GetOptions(out uint fos);
+    void SetDefaultFolder(); void SetFolder(); void GetFolder();
+    void GetCurrentSelection();
+    void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
+    void GetFileName(); void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+    void SetOkButtonLabel(); void SetFileNameLabel();
+    void GetResult(out IShellItem ppsi);
+    void AddPlace(); void SetDefaultExtension();
+    void Close(); void SetClientGuid(); void ClearClientData();
+    void SetFilter();
+    void GetResults(); void GetSelectedItems();
+  }
+
+  [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"),
+   InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  public interface IShellItem {
+    void BindToHandler();
+    void GetParent();
+    void GetDisplayName(uint sigdnName, [MarshalAs(UnmanagedType.LPWStr)] out string ppszName);
+    void GetAttributes();
+    void Compare();
+  }
+
+  public static string Pick(string title) {
+    var dlg = (IFileOpenDialog)(new FileOpenDialogRCW());
+    // FOS_PICKFOLDERS = 0x20, FOS_FORCEFILESYSTEM = 0x40
+    dlg.SetOptions(0x20 | 0x40);
+    if (title != null) dlg.SetTitle(title);
+    int hr = dlg.Show(IntPtr.Zero);
+    if (hr != 0) return null; // user cancelled or error
+    IShellItem item;
+    dlg.GetResult(out item);
+    string path;
+    // SIGDN_FILESYSPATH = 0x80058000
+    item.GetDisplayName(0x80058000u, out path);
+    return path;
+  }
+}
+"@
+  $p = [MtFolderPicker]::Pick("Select Project Folder")
+  if ($p) { Write-Output $p }
+} catch {
+  # Fallback for very old PowerShell / .NET versions.
+  Add-Type -AssemblyName System.Windows.Forms | Out-Null
+  $f = New-Object System.Windows.Forms.FolderBrowserDialog
+  $f.Description = 'Select Project Folder'
+  if ($f.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) { Write-Output $f.SelectedPath }
+}
+`;
+    const encoded = Buffer.from(ps, 'utf16le').toString('base64');
+    return runDialog('powershell.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-STA',
+      '-EncodedCommand',
+      encoded,
+    ]);
   }
   // linux / other unix
   try {

@@ -1,24 +1,14 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import type { Message } from '../../../lib/types';
-import { useAppStore } from '../../../stores/appStore';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { ToolCallCard } from './ToolCallCard';
-import { ThinkingIndicator } from './ThinkingIndicator';
 
 interface Props {
   messages: Message[];
   loading?: boolean;
   emptyHint?: React.ReactNode;
-  /** Turn is in flight (assistant is processing/responding). */
-  thinking?: boolean;
-  /** Session id — used to detect pending permission prompts. */
-  sessionId?: string;
-  /** Project that owns this session; used to color the thinking indicator. */
-  projectId?: string;
-  /** Per-session loader variant; selects which dot-matrix animation renders. */
-  loaderVariant?: string | null;
 }
 
 function formatCost(tokens: number | undefined, model: string | undefined): string | null {
@@ -39,18 +29,7 @@ function indexResults(messages: Message[]) {
   return byUseId;
 }
 
-export function MessageList({
-  messages,
-  loading,
-  emptyHint,
-  thinking,
-  sessionId,
-  projectId,
-  loaderVariant,
-}: Props) {
-  const awaitingUser = useAppStore((s) =>
-    sessionId ? s.pendingPermissions.some((p) => p.sessionId === sessionId) : false,
-  );
+export function MessageList({ messages, loading, emptyHint }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [atBottom, setAtBottom] = useState(true);
   const resultsByUseId = useMemo(() => indexResults(messages), [messages]);
@@ -85,22 +64,6 @@ export function MessageList({
   };
 
   const renderable = messages.filter((m) => m.kind !== 'tool_result');
-
-  // The "Thinking…" label + elapsed timer only shows in the gap where the
-  // assistant has nothing on screen yet — i.e., after the user's prompt
-  // before the first assistant chunk, or after a completed tool call before
-  // the next chunk. While an assistant message is on screen, hiding the
-  // label avoids the streaming text rendering alongside it (which would
-  // cause a visual jolt when the label disappears at turn-complete).
-  // The dot-matrix loader itself is always visible — animation is gated on
-  // session activity, not the label's visibility.
-  const lastMsg = renderable[renderable.length - 1];
-  const showThinkingLabel =
-    !!thinking &&
-    (!lastMsg ||
-      lastMsg.kind === 'user' ||
-      (lastMsg.kind === 'tool_use' && resultsByUseId.has(lastMsg.toolUseId)));
-  const loaderActive = !!thinking || awaitingUser;
 
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
@@ -163,12 +126,6 @@ export function MessageList({
             Loading conversation…
           </div>
         )}
-        <ThinkingIndicator
-          projectId={projectId}
-          loaderVariant={loaderVariant}
-          active={loaderActive}
-          showLabel={showThinkingLabel}
-        />
       </div>
 
       {!atBottom && renderable.length > 0 && (

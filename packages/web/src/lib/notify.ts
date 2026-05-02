@@ -36,7 +36,7 @@ function chimeFor(severity: AlertSeverity): (() => void) | null {
 
 function sessionLabel(sessionId: string): string {
   const session = useAppStore.getState().sessions[sessionId];
-  return session?.name ?? 'Session';
+  return session?.name ?? 'Agent';
 }
 
 /**

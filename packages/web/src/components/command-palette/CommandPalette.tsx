@@ -156,7 +156,7 @@ export function CommandPalette() {
     });
     result.push({
       id: 'create-session',
-      name: 'Add session...',
+      name: 'Add agent...',
       subtitle: focusedProjectId ? projectName(focusedProjectId) : '(select a project first)',
       category: 'Create',
       action: () => {

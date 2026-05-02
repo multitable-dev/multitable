@@ -397,15 +397,15 @@ export function ProjectOverview({ projectId }: Props) {
       {/* Sessions */}
       <section style={{ marginBottom: 24 }}>
         <SectionHeader
-          title="Sessions"
+          title="Agents"
           running={runningSessions}
           total={sessions.length}
           onAdd={handleAddSession}
         />
         {sessions.length === 0 ? (
           <EmptyState
-            label="No sessions yet"
-            addLabel="Add a session"
+            label="No agents yet"
+            addLabel="Add an agent"
             onAdd={handleAddSession}
           />
         ) : (

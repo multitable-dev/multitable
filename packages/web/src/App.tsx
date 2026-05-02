@@ -323,7 +323,7 @@ function App() {
         const message = msg.payload?.message || 'Turn failed';
         const pid = msg.processId;
         const session = pid ? store.sessions[pid] : null;
-        const name = session?.name ?? 'Session';
+        const name = session?.name ?? 'Agent';
         toast.error(`${name}: ${message}`, { duration: 6000, style: { maxWidth: 480 } });
       }),
       wsClient.on('session:send-error', (msg: any) => {

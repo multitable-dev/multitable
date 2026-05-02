@@ -46,10 +46,10 @@ export function AddAgentModal({ onClose, projectId }: Props) {
       // sent through the chat composer auto-starts the agent. Until then the
       // session sits idle, which is the correct state.
 
-      toast.success('Session added');
+      toast.success('Agent added');
       onClose();
     } catch {
-      toast.error('Failed to add session');
+      toast.error('Failed to add agent');
     } finally {
       setLoading(false);
     }
@@ -63,7 +63,7 @@ export function AddAgentModal({ onClose, projectId }: Props) {
     <Modal
       open
       onClose={onClose}
-      title="Add Session"
+      title="Add Agent"
       width={620}
       footer={
         <>
@@ -74,7 +74,7 @@ export function AddAgentModal({ onClose, projectId }: Props) {
             disabled={!command.trim()}
             loading={loading}
           >
-            {loading ? 'Adding...' : 'Add Session'}
+            {loading ? 'Adding...' : 'Add Agent'}
           </Button>
         </>
       }

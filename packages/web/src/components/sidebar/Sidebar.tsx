@@ -39,7 +39,6 @@ export function Sidebar() {
     >
       <div
         style={{
-          borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >
@@ -96,7 +95,7 @@ export function Sidebar() {
               color: onDashboard ? 'var(--text-primary)' : 'var(--text-secondary)',
             }}
           >
-            Dashboard
+            Home
           </Button>
         </div>
         {/* Add Project button */}

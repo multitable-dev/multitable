@@ -15,7 +15,7 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div style={{ marginTop: 14 }}>
+    <div style={{ marginTop: 20 }}>
       <div
         style={{
           display: 'flex',
@@ -41,22 +41,16 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
           style={{
             fontSize: 9.5,
             fontWeight: 500,
-            color: 'var(--text-muted)',
+            color: 'var(--text-faint)',
             textTransform: 'uppercase',
             letterSpacing: '0.18em',
           }}
         >
           {title}
         </span>
-        <div
-          style={{
-            flex: 1,
-            height: 1,
-            backgroundColor: 'var(--border)',
-          }}
-        />
         <span
           style={{
+            marginLeft: 'auto',
             fontSize: 10,
             color: 'var(--text-secondary)',
             fontVariantNumeric: 'tabular-nums',

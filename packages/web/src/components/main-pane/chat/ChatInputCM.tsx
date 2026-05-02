@@ -1,5 +1,8 @@
-import React, { memo, useCallback, useEffect, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Send, Paperclip, X, Clock } from 'lucide-react';
+
+import { getLoaderComponent } from '../../ui/loaders';
+import { getProjectColor } from '../../../lib/projectColor';
 
 // Stable empty array so the pending-sends selector doesn't churn on
 // unrelated store updates.
@@ -74,6 +77,46 @@ interface Props {
   state: ProcessState;
   attachmentKind: 'session' | 'terminal';
   placeholder?: string;
+  /** Per-session loader variant; selects which dot-matrix animation renders. */
+  loaderVariant?: string | null;
+  /** Whether the agent is currently doing work (turn in flight). */
+  active?: boolean;
+}
+
+interface AgentAvatarProps {
+  projectId: string;
+  loaderVariant?: string | null;
+  active: boolean;
+}
+
+/**
+ * Inline mini-component that sits flush left of the textbox, replacing the
+ * old `>` prefix. Renders the per-session dot-matrix loader tinted with the
+ * project color stripe; animates while the agent is active and falls to
+ * `dmx-static-dim` when idle.
+ */
+function AgentAvatar({ projectId, loaderVariant, active }: AgentAvatarProps) {
+  const Loader = useMemo(() => getLoaderComponent(loaderVariant), [loaderVariant]);
+  const color = projectId ? getProjectColor(projectId, false).stripe : '#4169E1';
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        alignSelf: 'center',
+        flexShrink: 0,
+      }}
+    >
+      <Loader
+        size={18}
+        dotSize={2.5}
+        color={color}
+        animated={active}
+        className={active ? undefined : 'dmx-static-dim'}
+        ariaLabel="Agent"
+      />
+    </span>
+  );
 }
 
 // Detect a language hint from an arbitrary clipboard blob. Cheap heuristics
@@ -113,6 +156,8 @@ export const ChatInputCM = memo(function ChatInputCM({
   state,
   attachmentKind,
   placeholder: placeholderText,
+  loaderVariant,
+  active = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -120,6 +165,10 @@ export const ChatInputCM = memo(function ChatInputCM({
   const disabledRef = useRef(false);
 
   const [hasText, setHasText] = useState(false);
+  // Inline hover bg for the borderless paperclip / send buttons. The file uses
+  // inline styles throughout; Tailwind hover utilities aren't wired here.
+  const [attachHover, setAttachHover] = useState(false);
+  const [sendHover, setSendHover] = useState(false);
   // Sessions are SDK-driven: 'stopped'/'idle' means "ready to start a new turn",
   // 'running' means a turn is in flight (we client-side queue more sends),
   // 'errored' means the last turn failed and the input is blocked until the
@@ -553,9 +602,10 @@ export const ChatInputCM = memo(function ChatInputCM({
     <div
       style={{
         padding: '10px 14px 14px',
-        borderTop: '1px solid var(--border)',
         backgroundColor: 'var(--bg-sidebar)',
         flexShrink: 0,
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       {pendingSends.length > 0 && (
@@ -623,18 +673,14 @@ export const ChatInputCM = memo(function ChatInputCM({
           display: 'flex',
           alignItems: 'center',
           gap: 8,
-          padding: '4px 8px',
-          borderRadius: 0,
-          border: '1px solid var(--border-strong)',
-          backgroundColor: 'var(--bg-elevated)',
-          boxShadow: 'none',
-          transition: 'border-color var(--dur-fast) var(--ease-out)',
         }}
       >
         <button
           onClick={onAttachClick}
           disabled={disabled}
           title="Attach image"
+          onMouseEnter={() => setAttachHover(true)}
+          onMouseLeave={() => setAttachHover(false)}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -642,32 +688,23 @@ export const ChatInputCM = memo(function ChatInputCM({
             width: 26,
             height: 26,
             borderRadius: 0,
-            border: '1px solid transparent',
-            background: 'transparent',
+            border: 'none',
+            background: attachHover && !disabled ? 'var(--bg-hover)' : 'transparent',
             color: 'var(--text-muted)',
             cursor: disabled ? 'not-allowed' : 'pointer',
             flexShrink: 0,
             alignSelf: 'center',
+            transition: 'background-color var(--dur-fast) var(--ease-out)',
           }}
         >
           <Paperclip size={13} />
         </button>
 
-        <span
-          aria-hidden
-          style={{
-            color: 'var(--accent-amber)',
-            fontFamily: 'inherit',
-            fontSize: 12.5,
-            lineHeight: 1,
-            flexShrink: 0,
-            alignSelf: 'center',
-            userSelect: 'none',
-            WebkitUserSelect: 'none',
-          }}
-        >
-          {'>'}
-        </span>
+        <AgentAvatar
+          projectId={projectId}
+          loaderVariant={loaderVariant}
+          active={active}
+        />
 
         <div
           ref={containerRef}
@@ -687,6 +724,8 @@ export const ChatInputCM = memo(function ChatInputCM({
         <button
           onClick={() => onSendRef.current()}
           disabled={!canSend}
+          onMouseEnter={() => setSendHover(true)}
+          onMouseLeave={() => setSendHover(false)}
           title={
             !canSend
               ? disabled
@@ -703,13 +742,13 @@ export const ChatInputCM = memo(function ChatInputCM({
             width: 28,
             height: 28,
             borderRadius: 0,
-            border: `1px solid ${canSend ? 'var(--accent-amber)' : 'var(--border-strong)'}`,
-            backgroundColor: 'transparent',
+            border: 'none',
+            backgroundColor: sendHover && canSend ? 'var(--bg-hover)' : 'transparent',
             color: canSend ? 'var(--accent-amber)' : 'var(--text-faint)',
             cursor: canSend ? 'pointer' : 'not-allowed',
             flexShrink: 0,
             alignSelf: 'center',
-            transition: 'background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
+            transition: 'background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out)',
           }}
         >
           <Send size={13} />

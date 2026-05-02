@@ -362,7 +362,7 @@ export function IntegrationsSection() {
             checked={sendAlerts}
             onChange={(e) => setSendAlerts(e.target.checked)}
           />
-          Forward session alerts (errors, warnings, status changes)
+          Forward agent alerts (errors, warnings, status changes)
         </label>
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
           <Button size="sm" variant="primary" disabled={busy || !togglesDirty} onClick={handleSaveToggles}>

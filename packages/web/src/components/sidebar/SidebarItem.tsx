@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StatusDot } from './StatusDot';
+import { SessionStatusLoader } from './SessionStatusLoader';
 import { Bell, Square } from 'lucide-react';
-import type { ManagedProcess } from '../../lib/types';
+import type { ManagedProcess, Session } from '../../lib/types';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { IconButton } from '../ui';
@@ -72,7 +73,16 @@ export function SidebarItem({
       }}
     >
       <div style={{ marginTop: 4 }}>
-        <StatusDot state={process.state} isIdle={isIdle} />
+        {process.type === 'session' ? (
+          <SessionStatusLoader
+            loaderVariant={(process as Session).loaderVariant ?? null}
+            state={process.state}
+            projectId={process.projectId}
+            isIdle={isIdle}
+          />
+        ) : (
+          <StatusDot state={process.state} isIdle={isIdle} />
+        )}
       </div>
       <div style={{ marginLeft: 10, flex: 1, minWidth: 0 }}>
         <div

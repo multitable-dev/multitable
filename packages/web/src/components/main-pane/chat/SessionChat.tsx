@@ -194,16 +194,14 @@ export function SessionChat({ sessionId, session }: Props) {
             messages={messages}
             loading={loading}
             emptyHint={emptyHint}
-            thinking={session.state === 'running'}
-            sessionId={session.id}
-            projectId={session.projectId}
-            loaderVariant={session.loaderVariant}
           />
           <ChatInputCM
             processId={sessionId}
             projectId={session.projectId}
             state={session.state}
             attachmentKind="session"
+            loaderVariant={session.loaderVariant ?? null}
+            active={session.state === 'running'}
           />
           <PermissionBar sessionId={sessionId} />
         </div>

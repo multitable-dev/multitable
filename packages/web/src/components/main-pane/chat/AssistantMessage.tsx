@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
-import ReactMarkdown, { type Components } from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Streamdown, type Components } from 'streamdown';
+import 'streamdown/styles.css';
 import { CodeBlock } from './CodeBlock';
 
 interface Props {
@@ -9,8 +9,8 @@ interface Props {
 }
 
 // Module-level so the reference is stable across every AssistantMessage
-// render. A fresh components object per render forces react-markdown to
-// discard memoized children — a key cause of flicker during unrelated
+// render. A fresh components object per render forces the markdown renderer
+// to discard memoized children — a key cause of flicker during unrelated
 // parent re-renders (e.g. metrics ticks).
 const MD_COMPONENTS: Components = {
   code(props) {
@@ -51,15 +51,6 @@ const MD_COMPONENTS: Components = {
   p({ children }) {
     return <p style={{ margin: '6px 0' }}>{children}</p>;
   },
-  ul({ children }) {
-    return <ul style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ul>;
-  },
-  ol({ children }) {
-    return <ol style={{ margin: '6px 0', paddingLeft: 22 }}>{children}</ol>;
-  },
-  li({ children }) {
-    return <li style={{ margin: '2px 0' }}>{children}</li>;
-  },
   blockquote({ children }) {
     return (
       <blockquote
@@ -74,14 +65,115 @@ const MD_COMPONENTS: Components = {
       </blockquote>
     );
   },
-  h1: ({ children }) => <h3 style={{ fontSize: 16, margin: '10px 0 6px' }}>{children}</h3>,
-  h2: ({ children }) => <h4 style={{ fontSize: 14.5, margin: '10px 0 6px' }}>{children}</h4>,
-  h3: ({ children }) => <h5 style={{ fontSize: 13.5, margin: '10px 0 6px', fontWeight: 600 }}>{children}</h5>,
+  // Headings — real semantic levels with a sized hierarchy. h1 is no longer
+  // remapped to h3; it renders as a true h1 with the new font size.
+  h1: ({ children }) => (
+    <h1 style={{ fontSize: 17, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 style={{ fontSize: 15.5, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 style={{ fontSize: 14, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h3>
+  ),
+  h4: ({ children }) => (
+    <h4 style={{ fontSize: 13, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h4>
+  ),
+  h5: ({ children }) => (
+    <h5 style={{ fontSize: 12.5, fontWeight: 600, margin: '12px 0 6px' }}>{children}</h5>
+  ),
+  h6: ({ children }) => (
+    <h6
+      style={{
+        fontSize: 12,
+        fontWeight: 600,
+        margin: '12px 0 6px',
+        color: 'var(--text-secondary)',
+      }}
+    >
+      {children}
+    </h6>
+  ),
+  // GFM tables
+  table: ({ children }) => (
+    <table style={{ borderCollapse: 'collapse', margin: '8px 0', fontSize: '0.95em' }}>
+      {children}
+    </table>
+  ),
+  thead: ({ children }) => (
+    <thead style={{ backgroundColor: 'var(--bg-elevated)' }}>{children}</thead>
+  ),
+  tr: ({ children }) => <tr>{children}</tr>,
+  th: ({ children }) => (
+    <th
+      style={{
+        border: '1px solid var(--border)',
+        padding: '4px 8px',
+        textAlign: 'left',
+        fontWeight: 600,
+      }}
+    >
+      {children}
+    </th>
+  ),
+  td: ({ children }) => (
+    <td style={{ border: '1px solid var(--border)', padding: '4px 8px' }}>{children}</td>
+  ),
+  // Lists
+  ul: ({ children }) => <ul style={{ paddingLeft: 22, margin: '6px 0' }}>{children}</ul>,
+  ol: ({ children }) => <ol style={{ paddingLeft: 22, margin: '6px 0' }}>{children}</ol>,
+  li: ({ children }) => <li style={{ margin: '2px 0' }}>{children}</li>,
+  // Inline emphasis
+  strong: ({ children }) => (
+    <strong style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{children}</strong>
+  ),
+  em: ({ children }) => <em style={{ fontStyle: 'italic' }}>{children}</em>,
+  del: ({ children }) => (
+    <del style={{ textDecoration: 'line-through', color: 'var(--text-muted)' }}>{children}</del>
+  ),
+  // Centered three-dot motif in place of a full-width rule
+  hr: () => (
+    <div
+      style={{
+        textAlign: 'center',
+        color: 'var(--text-faint)',
+        letterSpacing: '0.5em',
+        margin: '14px 0',
+      }}
+    >
+      ···
+    </div>
+  ),
+  // GFM task list checkboxes
+  input: (props) => {
+    const { type, checked, disabled } = props as typeof props & {
+      type?: string;
+      checked?: boolean;
+      disabled?: boolean;
+    };
+    if (type === 'checkbox') {
+      return (
+        <input
+          type="checkbox"
+          checked={!!checked}
+          disabled={disabled}
+          readOnly
+          style={{
+            width: 12,
+            height: 12,
+            accentColor: 'var(--accent-amber)',
+            verticalAlign: '-1px',
+            marginRight: 4,
+          }}
+        />
+      );
+    }
+    return <input {...props} />;
+  },
 };
 
-const REMARK_PLUGINS = [remarkGfm];
-
-// Assistant message — rendered as GitHub-flavored markdown. Code fences are
+// Assistant message — rendered as GitHub-flavored markdown via Streamdown,
+// which auto-closes unclosed code fences during streaming. Code fences are
 // handed off to the shiki-backed CodeBlock. Inline code uses a compact chip.
 // Memoized so unrelated parent re-renders don't re-parse the markdown.
 export const AssistantMessage = memo(function AssistantMessage({ text, costLabel }: Props) {
@@ -95,9 +187,9 @@ export const AssistantMessage = memo(function AssistantMessage({ text, costLabel
           maxWidth: '100%',
         }}
       >
-        <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MD_COMPONENTS}>
+        <Streamdown components={MD_COMPONENTS} parseIncompleteMarkdown>
           {text}
-        </ReactMarkdown>
+        </Streamdown>
       </div>
       {costLabel && (
         <div

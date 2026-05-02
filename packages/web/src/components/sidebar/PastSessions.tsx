@@ -86,7 +86,7 @@ export function PastSessions() {
       })
       .catch((err) => {
         if (seq !== fetchSeq.current) return;
-        setError(err?.message || 'Failed to load past sessions');
+        setError(err?.message || 'Failed to load past agents');
       })
       .finally(() => {
         if (seq !== fetchSeq.current) return;
@@ -146,9 +146,9 @@ export function PastSessions() {
           return;
         }
       }
-      toast.error('Could not locate that session');
+      toast.error('Could not locate that agent');
     } catch {
-      toast.error('Could not switch to session');
+      toast.error('Could not switch to agent');
     }
   };
 
@@ -174,7 +174,7 @@ export function PastSessions() {
         .list({ q: debouncedQuery || undefined, cwd: scopeCwd || undefined, limit: 200 })
         .then(setData)
         .catch(() => {});
-      toast.success('Resumed session');
+      toast.success('Resumed agent');
     } catch (err: any) {
       toast.error(err?.message || 'Failed to resume');
     } finally {
@@ -218,7 +218,7 @@ export function PastSessions() {
       });
       setGroupDeepLoaded((prev) => new Set(prev).add(cwd));
     } catch {
-      toast.error('Failed to load more sessions');
+      toast.error('Failed to load more agents');
     }
   };
 
@@ -233,7 +233,7 @@ export function PastSessions() {
   return (
     <div
       style={{
-        borderTop: '1px solid var(--border)',
+        marginTop: 20,
         paddingBottom: 8,
         backgroundColor: 'transparent',
       }}
@@ -264,14 +264,14 @@ export function PastSessions() {
           style={{
             fontSize: 9.5,
             fontWeight: 500,
-            color: 'var(--text-muted)',
+            color: 'var(--text-faint)',
             textTransform: 'uppercase',
             letterSpacing: '0.18em',
+            marginRight: 'auto',
           }}
         >
-          PAST SESSIONS
+          PAST AGENTS
         </span>
-        <div style={{ flex: 1, height: 1, backgroundColor: 'var(--border)' }} />
       </div>
 
       {!sectionCollapsed && (
@@ -281,7 +281,7 @@ export function PastSessions() {
             <Input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={'Search past sessions\u2026'}
+              placeholder={'Search past agents\u2026'}
               leftIcon={<Search size={12} />}
               rightIcon={
                 query ? (
@@ -321,7 +321,7 @@ export function PastSessions() {
           )}
           {data && data.sessions.length === 0 && !loading && (
             <div style={{ padding: '6px 16px', fontSize: 11, color: 'var(--text-muted)' }}>
-              {debouncedQuery ? 'No matches' : 'No past sessions found'}
+              {debouncedQuery ? 'No matches' : 'No past agents found'}
             </div>
           )}
 
