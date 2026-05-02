@@ -1,5 +1,6 @@
 export type ProcessType = 'session' | 'terminal' | 'command';
 export type ProcessState = 'running' | 'idle' | 'stopped' | 'errored';
+export type AgentProvider = 'claude' | 'codex';
 
 export interface ProcessConfig {
   autostart: boolean;
@@ -34,6 +35,11 @@ export interface ManagedProcess {
 }
 
 export interface ClaudeSessionState {
+  agentProvider: AgentProvider;
+  agentSessionId: string | null;
+  // Mirror the agent session id under the legacy name for back-compat with any
+  // older code path that still reads `claudeSessionId`. New code should read
+  // `agentSessionId`.
   claudeSessionId: string | null;
   currentTool: string | null;
   toolCount: number;
@@ -46,7 +52,12 @@ export interface ClaudeSessionState {
 
 export interface Session extends ManagedProcess {
   type: 'session';
-  claudeSessionId?: string | null; // from DB — persists across daemon restarts
+  agentProvider: AgentProvider;
+  agentSessionId: string | null;
+  agentSessionIdHistory: string[];
+  // Legacy alias of agentSessionId — the daemon still emits both during the
+  // back-compat window. Prefer agentSessionId for new code.
+  claudeSessionId?: string | null;
   claudeState?: ClaudeSessionState; // in-memory — lost on daemon restart
   scratchpad?: string;
   loaderVariant?: string | null; // dot-matrix loader assigned at session creation

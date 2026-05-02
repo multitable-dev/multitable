@@ -419,7 +419,9 @@ function App() {
         useAppStore.getState().upsertSession({
           ...session,
           claudeState: {
-            claudeSessionId: state.claudeSessionId ?? session.claudeState?.claudeSessionId ?? null,
+            agentProvider: state.agentProvider ?? state.provider ?? session.agentProvider,
+            agentSessionId: state.agentSessionId ?? state.claudeSessionId ?? session.claudeState?.agentSessionId ?? null,
+            claudeSessionId: state.claudeSessionId ?? state.agentSessionId ?? session.claudeState?.claudeSessionId ?? null,
             currentTool: state.currentTool ?? null,
             toolCount: state.toolCount ?? 0,
             tokenCount: state.tokenCount ?? 0,

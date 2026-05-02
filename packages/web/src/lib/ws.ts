@@ -25,7 +25,12 @@ class WsClient {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}/ws`;
 
-    useAppStore.getState().setConnectionState('reconnecting');
+    // Only flip the banner for *re*connects. The first attempt should be
+    // invisible — flashing "Reconnecting..." during normal mount feels like
+    // a hang.
+    if (this.hasConnectedBefore) {
+      useAppStore.getState().setConnectionState('reconnecting');
+    }
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {

@@ -1,5 +1,7 @@
 import type { ProcessState } from '../types.js';
 
+export type AgentProvider = 'claude' | 'codex';
+
 // What we emit on the WS for the session view.
 export type AgentMessageOut =
   | { kind: 'assistant'; text: string; model?: string; ts: number }
@@ -14,12 +16,13 @@ export interface AgentSession {
   projectId: string;
   name: string;
   workingDir: string;
-  // === claude link ===
-  claudeSessionId: string | null; // mirrored to DB; learned from SDK init
-  // Prior claudeSessionIds this session has held. The SDK assigns a new id
-  // every time it "forks" on resume (see GitHub claude-code#8069 — closed
-  // not-planned, so this is permanent SDK behavior). Older ids point to JSONLs
-  // that still hold prior turns; the messages endpoint reads the full chain.
+  provider: AgentProvider;
+  // === provider link ===
+  agentSessionId: string | null; // mirrored to DB; Claude session id or Codex thread id
+  agentSessionIdHistory: string[];
+  // Back-compat aliases used by the existing Claude-specific code paths and
+  // frontend response shape during the provider migration.
+  claudeSessionId: string | null;
   claudeSessionIdHistory: string[];
   // === lifecycle ===
   state: ProcessState; // 'running' while a turn is in-flight, else 'idle'/'stopped'/'errored'
@@ -29,6 +32,7 @@ export interface AgentSession {
     abortController: AbortController;
     startedAt: number;
     promptPreview: string;
+    userMessageId: string;
   } | null;
   // === stats (replaces the in-memory ClaudeSessionState) ===
   totalCostUsd: number;
@@ -41,6 +45,7 @@ export interface AgentSession {
   activeSubagents: number;
   lastActivity: number;
   userMessages: string[]; // accumulated user prompts (used by AI rename)
+  messages: import('../transcripts/parser.js').Message[]; // in-memory history for providers without JSONL parser support
   // === streaming (in-flight assistant text) ===
   // Accumulated text of the current text content block as it arrives via
   // stream_event deltas. Reset to '' on each content_block_start of type=text;

@@ -8,6 +8,7 @@ export { Card } from './Card';
 export { Modal } from './Modal';
 export { Badge } from './Badge';
 export type { BadgeVariant, BadgeSize } from './Badge';
+export { AgentBadge } from './AgentBadge';
 export { Kbd } from './Kbd';
 export { Divider } from './Divider';
 export { Spinner } from './Spinner';

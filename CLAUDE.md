@@ -48,12 +48,34 @@ No test framework is configured yet — do not invent `npm test` incantations.
 
 ## Auth
 
-Sessions go through the Claude Agent SDK, which reads credentials from the same place the `claude` CLI does:
+Two SDKs are wired today and authenticate independently.
 
+**Claude Code SDK** reads from the same place the `claude` CLI does:
 - `ANTHROPIC_API_KEY` env var (preferred for daemons), or
 - `~/.claude/auth.json` (populated by `claude login`).
 
-If neither is present, the first turn fails with a 401-style error. Surface it via the `session:turn-error` toast.
+**Codex SDK** is a thin subprocess wrapper around `codex exec --experimental-json` (see `node_modules/@openai/codex-sdk/dist/index.js`). It inherits `process.env` and reads the codex CLI's own auth (`~/.codex/auth.json`, populated by `codex login`).
+
+If credentials are missing, the first turn fails. Surface via the `session:turn-error` toast.
+
+## Multi-provider architecture
+
+`AgentSession.provider` is `'claude' | 'codex'` (extensible). Each provider has an adapter under `packages/daemon/src/agent/providers/`:
+
+- `types.ts` — `ProviderAdapter` contract: `runTurn(s, text, ctrl, callbacks)` and optional `reset(s)`. `AdapterCallbacks` are the manager-owned hooks an adapter calls into.
+- `codex.ts` — `CodexAdapter`: wraps `@openai/codex-sdk`. Owns the per-session `Thread` cache.
+- Claude logic still lives inline in `agent/manager.ts` (its handlers are tightly coupled to permission/elicitation/hook plumbing). Treat the manager as the de-facto Claude adapter.
+- `index.ts` — re-exports.
+
+To add a new provider: drop a `<provider>.ts` adapter under `agent/providers/`, add a dispatch branch in `manager.ts`'s `sendTurn`, and (if the adapter has on-disk persistence) add a parser under `transcripts/`.
+
+### Codex specifics
+
+- **Approval policy is hardcoded to `'never'`** in `CodexAdapter.getThread`. The Codex SDK closes child stdin after writing the prompt and exposes no host-side approval callback, so any other policy will hang or auto-fail. Tool gating happens via `sandboxMode: 'workspace-write'` + `additionalDirectories` + `networkAccessEnabled`. `PermissionManager` stays Claude-only by design.
+- **No streaming text deltas.** Codex emits whole `agent_message` items at `item.completed` time. Live UI shows messages all at once; deltas only fire for Claude.
+- **No USD cost field on `Usage`.** Token counts populate; the dollar row is hidden in the cost UI for Codex sessions.
+- **Thread persistence** is owned by the codex CLI under `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<thread_id>.jsonl`. `transcripts/codexParser.ts` reads these into the same `Message[]` shape the Claude JSONL parser produces. `AgentSessionManager.register` hydrates `s.messages` from disk on startup; `/api/sessions/:id/messages` re-hydrates if the in-memory cache is empty.
+- **Past Codex threads** are listed via `GET /api/transcripts/codex` and resumed via `POST /api/transcripts/codex/:threadId/resume`. The AddAgentModal renders them as a separate section under "Or resume a Codex thread".
 
 ## Build gotcha: schema.sql
 

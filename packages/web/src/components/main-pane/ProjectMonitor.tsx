@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { Session, Command, Terminal } from '../../lib/types';
+import { isProcessActive } from '../../lib/processState';
 
 type AnyProcess = Session | Command | Terminal;
 
@@ -20,7 +21,7 @@ function buildLines(process: AnyProcess): { text: string; dim?: boolean; accent?
   if (process.type === 'session') {
     const s = process as Session;
     const lines: { text: string; dim?: boolean; accent?: string }[] = [
-      { text: '$ claude', accent: 'var(--accent-amber)' },
+      { text: `$ ${s.agentProvider}`, accent: 'var(--accent-amber)' },
     ];
     const label =
       s.claudeState?.userMessages?.[s.claudeState.userMessages.length - 1] ||
@@ -30,7 +31,7 @@ function buildLines(process: AnyProcess): { text: string; dim?: boolean; accent?
     const tool = s.claudeState?.currentTool;
     if (tool) {
       lines.push({ text: `▶ ${truncate(tool, 20)}`, accent: 'var(--accent-amber)' });
-    } else if (process.state === 'running' || process.state === 'idle') {
+    } else if (isProcessActive(process)) {
       lines.push({ text: '▶ waiting', dim: true });
     }
 

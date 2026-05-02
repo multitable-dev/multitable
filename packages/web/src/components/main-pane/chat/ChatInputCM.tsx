@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { Send, Paperclip, X, Clock } from 'lucide-react';
 
 import { getLoaderComponent } from '../../ui/loaders';
+import { AgentBadge } from '../../ui';
 import { getProjectColor } from '../../../lib/projectColor';
 
 // Stable empty array so the pending-sends selector doesn't churn on
@@ -10,7 +11,7 @@ const EMPTY_PENDING: string[] = [];
 import { toast } from 'react-hot-toast';
 import { wsClient } from '../../../lib/ws';
 import { api } from '../../../lib/api';
-import type { ProcessState } from '../../../lib/types';
+import type { ProcessState, AgentProvider } from '../../../lib/types';
 import { useAppStore } from '../../../stores/appStore';
 import { BUILTIN_THEMES } from '../../../lib/themes';
 import { buildCmTheme } from '../../../lib/cm-theme';
@@ -79,6 +80,8 @@ interface Props {
   placeholder?: string;
   /** Per-session loader variant; selects which dot-matrix animation renders. */
   loaderVariant?: string | null;
+  /** Provider that owns this session — drives the small `claude`/`codex` chip. */
+  agentProvider?: AgentProvider;
   /** Whether the agent is currently doing work (turn in flight). */
   active?: boolean;
 }
@@ -157,6 +160,7 @@ export const ChatInputCM = memo(function ChatInputCM({
   attachmentKind,
   placeholder: placeholderText,
   loaderVariant,
+  agentProvider,
   active = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -248,6 +252,7 @@ export const ChatInputCM = memo(function ChatInputCM({
               if (session) {
                 useAppStore.getState().upsertSession({
                   ...session,
+                  agentSessionId: null,
                   claudeSessionId: null,
                   claudeState: undefined,
                 });
@@ -705,6 +710,13 @@ export const ChatInputCM = memo(function ChatInputCM({
           loaderVariant={loaderVariant}
           active={active}
         />
+        {agentProvider && (
+          <AgentBadge
+            provider={agentProvider}
+            size="chip"
+            style={{ alignSelf: 'center', flexShrink: 0 }}
+          />
+        )}
 
         <div
           ref={containerRef}

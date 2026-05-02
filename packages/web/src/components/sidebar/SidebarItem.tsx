@@ -5,7 +5,7 @@ import { Bell, Square } from 'lucide-react';
 import type { ManagedProcess, Session } from '../../lib/types';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
-import { IconButton } from '../ui';
+import { IconButton, AgentBadge } from '../ui';
 import { relativeTime } from '../../lib/relativeTime';
 
 interface Props {
@@ -126,6 +126,13 @@ export function SidebarItem({
           >
             {process.name}
           </span>
+          {process.type === 'session' && (
+            <AgentBadge
+              provider={(process as Session).agentProvider}
+              size="glyph"
+              style={{ marginLeft: 4, flexShrink: 0 }}
+            />
+          )}
           {pendingCount > 0 && (
             <span
               title={

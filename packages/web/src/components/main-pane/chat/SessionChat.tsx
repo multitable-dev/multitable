@@ -40,7 +40,7 @@ export function SessionChat({ sessionId, session }: Props) {
 
   const [loading, setLoading] = useState(false);
   const isMobile = useIsMobile();
-  const claudeSessionId = session.claudeSessionId ?? session.claudeState?.claudeSessionId ?? null;
+  const agentSessionId = session.agentSessionId ?? session.claudeState?.agentSessionId ?? null;
   const lastLoadedKeyRef = useRef<string | null>(null);
   const subscribedIdRef = useRef<string | null>(null);
 
@@ -48,11 +48,11 @@ export function SessionChat({ sessionId, session }: Props) {
   // Claude session id changes. Resets scroll state by replacing, not
   // appending — ensures stale messages don't linger after "Start New".
   useEffect(() => {
-    const key = `${sessionId}:${claudeSessionId ?? ''}`;
+    const key = `${sessionId}:${agentSessionId ?? ''}`;
     if (lastLoadedKeyRef.current === key) return;
     lastLoadedKeyRef.current = key;
 
-    if (!claudeSessionId) {
+    if (!agentSessionId) {
       clearMessages(sessionId);
       return;
     }
@@ -69,7 +69,7 @@ export function SessionChat({ sessionId, session }: Props) {
         // Empty transcript is valid; errors are silent.
       })
       .finally(() => setLoading(false));
-  }, [sessionId, claudeSessionId, mergeMessages, clearMessages]);
+  }, [sessionId, agentSessionId, mergeMessages, clearMessages]);
 
   // Subscribe the WS client so we receive session events (assistant-message,
   // tool-event, user-message, etc.). Sessions have no PTY, so no dims are
@@ -93,14 +93,14 @@ export function SessionChat({ sessionId, session }: Props) {
   // during the outage).
   useEffect(() => {
     const off = wsClient.on('ws:reconnected', () => {
-      if (!claudeSessionId) return;
+      if (!agentSessionId) return;
       api.sessions
         .messages(sessionId)
         .then((res) => mergeMessages(sessionId, res.messages))
         .catch(() => {});
     });
     return off;
-  }, [sessionId, claudeSessionId, mergeMessages]);
+  }, [sessionId, agentSessionId, mergeMessages]);
 
   // When a new claudeSessionId is assigned mid-session (SessionStart), we
   // may already have some deltas in the store — keep them but also refetch
@@ -137,14 +137,14 @@ export function SessionChat({ sessionId, session }: Props) {
           lineHeight: 1.5,
         }}
       >
-        {claudeSessionId ? (
-          <>No messages yet. The conversation will appear here as Claude responds.</>
+        {agentSessionId ? (
+          <>No messages yet. The conversation will appear here as {session.agentProvider} responds.</>
         ) : (
-          <>Type a message below to start the conversation.</>
+          <>Type a message below to start a {session.agentProvider} conversation.</>
         )}
       </div>
     ),
-    [claudeSessionId, session.state]
+    [agentSessionId, session.agentProvider, session.state]
   );
 
   return (
@@ -204,6 +204,7 @@ export function SessionChat({ sessionId, session }: Props) {
             state={session.state}
             attachmentKind="session"
             loaderVariant={session.loaderVariant ?? null}
+            agentProvider={session.agentProvider}
             active={session.state === 'running'}
           />
           <PermissionBar sessionId={sessionId} />

@@ -98,6 +98,9 @@ function handleSubscribe(
         projectId: row.projectId,
         name: row.name,
         workingDir: row.workingDirectory || '',
+        provider: row.agentProvider,
+        agentSessionId: row.agentSessionId ?? null,
+        agentSessionIdHistory: row.agentSessionIdHistory ?? [],
         claudeSessionId: row.claudeSessionId ?? null,
         claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
       });
@@ -269,6 +272,9 @@ function handleSessionSend(msg: WsMessage, agentManager: AgentSessionManager, ws
       projectId: row.projectId,
       name: row.name,
       workingDir: row.workingDirectory || '',
+      provider: row.agentProvider,
+      agentSessionId: row.agentSessionId ?? null,
+      agentSessionIdHistory: row.agentSessionIdHistory ?? [],
       claudeSessionId: row.claudeSessionId ?? null,
       claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
     });

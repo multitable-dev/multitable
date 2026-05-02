@@ -31,10 +31,32 @@ export function initDb(): void {
     db.exec("ALTER TABLE sessions ADD COLUMN claude_session_id_history TEXT DEFAULT '[]'");
   } catch {}
   try {
+    db.exec("ALTER TABLE sessions ADD COLUMN agent_provider TEXT DEFAULT 'claude'");
+  } catch {}
+  try {
+    db.exec('ALTER TABLE sessions ADD COLUMN agent_session_id TEXT');
+  } catch {}
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN agent_session_id_history TEXT DEFAULT '[]'");
+  } catch {}
+  try {
     db.exec('ALTER TABLE sessions ADD COLUMN loader_variant TEXT');
   } catch {}
   try {
     db.exec('ALTER TABLE sessions ADD COLUMN git_baseline_commit TEXT');
+  } catch {}
+
+  // Sessions no longer use a PTY (they go through the Claude/Codex SDK). The
+  // pre-SDK PTY scrollback column accumulated stale BLOBs that ballooned
+  // /api/sessions responses to several MB on the wire. Free the rows first,
+  // then drop the column. Both wrapped in try/catch — the first nullifies
+  // existing data on every boot until the schema migration sticks; the second
+  // is a no-op once the column is gone.
+  try {
+    db.exec('UPDATE sessions SET scrollback_data = NULL WHERE scrollback_data IS NOT NULL');
+  } catch {}
+  try {
+    db.exec('ALTER TABLE sessions DROP COLUMN scrollback_data');
   } catch {}
 
   // Backfill loader_variant for any session missing one. Runs once per process
@@ -206,9 +228,11 @@ export interface SessionRow {
   autorespawn: number;
   terminal_alerts: number;
   file_watch_patterns: string;
+  agent_provider: string | null;
+  agent_session_id: string | null;
+  agent_session_id_history: string | null;
   claude_session_id: string | null;
   claude_session_id_history: string | null;
-  scrollback_data: Buffer | null;
   scratchpad: string;
   created_at: number;
   last_active_at: number | null;
@@ -231,9 +255,11 @@ export interface SessionRecord {
   autorespawn: boolean;
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
+  agentProvider: 'claude' | 'codex';
+  agentSessionId: string | null;
+  agentSessionIdHistory: string[];
   claudeSessionId: string | null;
   claudeSessionIdHistory: string[];
-  scrollbackData: Buffer | null;
   scratchpad: string;
   createdAt: number;
   lastActiveAt: number | null;
@@ -256,6 +282,12 @@ function parseClaudeSessionIdHistory(raw: string | null): string[] {
 }
 
 function rowToSession(row: SessionRow): SessionRecord {
+  const provider = row.agent_provider === 'codex' ? 'codex' : 'claude';
+  const agentSessionId = row.agent_session_id ?? row.claude_session_id;
+  const agentSessionIdHistory =
+    parseClaudeSessionIdHistory(row.agent_session_id_history).length > 0
+      ? parseClaudeSessionIdHistory(row.agent_session_id_history)
+      : parseClaudeSessionIdHistory(row.claude_session_id_history);
   return {
     id: row.id,
     projectId: row.project_id,
@@ -271,15 +303,22 @@ function rowToSession(row: SessionRow): SessionRecord {
     autorespawn: row.autorespawn === 1,
     terminalAlerts: row.terminal_alerts === 1,
     fileWatchPatterns: JSON.parse(row.file_watch_patterns || '[]'),
+    agentProvider: provider,
+    agentSessionId,
+    agentSessionIdHistory,
     claudeSessionId: row.claude_session_id,
     claudeSessionIdHistory: parseClaudeSessionIdHistory(row.claude_session_id_history),
-    scrollbackData: row.scrollback_data,
     scratchpad: row.scratchpad || '',
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
     loaderVariant: row.loader_variant,
     gitBaselineCommit: row.git_baseline_commit,
   };
+}
+
+function inferAgentProvider(command: string | null | undefined): 'claude' | 'codex' {
+  const first = (command ?? '').trim().split(/\s+/, 1)[0]?.toLowerCase() ?? '';
+  return first === 'codex' ? 'codex' : 'claude';
 }
 
 export function getSessionsByProject(projectId: string): SessionRecord[] {
@@ -311,6 +350,7 @@ export function createSession(data: {
   autorespawn?: boolean;
   terminalAlerts?: boolean;
   fileWatchPatterns?: string[];
+  agentProvider?: 'claude' | 'codex';
   /**
    * Optional explicit loader variant. Used by the transcript-resume flow to
    * reattach the same loader to a respawned session. When omitted, a variant
@@ -341,8 +381,8 @@ export function createSession(data: {
       id, project_id, name, command, working_directory, type,
       autostart, autorestart, autorestart_max, autorestart_delay_ms,
       autorestart_window_secs, autorespawn, terminal_alerts, file_watch_patterns,
-      scratchpad, created_at, loader_variant, git_baseline_commit
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
+      agent_provider, scratchpad, created_at, loader_variant, git_baseline_commit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
   `).run(
     id,
     data.projectId,
@@ -358,6 +398,7 @@ export function createSession(data: {
     data.autorespawn !== false ? 1 : 0,
     data.terminalAlerts ? 1 : 0,
     JSON.stringify(data.fileWatchPatterns ?? []),
+    data.agentProvider ?? inferAgentProvider(data.command),
     now,
     loaderVariant,
     data.gitBaselineCommit ?? null
@@ -383,6 +424,9 @@ export function updateSession(id: string, data: Partial<{
   autorespawn: boolean;
   terminalAlerts: boolean;
   fileWatchPatterns: string[];
+  agentProvider: 'claude' | 'codex';
+  agentSessionId: string | null;
+  agentSessionIdHistory: string[];
   claudeSessionId: string | null;
   claudeSessionIdHistory: string[];
   scratchpad: string;
@@ -402,6 +446,8 @@ export function updateSession(id: string, data: Partial<{
     autorestartWindowSecs: 'autorestart_window_secs',
     autorespawn: 'autorespawn',
     terminalAlerts: 'terminal_alerts',
+    agentProvider: 'agent_provider',
+    agentSessionId: 'agent_session_id',
     claudeSessionId: 'claude_session_id',
     scratchpad: 'scratchpad',
     lastActiveAt: 'last_active_at',
@@ -429,6 +475,11 @@ export function updateSession(id: string, data: Partial<{
     values.push(JSON.stringify(data.claudeSessionIdHistory));
   }
 
+  if (data.agentSessionIdHistory !== undefined) {
+    fields.push('agent_session_id_history = ?');
+    values.push(JSON.stringify(data.agentSessionIdHistory));
+  }
+
   if (fields.length === 0) return getSessionById(id);
   values.push(id);
   getDb().prepare(`UPDATE sessions SET ${fields.join(', ')} WHERE id = ?`).run(...values);
@@ -449,10 +500,6 @@ export function updateSession(id: string, data: Partial<{
   }
 
   return updated;
-}
-
-export function saveScrollback(sessionId: string, data: Buffer): void {
-  getDb().prepare('UPDATE sessions SET scrollback_data = ? WHERE id = ?').run(data, sessionId);
 }
 
 export function deleteSession(id: string): void {

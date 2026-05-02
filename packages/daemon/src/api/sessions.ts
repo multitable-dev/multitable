@@ -19,6 +19,7 @@ import {
   walkParentUuidChain,
   getSessionJsonlPath,
 } from '../transcripts/parser.js';
+import { parseCodexThread } from '../transcripts/codexParser.js';
 import { createAttachmentHandler, rawAttachmentBody, removeAttachmentDir } from './attachments.js';
 import type { AgentSessionManager } from '../agent/manager.js';
 
@@ -96,6 +97,9 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
         projectId: session.projectId,
         name: session.name,
         workingDir: session.workingDirectory || '',
+        provider: session.agentProvider,
+        agentSessionId: session.agentSessionId ?? null,
+        agentSessionIdHistory: session.agentSessionIdHistory ?? [],
         claudeSessionId: session.claudeSessionId ?? null,
         claudeSessionIdHistory: session.claudeSessionIdHistory ?? [],
       });
@@ -197,6 +201,12 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
+    if (session.agentProvider === 'codex') {
+      const agent = agentManager.get(req.params.id);
+      const fallback = (agent?.userMessages ?? []).map((text) => ({ text, timestamp: null }));
+      return res.json({ prompts: fallback, source: 'memory' });
+    }
+
     if (session.claudeSessionId && session.workingDirectory) {
       try {
         const prompts = parseSessionPrompts(session.workingDirectory, session.claudeSessionId);
@@ -235,6 +245,25 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
   router.get('/:id/messages', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
+    if (session.agentProvider === 'codex') {
+      const agent = agentManager.get(req.params.id);
+      let messages = agent?.messages ?? [];
+      // Re-hydrate from disk if the in-memory cache is empty but a thread id
+      // exists. Covers the case where register() ran before the codex CLI had
+      // written its first turn, or where the parse failed at register time.
+      if (messages.length === 0 && session.agentSessionId) {
+        try {
+          const hydrated = parseCodexThread(session.agentSessionId);
+          if (hydrated.length > 0) {
+            if (agent) agent.messages = hydrated;
+            messages = hydrated;
+          }
+        } catch (err) {
+          console.error('[sessions] codex re-hydration failed for', session.id, err);
+        }
+      }
+      return res.json({ messages, endOffset: 0 });
+    }
     if (!session.claudeSessionId || !session.workingDirectory) {
       return res.json({ messages: [], endOffset: 0 });
     }
@@ -296,23 +325,13 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
   router.post('/:id/reset', (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-    agentManager.abortTurn(req.params.id);
+    agentManager.resetSession(req.params.id);
     updateSession(req.params.id, {
+      agentSessionId: null,
+      agentSessionIdHistory: [],
       claudeSessionId: null,
       claudeSessionIdHistory: [],
     });
-    const agent = agentManager.get(req.params.id);
-    if (agent) {
-      agent.claudeSessionId = null;
-      agent.claudeSessionIdHistory = [];
-      agent.userMessages = [];
-      agent.toolCount = 0;
-      agent.tokensIn = 0;
-      agent.tokensOut = 0;
-      agent.cacheCreationTokens = 0;
-      agent.cacheReadTokens = 0;
-      agent.totalCostUsd = 0;
-    }
     const updated = getSessionById(req.params.id);
     res.json({ ok: true, session: updated });
   });
@@ -329,7 +348,10 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
     let prompts: string[] = [];
-    if (session.claudeSessionId && session.workingDirectory) {
+    if (session.agentProvider === 'codex') {
+      prompts = agentManager.get(req.params.id)?.userMessages ?? [];
+    }
+    if (prompts.length === 0 && session.claudeSessionId && session.workingDirectory) {
       try {
         prompts = parseSessionPrompts(session.workingDirectory, session.claudeSessionId).map((p) => p.text);
       } catch {}

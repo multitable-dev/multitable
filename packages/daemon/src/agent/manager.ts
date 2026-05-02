@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { createRequire } from 'node:module';
 import { query } from '@anthropic-ai/claude-agent-sdk';
 import type {
   HookCallback,
@@ -8,6 +9,7 @@ import type {
 import type { AgentSession, SendTurnInput, AlertSeverity } from './types.js';
 import type { ProcessState } from '../types.js';
 import type { Message } from '../transcripts/parser.js';
+import { parseCodexThread } from '../transcripts/codexParser.js';
 import type { PermissionManager } from '../hooks/permissionManager.js';
 import type { ElicitationManager } from '../hooks/elicitationManager.js';
 import type { OnElicitation } from '@anthropic-ai/claude-agent-sdk';
@@ -20,6 +22,8 @@ import {
 import { createAlert } from './alerts.js';
 import { updateSession, insertCostRecord, getSessionById } from '../db/store.js';
 import { detectOptions } from '../hooks/optionDetector.js';
+import { CodexAdapter } from './providers/codex.js';
+import type { AdapterCallbacks } from './providers/types.js';
 
 // Agent-modal defaults from AddAgentModal — session.name matching one of these
 // is considered unnamed and eligible for auto-rename from the first prompt.
@@ -31,6 +35,31 @@ const AGENT_DEFAULT_NAMES = new Set([
   'Aider',
   'Goose',
 ]);
+
+const requireFromHere = createRequire(__filename);
+
+function isMuslRuntime(): boolean {
+  const report = typeof process.report?.getReport === 'function'
+    ? process.report.getReport() as { header?: { glibcVersionRuntime?: string } }
+    : null;
+  return process.platform === 'linux' && !report?.header?.glibcVersionRuntime;
+}
+
+function resolveClaudeCodeExecutable(): string | undefined {
+  if (process.platform !== 'linux') return undefined;
+  const arch = process.arch;
+  const libcSuffix = isMuslRuntime() ? '-musl' : '';
+  const preferred = `@anthropic-ai/claude-agent-sdk-linux-${arch}${libcSuffix}/claude`;
+  const fallback = `@anthropic-ai/claude-agent-sdk-linux-${arch}/claude`;
+  for (const specifier of [preferred, fallback]) {
+    try {
+      return requireFromHere.resolve(specifier);
+    } catch {
+      /* try next candidate */
+    }
+  }
+  return undefined;
+}
 
 function titleFromFirstPrompt(prompt: string, maxLen = 60): string {
   const firstLine = prompt.split('\n', 1)[0] ?? prompt;
@@ -44,6 +73,11 @@ type RegisterInput = Omit<
   | 'state'
   | 'currentTurn'
   | 'startedAt'
+  | 'provider'
+  | 'agentSessionId'
+  | 'agentSessionIdHistory'
+  | 'claudeSessionId'
+  | 'claudeSessionIdHistory'
   | 'totalCostUsd'
   | 'tokensIn'
   | 'tokensOut'
@@ -54,12 +88,24 @@ type RegisterInput = Omit<
   | 'activeSubagents'
   | 'lastActivity'
   | 'userMessages'
+  | 'messages'
   | 'streamingText'
   | 'streamingBlockIndex'
->;
+> &
+  Partial<
+    Pick<
+      AgentSession,
+      | 'provider'
+      | 'agentSessionId'
+      | 'agentSessionIdHistory'
+      | 'claudeSessionId'
+      | 'claudeSessionIdHistory'
+    >
+  >;
 
 export class AgentSessionManager extends EventEmitter {
   private sessions = new Map<string, AgentSession>();
+  private codexAdapter = new CodexAdapter();
   private permManager: PermissionManager;
   private elicitManager: ElicitationManager;
 
@@ -82,8 +128,15 @@ export class AgentSessionManager extends EventEmitter {
       projectId: input.projectId,
       name: input.name,
       workingDir: input.workingDir,
-      claudeSessionId: input.claudeSessionId,
-      claudeSessionIdHistory: [...input.claudeSessionIdHistory],
+      provider: input.provider ?? 'claude',
+      agentSessionId: input.agentSessionId ?? input.claudeSessionId ?? null,
+      agentSessionIdHistory: [
+        ...(input.agentSessionIdHistory ?? input.claudeSessionIdHistory ?? []),
+      ],
+      claudeSessionId: input.claudeSessionId ?? input.agentSessionId ?? null,
+      claudeSessionIdHistory: [
+        ...(input.claudeSessionIdHistory ?? input.agentSessionIdHistory ?? []),
+      ],
       state: 'stopped',
       startedAt: null,
       currentTurn: null,
@@ -97,10 +150,24 @@ export class AgentSessionManager extends EventEmitter {
       activeSubagents: 0,
       lastActivity: 0,
       userMessages: [],
+      messages: [],
       streamingText: '',
       streamingBlockIndex: null,
     };
     this.sessions.set(session.id, session);
+    // Codex sessions have no JSONL parser at the API layer — the daemon's own
+    // s.messages is the source of truth. Hydrate from the codex CLI's
+    // ~/.codex/sessions/<thread_id> rollout file so reconnects after a daemon
+    // restart show the prior conversation. Failures are non-fatal — a brand
+    // new session has no file yet, which is expected.
+    if (session.provider === 'codex' && session.agentSessionId) {
+      try {
+        const hydrated = parseCodexThread(session.agentSessionId);
+        if (hydrated.length > 0) session.messages = hydrated;
+      } catch (err) {
+        console.error('[agent] codex hydration failed for', session.id, err);
+      }
+    }
     return session;
   }
 
@@ -124,10 +191,12 @@ export class AgentSessionManager extends EventEmitter {
     if (s.currentTurn) throw new Error('turn already in flight');
 
     const ctrl = new AbortController();
+    const turnStartedAt = Date.now();
     s.currentTurn = {
       abortController: ctrl,
-      startedAt: Date.now(),
+      startedAt: turnStartedAt,
       promptPreview: text.slice(0, 80),
+      userMessageId: `turn-${turnStartedAt}`,
     };
     s.state = 'running';
     s.lastActivity = Date.now();
@@ -142,16 +211,17 @@ export class AgentSessionManager extends EventEmitter {
 
     this.emit('state-changed', { sessionId, state: 'running' as ProcessState });
 
-    // Optimistically push the user's own message so the UI can render without
-    // waiting for the SDK to echo it back. Shape matches sdkAdapter output so
-    // later dedupe-by-id works when the SDK-side user message arrives.
-    const userTs = Date.now();
+    // Always surface the submitted prompt immediately. Claude's SDK does not
+    // reliably echo user messages for resumed sessions; Codex does not emit a
+    // separate user item at all. If Claude later sends the same user message,
+    // handleSdkMessage suppresses that duplicate.
     const userMsg: Message = {
-      id: `turn-${userTs}`,
-      ts: userTs,
+      id: s.currentTurn.userMessageId,
+      ts: s.currentTurn.startedAt,
       kind: 'user',
       text,
     };
+    s.messages.push(userMsg);
     this.emit('user-message', { sessionId, messages: [userMsg] });
 
     // Watchdog: if the SDK iterator yields no message for this long, abort
@@ -175,30 +245,36 @@ export class AgentSessionManager extends EventEmitter {
     };
 
     try {
-      const it = query({
-        prompt: text,
-        options: {
-          cwd: s.workingDir,
-          ...(s.claudeSessionId ? { resume: s.claudeSessionId } : {}),
-          settingSources: ['project', 'user'],
-          permissionMode: 'default',
-          canUseTool: this.makeCanUseTool(sessionId),
-          onElicitation: this.makeOnElicitation(sessionId),
-          hooks: this.makeHooks(sessionId),
-          includePartialMessages: true,
-          // NOTE: Phase 0 correction — SDK accepts the controller, NOT just its signal.
-          abortController: ctrl,
-        },
-      });
-      armStuckTimer();
-      for await (const msg of it) {
-        sawAnyMessage = true;
+      if (s.provider === 'codex') {
+        await this.codexAdapter.runTurn(s, text, ctrl, this.makeAdapterCallbacks(sessionId));
+      } else {
+        const pathToClaudeCodeExecutable = resolveClaudeCodeExecutable();
+        const it = query({
+          prompt: text,
+          options: {
+            cwd: s.workingDir,
+            ...(s.claudeSessionId ? { resume: s.claudeSessionId } : {}),
+            ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
+            settingSources: ['project', 'user'],
+            permissionMode: 'default',
+            canUseTool: this.makeCanUseTool(sessionId),
+            onElicitation: this.makeOnElicitation(sessionId),
+            hooks: this.makeHooks(sessionId),
+            includePartialMessages: true,
+            // NOTE: Phase 0 correction — SDK accepts the controller, NOT just its signal.
+            abortController: ctrl,
+          },
+        });
         armStuckTimer();
-        try {
-          this.handleSdkMessage(sessionId, msg);
-        } catch (handlerErr) {
-          // Don't let a handler bug abort the whole turn — log and continue.
-          console.error('[agent] handler error:', handlerErr);
+        for await (const msg of it) {
+          sawAnyMessage = true;
+          armStuckTimer();
+          try {
+            this.handleSdkMessage(sessionId, msg);
+          } catch (handlerErr) {
+            // Don't let a handler bug abort the whole turn — log and continue.
+            console.error('[agent] handler error:', handlerErr);
+          }
         }
       }
       if (abortedDueToStuck) {
@@ -238,8 +314,8 @@ export class AgentSessionManager extends EventEmitter {
         this.emit('assistant-delta', { sessionId, text: '' });
       }
       if (s.state === 'running') {
-        s.state = 'idle';
-        this.emit('state-changed', { sessionId, state: 'idle' as ProcessState });
+        s.state = 'stopped';
+        this.emit('state-changed', { sessionId, state: 'stopped' as ProcessState });
       }
       s.lastActivity = Date.now();
       try {
@@ -249,6 +325,77 @@ export class AgentSessionManager extends EventEmitter {
       }
       this.emit('turn-complete', { sessionId });
     }
+  }
+
+  /**
+   * Build the AdapterCallbacks bag for a given session id. Provider adapters
+   * call into this when they produce SDK output; the manager owns the actual
+   * EventEmitter surface, the in-memory AgentSession, and the DB writes.
+   *
+   * Adding a new provider = drop a new adapter file under agent/providers/,
+   * implement ProviderAdapter, and dispatch to it in sendTurn (one branch).
+   */
+  private makeAdapterCallbacks(sessionId: string): AdapterCallbacks {
+    return {
+      emitAssistantMessage: (messages) => this.emit('assistant-message', { sessionId, messages }),
+      emitToolEvent: (messages) => this.emit('tool-event', { sessionId, messages }),
+      emitUserMessage: (messages) => this.emit('user-message', { sessionId, messages }),
+      pushMessages: (messages) => {
+        const s = this.sessions.get(sessionId);
+        if (s) s.messages.push(...messages);
+      },
+      onSessionIdAssigned: (newId, history) => {
+        const s = this.sessions.get(sessionId);
+        if (!s) return;
+        s.agentSessionId = newId;
+        s.agentSessionIdHistory = history;
+        // Mirror to the legacy claudeSessionId fields so existing code paths
+        // (cost endpoint, AddAgentModal, etc.) keep working during the
+        // back-compat window.
+        s.claudeSessionId = newId;
+        s.claudeSessionIdHistory = history;
+        try {
+          updateSession(sessionId, {
+            agentSessionId: newId,
+            agentSessionIdHistory: history,
+            claudeSessionId: newId,
+            claudeSessionIdHistory: history,
+          });
+        } catch (err) {
+          console.error('[agent] failed to persist agent session id:', err);
+        }
+        this.emit('session-updated', { sessionId, claudeSessionId: newId });
+      },
+      emitStateSnapshot: () => {
+        const s = this.sessions.get(sessionId);
+        if (!s) return;
+        this.emit('state-snapshot', { sessionId, snapshot: this.snapshotStats(s) });
+      },
+      applyUsage: ({ tokensIn, tokensOut, cacheCreationTokens, cacheReadTokens, costUsd }) => {
+        const s = this.sessions.get(sessionId);
+        if (!s) return;
+        s.tokensIn += tokensIn;
+        s.tokensOut += tokensOut;
+        s.cacheCreationTokens += cacheCreationTokens;
+        s.cacheReadTokens += cacheReadTokens;
+        s.totalCostUsd += costUsd;
+        try {
+          insertCostRecord({ sessionId, tokensIn, tokensOut, costUsd });
+        } catch (err) {
+          console.error('[agent] failed to insert usage record:', err);
+        }
+      },
+      emitTurnResult: (input) => this.emit('turn-result', { sessionId, ...input }),
+      setCurrentTool: (name) => {
+        const s = this.sessions.get(sessionId);
+        if (s) s.currentTool = name;
+      },
+      bumpActivity: () => {
+        const s = this.sessions.get(sessionId);
+        if (s) s.lastActivity = Date.now();
+      },
+      maybeRenameFromFirstPrompt: (prompt) => this.maybeRenameFromFirstPrompt(sessionId, prompt),
+    };
   }
 
   /**
@@ -356,8 +503,12 @@ export class AgentSessionManager extends EventEmitter {
                   : s.claudeSessionIdHistory;
               s.claudeSessionId = newSid;
               s.claudeSessionIdHistory = nextHistory;
+              s.agentSessionId = newSid;
+              s.agentSessionIdHistory = nextHistory;
               try {
                 updateSession(sessionId, {
+                  agentSessionId: newSid,
+                  agentSessionIdHistory: nextHistory,
                   claudeSessionId: newSid,
                   claudeSessionIdHistory: nextHistory,
                 });
@@ -429,6 +580,7 @@ export class AgentSessionManager extends EventEmitter {
           s.streamingBlockIndex = null;
           this.emit('assistant-delta', { sessionId, text: '' });
         }
+        s.messages.push(...messages);
         this.emit('assistant-message', { sessionId, messages });
         return;
       }
@@ -451,10 +603,35 @@ export class AgentSessionManager extends EventEmitter {
         if (toolEvents.length > 0) {
           // Tool call completed — clear currentTool.
           s.currentTool = null;
+          s.messages.push(...toolEvents);
           this.emit('tool-event', { sessionId, messages: toolEvents });
         }
         if (userMessages.length > 0) {
-          this.emit('user-message', { sessionId, messages: userMessages });
+          // Suppress the SDK's echo of the prompt we already pushed optimistically
+          // at sendTurn start. We compare on normalized text rather than exact
+          // text because Claude's SDK sometimes reformats whitespace / expands
+          // slash commands on the way through. We also suppress when the SDK
+          // emits a message whose id collides with one already in s.messages
+          // (defensive against future SDK changes that pass the optimistic id
+          // through verbatim).
+          const optimisticId = s.currentTurn?.userMessageId ?? null;
+          const lastPrompt = s.userMessages[s.userMessages.length - 1] ?? '';
+          const norm = (t: string) => t.trim().replace(/\s+/g, ' ');
+          const lastPromptNorm = norm(lastPrompt);
+          const seenIds = new Set(s.messages.map((m) => m.id));
+          const filtered = userMessages.filter((u) => {
+            if (u.kind !== 'user') return true;
+            if (s.currentTurn !== null && norm(u.text) === lastPromptNorm) return false;
+            if (optimisticId && u.id === optimisticId) return false;
+            if (seenIds.has(u.id)) return false;
+            return true;
+          });
+          if (filtered.length === 0) {
+            s.lastActivity = Date.now();
+            return;
+          }
+          s.messages.push(...filtered);
+          this.emit('user-message', { sessionId, messages: filtered });
         }
         s.lastActivity = Date.now();
         return;
@@ -602,7 +779,33 @@ export class AgentSessionManager extends EventEmitter {
     } catch (err) {
       console.error('[agent] elicit clearForSession failed:', err);
     }
+    const s = this.sessions.get(sessionId);
+    if (s) this.codexAdapter.reset?.(s);
     this.sessions.delete(sessionId);
+  }
+
+  resetSession(sessionId: string): void {
+    this.abortTurn(sessionId);
+    const s = this.sessions.get(sessionId);
+    if (s) this.codexAdapter.reset?.(s);
+    if (!s) return;
+    s.agentSessionId = null;
+    s.agentSessionIdHistory = [];
+    s.claudeSessionId = null;
+    s.claudeSessionIdHistory = [];
+    s.userMessages = [];
+    s.messages = [];
+    s.toolCount = 0;
+    s.currentTool = null;
+    s.tokensIn = 0;
+    s.tokensOut = 0;
+    s.cacheCreationTokens = 0;
+    s.cacheReadTokens = 0;
+    s.totalCostUsd = 0;
+    s.streamingText = '';
+    s.streamingBlockIndex = null;
+    s.lastActivity = Date.now();
+    this.emit('state-snapshot', { sessionId, snapshot: this.snapshotStats(s) });
   }
 
   /**
@@ -853,6 +1056,9 @@ export class AgentSessionManager extends EventEmitter {
    */
   private snapshotStats(s: AgentSession): Record<string, unknown> {
     return {
+      provider: s.provider,
+      agentProvider: s.provider,
+      agentSessionId: s.agentSessionId,
       claudeSessionId: s.claudeSessionId,
       currentTool: s.currentTool,
       toolCount: s.toolCount,

@@ -262,10 +262,11 @@ function CostTab({ session }: { session: Session }) {
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState(false);
 
-  const claudeSessionId = session.claudeState?.claudeSessionId ?? null;
+  const provider = session.agentProvider;
+  const agentSessionId = session.agentSessionId ?? session.claudeState?.agentSessionId ?? null;
   const handleCopyId = () => {
-    if (!claudeSessionId) return;
-    copyToClipboard(claudeSessionId);
+    if (!agentSessionId) return;
+    copyToClipboard(agentSessionId);
     setCopiedId(true);
     setTimeout(() => setCopiedId(false), 1200);
   };
@@ -319,10 +320,15 @@ function CostTab({ session }: { session: Session }) {
   if (totalTokens === 0) {
     return (
       <div style={{ padding: 16, color: 'var(--text-muted)', fontSize: 13 }}>
-        No cost data available yet. Cost tracking begins after the first Claude response.
+        No cost data available yet. Cost tracking begins after the first agent response.
       </div>
     );
   }
+
+  // Codex SDK exposes only token counts — no USD field on Usage. Hiding the
+  // big cost figure for codex sessions until/unless we wire a model-rate
+  // lookup. Token usage and cache breakdown still render below.
+  const showDollarCost = provider !== 'codex';
 
   return (
     <div style={{ padding: 16 }}>
@@ -335,10 +341,10 @@ function CostTab({ session }: { session: Session }) {
         textAlign: 'center',
       }}>
         <div style={{ fontSize: 24, fontWeight: 600, color: 'var(--text-primary)', fontFamily: 'monospace' }}>
-          {formatCost(costUsd)}
+          {showDollarCost ? formatCost(costUsd) : '—'}
         </div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-          Total session cost
+          {showDollarCost ? 'Total session cost' : 'Cost not tracked for Codex'}
         </div>
       </div>
 
@@ -402,7 +408,7 @@ function CostTab({ session }: { session: Session }) {
           <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>{row.value}</span>
         </div>
       ))}
-      {claudeSessionId && (
+      {agentSessionId && (
         <div
           style={{
             display: 'flex',
@@ -413,7 +419,7 @@ function CostTab({ session }: { session: Session }) {
             fontSize: 13,
           }}
         >
-          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>Session ID</span>
+          <span style={{ color: 'var(--text-secondary)', flexShrink: 0 }}>{provider === 'codex' ? 'Thread ID' : 'Session ID'}</span>
           <button
             onClick={handleCopyId}
             title={copiedId ? 'Copied' : 'Click to copy'}
@@ -434,7 +440,7 @@ function CostTab({ session }: { session: Session }) {
             }}
           >
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {claudeSessionId}
+              {agentSessionId}
             </span>
             {copiedId ? <Check size={12} /> : <Copy size={12} />}
           </button>

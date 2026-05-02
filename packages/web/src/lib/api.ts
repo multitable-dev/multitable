@@ -78,8 +78,10 @@ export const api = {
   },
   sessions: {
     list: (projectId: string) => get<Session[]>(`/api/projects/${projectId}/sessions`),
-    create: (projectId: string, data: { name: string; command: string }) =>
-      post<Session>(`/api/projects/${projectId}/sessions`, data),
+    create: (
+      projectId: string,
+      data: { name: string; command: string; agentProvider?: 'claude' | 'codex' },
+    ) => post<Session>(`/api/projects/${projectId}/sessions`, data),
     update: (id: string, data: Partial<Session>) => put<Session>(`/api/sessions/${id}`, data),
     delete: (id: string) => del(`/api/sessions/${id}`),
     reset: (id: string) => post<{ ok: boolean; session: Session }>(`/api/sessions/${id}/reset`),
@@ -213,8 +215,30 @@ export const api = {
       }>(`/api/transcripts${tail}`);
     },
     resume: (sessionId: string) =>
-      post<{ ok: boolean; sessionId: string; projectId: string; pid: number }>(
+      post<{ ok: boolean; sessionId: string; projectId: string; pid: number | null }>(
         `/api/transcripts/${sessionId}/resume`
+      ),
+    listCodex: (params?: { cwd?: string; limit?: number }) => {
+      const qs = new URLSearchParams();
+      if (params?.cwd) qs.set('cwd', params.cwd);
+      if (params?.limit) qs.set('limit', String(params.limit));
+      const tail = qs.toString() ? `?${qs.toString()}` : '';
+      return get<{
+        projects: { cwd: string; projectName: string; sessionCount: number }[];
+        sessions: {
+          sessionId: string;
+          cwd: string;
+          projectName: string;
+          gitBranch: string | null;
+          firstPrompt: string | null;
+          mtime: number;
+          pinnedSessionId: string | null;
+        }[];
+      }>(`/api/transcripts/codex${tail}`);
+    },
+    resumeCodex: (threadId: string) =>
+      post<{ ok: boolean; sessionId: string; projectId: string; pid: number | null }>(
+        `/api/transcripts/codex/${threadId}/resume`
       ),
   },
 };

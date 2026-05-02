@@ -129,6 +129,9 @@ async function main() {
         projectId: project.id,
         name: session.name,
         workingDir: session.workingDirectory || project.path,
+        provider: session.agentProvider,
+        agentSessionId: session.agentSessionId ?? null,
+        agentSessionIdHistory: session.agentSessionIdHistory ?? [],
         claudeSessionId: session.claudeSessionId ?? null,
         claudeSessionIdHistory: session.claudeSessionIdHistory ?? [],
       });

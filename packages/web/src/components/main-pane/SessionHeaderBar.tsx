@@ -4,7 +4,7 @@ import { PanelBottom, Copy, Check, Pencil, Sparkles, Menu } from 'lucide-react';
 import { StatusDot } from '../sidebar/StatusDot';
 import { AttachButton } from './AttachButton';
 import type { Session } from '../../lib/types';
-import { IconButton, Spinner } from '../ui';
+import { IconButton, Spinner, AgentBadge } from '../ui';
 import { api } from '../../lib/api';
 import { useAppStore } from '../../stores/appStore';
 import { useIsMobile } from '../../lib/useIsMobile';
@@ -27,6 +27,8 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
   const [aiLoading, setAiLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const upsertSession = useAppStore((s) => s.upsertSession);
+  const provider = session.agentProvider;
+  const agentSessionId = session.agentSessionId ?? claudeState?.agentSessionId ?? null;
 
   useEffect(() => {
     if (editing) {
@@ -84,8 +86,8 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
   };
 
   const handleCopySessionId = () => {
-    if (claudeState?.claudeSessionId) {
-      navigator.clipboard.writeText(claudeState.claudeSessionId);
+    if (agentSessionId) {
+      navigator.clipboard.writeText(agentSessionId);
       setCopied(true);
       setTimeout(() => setCopied(false), 1200);
     }
@@ -349,10 +351,11 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
 
       {/* Bottom row — chips */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-        {claudeState?.claudeSessionId && (
+        <AgentBadge provider={provider} size="chip" />
+        {agentSessionId && (
           <span
             onClick={handleCopySessionId}
-            title="Click to copy session ID"
+            title={`Click to copy ${provider} session ID`}
             style={{
               ...chipStyle,
               cursor: 'pointer',
@@ -373,7 +376,7 @@ export function SessionHeaderBar({ session, onToggleDetailPanel, projectName, on
           >
             {copied ? <Check size={11} /> : <Copy size={11} />}
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {claudeState.claudeSessionId}
+              {agentSessionId}
             </span>
           </span>
         )}

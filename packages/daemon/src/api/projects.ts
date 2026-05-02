@@ -352,7 +352,17 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
     const project = getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const { name, command, workingDirectory, autostart, autorestart, autorespawn, terminalAlerts, fileWatchPatterns } = req.body || {};
+    const {
+      name,
+      command,
+      workingDirectory,
+      autostart,
+      autorestart,
+      autorespawn,
+      terminalAlerts,
+      fileWatchPatterns,
+      agentProvider,
+    } = req.body || {};
     if (!name || !command) {
       return res.status(400).json({ error: 'name and command are required' });
     }
@@ -367,6 +377,8 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
     }
 
     try {
+      const provider: 'claude' | 'codex' | undefined =
+        agentProvider === 'claude' || agentProvider === 'codex' ? agentProvider : undefined;
       const session = createSession({
         projectId: req.params.id,
         name,
@@ -379,6 +391,7 @@ export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher
         terminalAlerts,
         fileWatchPatterns,
         gitBaselineCommit,
+        agentProvider: provider,
       });
       res.status(201).json(session);
     } catch (err) {

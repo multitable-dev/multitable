@@ -96,7 +96,7 @@ export function createServer(
   app.use('/api/terminals', createTerminalsRouter(manager));
   app.use('/api/config', createConfigRouter());
   app.use('/api/search', createSearchRouter(manager));
-  app.use('/api/transcripts', createTranscriptsRouter(manager));
+  app.use('/api/transcripts', createTranscriptsRouter(agentManager));
   app.use('/api/notes', createNotesRouter());
   app.use('/api/integrations', createIntegrationsRouter(tgBridge, permManager, agentManager));
   app.use('/api/projects/:projectId/git', createGitRouter());
@@ -127,6 +127,9 @@ export function createServer(
         projectId: row.projectId,
         name: row.name,
         workingDir: row.workingDirectory || '',
+        provider: row.agentProvider,
+        agentSessionId: row.agentSessionId,
+        agentSessionIdHistory: row.agentSessionIdHistory ?? [],
         claudeSessionId: row.claudeSessionId,
         claudeSessionIdHistory: row.claudeSessionIdHistory ?? [],
       });

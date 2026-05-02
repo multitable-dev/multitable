@@ -59,6 +59,23 @@ export async function resumePastSession(claudeSessionId: string): Promise<boolea
   }
 }
 
+export async function resumePastCodexThread(threadId: string): Promise<boolean> {
+  try {
+    const res = await api.transcripts.resumeCodex(threadId);
+    const projects = await api.projects.list();
+    const store = useAppStore.getState();
+    store.setProjects(projects);
+    await loadProjectChildren(res.projectId);
+    store.expandProject(res.projectId);
+    store.setSelectedProcess(res.sessionId);
+    toast.success('Resumed Codex thread');
+    return true;
+  } catch (err: any) {
+    toast.error(err?.message || 'Failed to resume');
+    return false;
+  }
+}
+
 export async function createOrOpenProjectForCwd(cwdPath: string): Promise<boolean> {
   const store = useAppStore.getState();
   const existing = store.projects.find((p) => p.path.replace(/\/+$/, '') === cwdPath.replace(/\/+$/, ''));

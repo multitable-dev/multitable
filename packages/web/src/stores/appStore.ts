@@ -330,7 +330,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   projectSettingsOpen: false,
   detailPanelOpen: false,
   detailPanelTab: 'brainstorm',
-  connectionState: 'disconnected',
+  // Start optimistic. The fullscreen "Cannot connect to daemon" overlay is
+  // intrusive — only show it after a real connect attempt has failed, never
+  // during the initial mount window. ws.connect() flips this to 'reconnecting'
+  // and then 'connected' as the handshake progresses.
+  connectionState: 'connected',
   projectOverviewOpen: false,
   contextMenu: null,
   mobileDrawerOpen: false,
