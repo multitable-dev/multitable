@@ -108,8 +108,8 @@ function AgentAvatar({ projectId, loaderVariant, active }: AgentAvatarProps) {
       }}
     >
       <Loader
-        size={18}
-        dotSize={2.5}
+        size={22}
+        dotSize={3}
         color={color}
         animated={active}
         className={active ? undefined : 'dmx-static-dim'}

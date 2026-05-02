@@ -47,7 +47,7 @@
    resolvers set in their idle branch. Inactive cells stay hidden via the
    rule above (also `!important`), so the variant's silhouette is preserved. */
 .dmx-static-dim .dmx-dot:not(.dmx-inactive) {
-  opacity: 0.18 !important;
+  opacity: 0.45 !important;
   animation: none !important;
 }
 

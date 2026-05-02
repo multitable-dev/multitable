@@ -52,7 +52,7 @@ export function SidebarItem({
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex',
-        alignItems: 'flex-start',
+        alignItems: 'center',
         padding: '4px 10px 4px 9px',
         margin: '1px 0',
         cursor: 'pointer',
@@ -72,7 +72,15 @@ export function SidebarItem({
           'background-color var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out)',
       }}
     >
-      <div style={{ marginTop: 4 }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 12,
+          flexShrink: 0,
+        }}
+      >
         {process.type === 'session' ? (
           <SessionStatusLoader
             loaderVariant={(process as Session).loaderVariant ?? null}

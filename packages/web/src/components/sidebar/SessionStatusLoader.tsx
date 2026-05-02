@@ -17,7 +17,7 @@ export function SessionStatusLoader({
   state,
   projectId,
   isIdle,
-  size = 10,
+  size = 12,
 }: Props) {
   if (state === 'errored') {
     return <StatusDot state={state} isIdle={isIdle} size={size} />;
@@ -40,7 +40,7 @@ export function SessionStatusLoader({
     >
       <Loader
         size={size}
-        dotSize={1}
+        dotSize={1.2}
         color={color}
         animated={active}
         className={active ? undefined : 'dmx-static-dim'}
