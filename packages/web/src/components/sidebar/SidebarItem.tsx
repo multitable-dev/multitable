@@ -38,11 +38,23 @@ export function SidebarItem({
   const unreadAttention = useAppStore(s =>
     process.type === 'session' ? s.unreadBySession[process.id] ?? 0 : 0,
   );
+  const hasStreamingText = useAppStore(s =>
+    process.type === 'session' ? Boolean(s.streamingBySession[process.id]) : false,
+  );
+  const hasToolProgress = useAppStore(s =>
+    process.type === 'session' ? Boolean(s.toolProgressBySession[process.id]) : false,
+  );
+  const hasSessionStatus = useAppStore(s =>
+    process.type === 'session' ? (s.statusBySession[process.id]?.status ?? null) !== null : false,
+  );
   const pendingCount = permissionCount + unreadAttention;
+  const sessionActive =
+    process.type === 'session' &&
+    (process.state === 'running' || hasStreamingText || hasToolProgress || hasSessionStatus);
 
   const isIdle =
     process.type === 'session' &&
-    process.state === 'running' &&
+    sessionActive &&
     !(process as any).claudeState?.currentTool;
 
   const sessionRecency =
@@ -95,6 +107,7 @@ export function SidebarItem({
             loaderVariant={(process as Session).loaderVariant ?? null}
             state={process.state}
             projectId={process.projectId}
+            active={sessionActive}
             isIdle={isIdle}
           />
         ) : (

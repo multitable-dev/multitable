@@ -6,6 +6,11 @@ export interface LabelResult {
   title: string;
 }
 
+export interface TagsResult {
+  ok: true;
+  tags: string[];
+}
+
 export interface LabelError {
   ok: false;
   error: string;
@@ -16,6 +21,13 @@ const SYSTEM_PROMPT = [
   'Read the user prompts and output ONE title that captures what the user is working on.',
   'Constraints: max 6 words, max 50 characters. No preamble, no quotes, no trailing punctuation, no markdown.',
   'Output the title and nothing else.',
+].join(' ');
+
+const TAGS_SYSTEM_PROMPT = [
+  'You generate compact topic tags for coding-agent sessions.',
+  'Read ONLY the user prompts and infer the main keywords or topics.',
+  'Constraints: output a JSON array of 1 to 5 strings. Each string must be 1 to 3 words and max 24 characters.',
+  'Use specific product, file, domain, bug, or feature terms when present. No markdown, no prose, no trailing commentary.',
 ].join(' ');
 
 const TIMEOUT_MS = 30_000;
@@ -96,6 +108,114 @@ export async function generateSessionLabel(
     child.on('error', (err) => {
       clearTimeout(timeout);
       console.error('[labeler] spawn error:', err);
+      finish({ ok: false, error: err.message || 'claude CLI failed to start' });
+    });
+  });
+}
+
+function sanitizeTags(raw: string): string[] {
+  let values: unknown = null;
+  try {
+    values = JSON.parse(raw);
+  } catch {
+    values = raw
+      .split(/[\n,]/)
+      .map((part) => part.replace(/^[-*\d.\s]+/, '').trim())
+      .filter(Boolean);
+  }
+
+  if (!Array.isArray(values)) return [];
+
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const cleaned = value
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .replace(/[.!?]+$/, '')
+      .trim();
+    if (!cleaned) continue;
+    const clipped = cleaned.length > 24 ? cleaned.slice(0, 24).trimEnd() : cleaned;
+    const key = clipped.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    tags.push(clipped);
+    if (tags.length >= 5) break;
+  }
+  return tags;
+}
+
+export async function generateSessionTags(
+  userMessages: string[]
+): Promise<TagsResult | LabelError> {
+  if (!userMessages || userMessages.length === 0) {
+    return { ok: false, error: 'No prompts to tag' };
+  }
+
+  const trimmed = userMessages
+    .slice(0, MAX_PROMPTS)
+    .map((m) => (m.length > MAX_PROMPT_CHARS ? m.slice(0, MAX_PROMPT_CHARS) + '…' : m));
+  const prompt = `User prompts:\n- ${trimmed.join('\n- ')}\n\nTags JSON:`;
+
+  return new Promise((resolve) => {
+    let child: ReturnType<typeof spawn>;
+    let resolved = false;
+    const finish = (value: TagsResult | LabelError) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
+
+    const timeout = setTimeout(() => {
+      try {
+        child?.kill();
+      } catch {}
+      finish({ ok: false, error: `claude CLI timed out after ${TIMEOUT_MS / 1000}s` });
+    }, TIMEOUT_MS);
+
+    try {
+      child = spawn(
+        'claude',
+        [
+          '--model', 'claude-haiku-4-5',
+          '--system-prompt', TAGS_SYSTEM_PROMPT,
+          '--print', prompt,
+        ],
+        { cwd: os.tmpdir() }
+      );
+    } catch (err: any) {
+      clearTimeout(timeout);
+      finish({ ok: false, error: `Failed to spawn claude: ${err?.message || err}` });
+      return;
+    }
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout?.on('data', (d: Buffer) => {
+      stdout += d.toString();
+    });
+    child.stderr?.on('data', (d: Buffer) => {
+      stderr += d.toString();
+    });
+
+    child.on('close', (code) => {
+      clearTimeout(timeout);
+      const tags = sanitizeTags(stdout.trim());
+      if (tags.length > 0) {
+        finish({ ok: true, tags });
+        return;
+      }
+      const reason = stderr.trim() || `claude exited with code ${code ?? 'null'} and no usable tags`;
+      console.error('[labeler] empty tags:', reason);
+      finish({ ok: false, error: reason });
+    });
+
+    child.on('error', (err) => {
+      clearTimeout(timeout);
+      console.error('[labeler] tag spawn error:', err);
       finish({ ok: false, error: err.message || 'claude CLI failed to start' });
     });
   });

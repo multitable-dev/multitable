@@ -120,6 +120,7 @@ class WsClient {
   }
 
   sendTurn(processId: string, text: string): void {
+    useAppStore.getState().updateProcessState(processId, 'running');
     this.send({ type: 'session:send', processId, payload: { text } });
   }
 

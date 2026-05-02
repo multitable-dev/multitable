@@ -8,6 +8,7 @@ interface Props {
   loaderVariant?: string | null;
   state: ProcessState;
   projectId: string;
+  active?: boolean;
   isIdle?: boolean;
   size?: number;
 }
@@ -16,6 +17,7 @@ export function SessionStatusLoader({
   loaderVariant,
   state,
   projectId,
+  active,
   isIdle,
   size = 12,
 }: Props) {
@@ -25,7 +27,7 @@ export function SessionStatusLoader({
 
   const Loader = getLoaderComponent(loaderVariant);
   const color = getProjectColor(projectId, false).stripe;
-  const active = state === 'running';
+  const isActive = active ?? state === 'running';
 
   return (
     <span
@@ -42,8 +44,8 @@ export function SessionStatusLoader({
         size={size}
         dotSize={1.2}
         color={color}
-        animated={active}
-        className={active ? undefined : 'dmx-static-dim'}
+        animated={isActive}
+        className={isActive ? undefined : 'dmx-static-dim'}
         ariaLabel="Session activity"
       />
     </span>
