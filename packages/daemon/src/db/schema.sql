@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   scratchpad TEXT DEFAULT '',
   created_at INTEGER NOT NULL,
   last_active_at INTEGER,
-  loader_variant TEXT
+  loader_variant TEXT,
+  git_baseline_commit TEXT
 );
 
 CREATE TABLE IF NOT EXISTS claude_session_loaders (

@@ -19,6 +19,8 @@ import {
   createCommand,
   createTerminal,
 } from '../db/store.js';
+import { getCurrentCommit, isGitRepo } from '../git/index.js';
+import type { GitWatcher } from '../git/watcher.js';
 import { loadProjectConfig, loadGlobalConfig } from '../config/loader.js';
 import { removeAttachmentDir } from './attachments.js';
 import type { PtyManager } from '../pty/manager.js';
@@ -196,7 +198,7 @@ function defaultProcessConfig(overrides?: Partial<ProcessConfig>): ProcessConfig
   };
 }
 
-export function createProjectsRouter(manager: PtyManager): Router {
+export function createProjectsRouter(manager: PtyManager, gitWatcher: GitWatcher): Router {
   const router = Router();
 
   // GET /api/projects
@@ -249,6 +251,9 @@ export function createProjectsRouter(manager: PtyManager): Router {
     // cover everything we used to install into .claude/settings.json, so
     // creating a project no longer touches that file.
 
+    // Start watching the working tree for live git status updates.
+    gitWatcher.watch(project.id, project.path);
+
     res.status(201).json(project);
   });
 
@@ -279,6 +284,9 @@ export function createProjectsRouter(manager: PtyManager): Router {
     for (const child of [...sessions, ...terminals]) {
       removeAttachmentDir(child.id);
     }
+
+    // Stop git status watcher before the row is removed.
+    gitWatcher.unwatch(req.params.id);
 
     // Cascades to sessions/commands/terminals/session_events/cost_records.
     deleteProject(req.params.id);
@@ -340,13 +348,22 @@ export function createProjectsRouter(manager: PtyManager): Router {
   });
 
   // POST /api/projects/:id/sessions — create a session under a project
-  router.post('/:id/sessions', (req: Request, res: Response) => {
+  router.post('/:id/sessions', async (req: Request, res: Response) => {
     const project = getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
     const { name, command, workingDirectory, autostart, autorestart, autorespawn, terminalAlerts, fileWatchPatterns } = req.body || {};
     if (!name || !command) {
       return res.status(400).json({ error: 'name and command are required' });
+    }
+
+    // Capture HEAD now so the per-agent diff scope can show only what this
+    // agent touched. Failures are non-fatal — sessions still work without it.
+    let gitBaselineCommit: string | null = null;
+    if (isGitRepo(project.path)) {
+      try {
+        gitBaselineCommit = await getCurrentCommit(project.path);
+      } catch {}
     }
 
     try {
@@ -361,6 +378,7 @@ export function createProjectsRouter(manager: PtyManager): Router {
         autorespawn,
         terminalAlerts,
         fileWatchPatterns,
+        gitBaselineCommit,
       });
       res.status(201).json(session);
     } catch (err) {

@@ -87,7 +87,9 @@ Key modules:
 - **`hooks/costParser.ts`, `labeler.ts`, `optionDetector.ts`, `promptsParser.ts`** — JSONL-driven utilities still used by the `/cost`, `/prompts`, label generation, and option detection paths. They read the same `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` files the SDK writes.
 - **`transcripts/parser.ts`** — JSONL → `Message[]` parser, used by `/api/sessions/:id/messages` and the transcript browser.
 - **`watcher/index.ts`** — chokidar-based file watcher for `mt.yml` changes and per-command `fileWatchPatterns` restart triggers (commands only; sessions don't have a "restart on file change" concept).
-- **`tracker/`, `git/`, `conflict/`** — cost tracking, git diff via `simple-git`, and process-conflict detection.
+- **`git/index.ts`** — `simple-git`–backed read + write helpers used by `/api/projects/:id/git/*` (status, diff, log, branches, stage, unstage, commit, discard, branch create/switch, stash). Plus `getDiffSinceCommit` for the per-agent diff scope (uses `sessions.git_baseline_commit` captured on session create).
+- **`git/watcher.ts`** — `GitWatcher` class. One chokidar watcher per project's working tree (ignores `node_modules`, `.git/objects`, `.git/logs`); on debounced fs change recomputes `getStatusSummary` and broadcasts `git:status-changed` so the GitPanel updates live as agents write files.
+- **`tracker/`, `conflict/`** — cost tracking and process-conflict detection.
 - **`types.ts`** — shared types (`ManagedProcess`, `ProcessState`, `WsMessage`, `PermissionPrompt`, `Project`, `GlobalConfig`, `ProjectConfig`, `SpawnConfig`). The `PermissionPrompt` carries optional `title`/`displayName`/`subtitle`/`blockedPath` fields surfaced from the SDK's `canUseTool` options bag.
 
 ### API routing quirk
@@ -134,6 +136,7 @@ Single endpoint: `/ws`. Messages are JSON `{ type, processId?, payload }`. One c
 - `session:updated` / `session:created` / `session:deleted` — DB-row events.
 - `session:options-detected` / `session:label-updated` — Stop-time JSONL parses for option detection and the labeler.
 - `permission:prompt` / `permission:resolved` / `permission:expired` — permission flow.
+- `git:status-changed` `{ projectId, status: GitStatusSummary }` — broadcast by the daemon's `GitWatcher` (debounced 500ms) on any working-tree change. The web GitPanel reads this off the `gitByProject` slice and re-renders without polling.
 - `pty-output` / `scrollback` — commands and terminals only.
 
 Single-delivery rule: `pty-output` is sent directly to the subscribed client in `pty/stream.ts`'s `handleSubscribe` data listener. Do **not** also broadcast it from `server.ts` — there's a load-bearing comment about the double-delivery bug this caused.

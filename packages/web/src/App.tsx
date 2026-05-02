@@ -315,6 +315,13 @@ function App() {
           store.setStreamingText(pid, text);
         }
       }),
+      wsClient.on('git:status-changed', (msg: any) => {
+        const projectId = msg.payload?.projectId;
+        const status = msg.payload?.status;
+        if (typeof projectId === 'string' && status) {
+          store.setGitStatus(projectId, status);
+        }
+      }),
       wsClient.on('session:tool-event', (msg: any) => {
         const pid = msg.processId || msg.payload?.processId;
         const messages = msg.payload?.messages;

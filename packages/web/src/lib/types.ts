@@ -52,6 +52,7 @@ export interface Session extends ManagedProcess {
   loaderVariant?: string | null; // dot-matrix loader assigned at session creation
   createdAt?: number;
   lastActiveAt?: number | null; // bumped per turn boundary so the sidebar can sort by recency
+  gitBaselineCommit?: string | null; // HEAD at session-create time; powers the per-agent diff scope
 }
 
 export interface Command extends ManagedProcess {
@@ -235,4 +236,49 @@ export interface TelegramIntegrationUpdate {
   sendNotifications?: boolean;
   sendAlerts?: boolean;
   dashboardUrl?: string;
+}
+
+// ─── Git ────────────────────────────────────────────────────────────────────
+
+export type GitFileStatus =
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'untracked'
+  | 'conflicted';
+
+export interface GitFileEntry {
+  path: string;
+  oldPath?: string;
+  status: GitFileStatus;
+}
+
+export interface GitStatusSummary {
+  isRepo: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  staged: GitFileEntry[];
+  unstaged: GitFileEntry[];
+  untracked: GitFileEntry[];
+  conflicted: GitFileEntry[];
+  head: string | null;
+}
+
+export interface GitLogEntry {
+  sha: string;
+  shortSha: string;
+  author: string;
+  email: string;
+  date: number;
+  subject: string;
+  body: string;
+}
+
+export interface GitBranchList {
+  current: string | null;
+  local: string[];
+  remotes: string[];
 }

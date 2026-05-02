@@ -4,14 +4,12 @@ import { IconButton } from '../ui';
 
 interface Props {
   title: string;
-  running: number;
-  total: number;
   shortcut?: string;
   onAdd?: () => void;
   children: React.ReactNode;
 }
 
-export function SidebarSection({ title, running, total, shortcut, onAdd, children }: Props) {
+export function SidebarSection({ title, shortcut, onAdd, children }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
@@ -44,24 +42,15 @@ export function SidebarSection({ title, running, total, shortcut, onAdd, childre
             color: 'var(--text-faint)',
             textTransform: 'uppercase',
             letterSpacing: '0.18em',
+            marginRight: 'auto',
           }}
         >
           {title}
         </span>
-        <span
-          style={{
-            marginLeft: 'auto',
-            fontSize: 10,
-            color: 'var(--text-secondary)',
-            fontVariantNumeric: 'tabular-nums',
-            letterSpacing: '0.04em',
-          }}
-        >
-          {running}/{total}
-        </span>
         {onAdd && (
           <IconButton
             size="sm"
+            variant="subtle"
             onClick={(e) => {
               e.stopPropagation();
               onAdd();

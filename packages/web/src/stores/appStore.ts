@@ -11,6 +11,7 @@ import type {
   Message,
   SessionAlert,
   ElicitationPrompt,
+  GitStatusSummary,
 } from '../lib/types';
 import type { Theme, ThemeColors } from '../lib/themes';
 import {
@@ -120,6 +121,11 @@ interface AppState {
    */
   streamingBySession: Record<string, string>;
   setStreamingText: (sessionId: string, text: string) => void;
+
+  // Live git status per project — populated by REST fetch on panel mount and
+  // refreshed by `git:status-changed` WS events from the daemon's GitWatcher.
+  gitByProject: Record<string, GitStatusSummary>;
+  setGitStatus: (projectId: string, status: GitStatusSummary) => void;
 
   // Alerts (notification history + per-session unread counts)
   alerts: SessionAlert[];
@@ -455,6 +461,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       return { streamingBySession: next };
     }),
+
+  gitByProject: {},
+  setGitStatus: (projectId, status) =>
+    set((s) => ({ gitByProject: { ...s.gitByProject, [projectId]: status } })),
 
   // Alerts
   alerts: [],

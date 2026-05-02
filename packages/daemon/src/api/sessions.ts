@@ -8,7 +8,9 @@ import {
   deleteSession,
   getAllSessions,
   getSessionCostAggregate,
+  getProjectById,
 } from '../db/store.js';
+import { getDiffSinceCommit, isGitRepo } from '../git/index.js';
 import { parseSessionCost } from '../hooks/costParser.js';
 import { parseSessionPrompts, parseAllProjectPrompts } from '../hooks/promptsParser.js';
 import { generateSessionLabel } from '../hooks/labeler.js';
@@ -373,16 +375,25 @@ export function createSessionsRouter(agentManager: AgentSessionManager): Router 
   });
 
   // GET /api/sessions/:id/diff
+  // When the session has a captured baseline commit, returns the diff between
+  // that commit and the current working tree (everything the agent has
+  // touched since it was created). Falls back to a project-level working-tree
+  // diff when no baseline is recorded, preserving backwards compatibility.
   router.get('/:id/diff', async (req: Request, res: Response) => {
     const session = getSessionById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
 
-    const workingDir = session.workingDirectory;
-    if (!workingDir) return res.status(400).json({ error: 'Session has no working directory' });
+    const project = getProjectById(session.projectId);
+    const repoPath = (project && isGitRepo(project.path) ? project.path : null)
+      ?? (session.workingDirectory && isGitRepo(session.workingDirectory) ? session.workingDirectory : null);
+    if (!repoPath) {
+      return res.status(400).json({ error: 'Not a git repository', code: 'not-a-repo' });
+    }
 
     try {
-      const git = simpleGit(workingDir);
-      const diff = await git.diff();
+      const diff = session.gitBaselineCommit
+        ? await getDiffSinceCommit(repoPath, session.gitBaselineCommit)
+        : await simpleGit(repoPath).diff();
       res.json({ diff });
     } catch (err: any) {
       res.status(500).json({ error: err.message || 'Failed to get diff' });

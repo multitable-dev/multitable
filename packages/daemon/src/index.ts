@@ -6,6 +6,7 @@ import { PermissionManager } from './hooks/permissionManager.js';
 import { ElicitationManager } from './hooks/elicitationManager.js';
 import { AgentSessionManager } from './agent/manager.js';
 import { FileWatcher } from './watcher/index.js';
+import { GitWatcher } from './git/watcher.js';
 import { createServer } from './server.js';
 import { checkOrphanedPids } from './pids.js';
 import { loadProjectConfig } from './config/loader.js';
@@ -76,7 +77,18 @@ async function main() {
     agentManager,
   });
 
-  // 5b. Express/WS server (mounts /api/integrations using the bridge above).
+  // 5b. Construct the GitWatcher before the server so the projects router can
+  // hold a reference. We give it a placeholder broadcaster — `setBroadcaster`
+  // could be cleaner, but the simplest fix is to declare the broadcast hook
+  // up front; it's reassigned just below once `serverInstance` exists.
+  // eslint-disable-next-line prefer-const
+  let broadcastRef: (type: string, payload: unknown) => void = () => {};
+  const fileWatcher = new FileWatcher();
+  const gitWatcher = new GitWatcher((projectId, status) => {
+    broadcastRef('git:status-changed', { projectId, status });
+  });
+
+  // 5c. Express/WS server (mounts /api/integrations using the bridge above).
   const serverInstance = createServer(
     config,
     manager,
@@ -84,12 +96,13 @@ async function main() {
     agentManager,
     elicitManager,
     tgBridge,
+    gitWatcher,
   );
   const { server, broadcast } = serverInstance;
+  broadcastRef = broadcast;
   tgBridge.start();
 
   // 7. Load projects from DB, start autostart processes
-  const fileWatcher = new FileWatcher();
   const projects = getAllProjects();
 
   for (const project of projects) {
@@ -101,6 +114,9 @@ async function main() {
       console.log(`mt.yml changed for project: ${project.name}`);
       broadcast('project:config-changed', { projectId: project.id });
     });
+
+    // Watch the working tree for git status changes (skipped if not a repo).
+    gitWatcher.watch(project.id, project.path);
 
     // Register sessions with the agent manager. Sessions are no longer spawned
     // as PTY children; the SDK owns their lifecycle. "Autostart" has no meaning
@@ -170,6 +186,7 @@ async function main() {
     console.log(`\nReceived ${signal}, shutting down...`);
     setTimeout(() => process.exit(0), 2000);
     fileWatcher.unwatchAll();
+    gitWatcher.unwatchAll();
     manager.destroy();
     serverInstance.closeAllClients();
     void tgBridge.stop();

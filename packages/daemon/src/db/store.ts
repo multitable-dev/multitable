@@ -33,6 +33,9 @@ export function initDb(): void {
   try {
     db.exec('ALTER TABLE sessions ADD COLUMN loader_variant TEXT');
   } catch {}
+  try {
+    db.exec('ALTER TABLE sessions ADD COLUMN git_baseline_commit TEXT');
+  } catch {}
 
   // Backfill loader_variant for any session missing one. Runs once per process
   // start; cheap (single SELECT + at most N UPDATEs). Each session gets a
@@ -210,6 +213,7 @@ export interface SessionRow {
   created_at: number;
   last_active_at: number | null;
   loader_variant: string | null;
+  git_baseline_commit: string | null;
 }
 
 export interface SessionRecord {
@@ -234,6 +238,7 @@ export interface SessionRecord {
   createdAt: number;
   lastActiveAt: number | null;
   loaderVariant: string | null;
+  gitBaselineCommit: string | null;
 }
 
 // Parse the JSON-encoded chain of prior claude_session_ids the SDK has assigned
@@ -273,6 +278,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
     loaderVariant: row.loader_variant,
+    gitBaselineCommit: row.git_baseline_commit,
   };
 }
 
@@ -311,6 +317,7 @@ export function createSession(data: {
    * is picked from the unused pool (random reuse once all 60 are taken).
    */
   loaderVariant?: string;
+  gitBaselineCommit?: string | null;
 }): SessionRecord {
   const id = uuidv4();
   const now = Date.now();
@@ -334,8 +341,8 @@ export function createSession(data: {
       id, project_id, name, command, working_directory, type,
       autostart, autorestart, autorestart_max, autorestart_delay_ms,
       autorestart_window_secs, autorespawn, terminal_alerts, file_watch_patterns,
-      scratchpad, created_at, loader_variant
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?)
+      scratchpad, created_at, loader_variant, git_baseline_commit
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
   `).run(
     id,
     data.projectId,
@@ -352,9 +359,16 @@ export function createSession(data: {
     data.terminalAlerts ? 1 : 0,
     JSON.stringify(data.fileWatchPatterns ?? []),
     now,
-    loaderVariant
+    loaderVariant,
+    data.gitBaselineCommit ?? null
   );
   return getSessionById(id)!;
+}
+
+export function setSessionGitBaseline(id: string, sha: string | null): void {
+  getDb()
+    .prepare('UPDATE sessions SET git_baseline_commit = ? WHERE id = ?')
+    .run(sha, id);
 }
 
 export function updateSession(id: string, data: Partial<{

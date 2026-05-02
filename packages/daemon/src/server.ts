@@ -21,7 +21,9 @@ import { createSearchRouter } from './api/search.js';
 import { createTranscriptsRouter } from './api/transcripts.js';
 import { createNotesRouter } from './api/notes.js';
 import { createIntegrationsRouter } from './api/integrations.js';
+import { createGitRouter } from './api/git.js';
 import type { TelegramBridge } from './notifications/telegramBridge.js';
+import type { GitWatcher } from './git/watcher.js';
 import { getSessionById } from './db/store.js';
 
 export interface ServerInstance {
@@ -40,6 +42,7 @@ export function createServer(
   agentManager: AgentSessionManager,
   elicitManager: ElicitationManager,
   tgBridge: TelegramBridge,
+  gitWatcher: GitWatcher,
 ): ServerInstance {
   const app = express();
   app.use(express.json({ limit: '10mb' }));
@@ -86,7 +89,7 @@ export function createServer(
 
   // ─── Mount API routes ───────────────────────────────────────────────────────
 
-  app.use('/api/projects', createProjectsRouter(manager));
+  app.use('/api/projects', createProjectsRouter(manager, gitWatcher));
   app.use('/api/sessions', createSessionsRouter(agentManager));
   app.use('/api/commands', createCommandsRouter(manager));
   app.use('/api/processes', createProcessesRouter(manager));
@@ -96,6 +99,7 @@ export function createServer(
   app.use('/api/transcripts', createTranscriptsRouter(manager));
   app.use('/api/notes', createNotesRouter());
   app.use('/api/integrations', createIntegrationsRouter(tgBridge, permManager, agentManager));
+  app.use('/api/projects/:projectId/git', createGitRouter());
 
   // ─── Internal agent-turn endpoint (Phase 2) ────────────────────────────────
   //

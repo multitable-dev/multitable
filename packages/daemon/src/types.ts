@@ -173,3 +173,48 @@ export interface SpawnConfig {
   cols?: number;
   rows?: number;
 }
+
+// ─── Git ──────────────────────────────────────────────────────────────────────
+
+export type GitFileStatus =
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'untracked'
+  | 'conflicted';
+
+export interface GitFileEntry {
+  path: string;
+  oldPath?: string; // set on rename / copy
+  status: GitFileStatus;
+}
+
+export interface GitStatusSummary {
+  isRepo: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  staged: GitFileEntry[];
+  unstaged: GitFileEntry[];
+  untracked: GitFileEntry[];
+  conflicted: GitFileEntry[];
+  head: string | null; // current commit sha
+}
+
+export interface GitLogEntry {
+  sha: string;
+  shortSha: string;
+  author: string;
+  email: string;
+  date: number; // unix ms
+  subject: string;
+  body: string;
+}
+
+export interface GitBranchList {
+  current: string | null;
+  local: string[];
+  remotes: string[];
+}

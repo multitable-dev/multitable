@@ -8,6 +8,9 @@ import type {
   Message,
   TelegramIntegrationView,
   TelegramIntegrationUpdate,
+  GitStatusSummary,
+  GitLogEntry,
+  GitBranchList,
 } from './types';
 
 const BASE = '';  // same origin
@@ -142,6 +145,48 @@ export const api = {
       put<Note>(`/api/notes/${id}`, data),
     delete: (id: string) => del(`/api/notes/${id}`),
     refine: (id: string) => post<{ refined: string; original: string }>(`/api/notes/${id}/refine`, {}),
+  },
+  git: {
+    status: (projectId: string) =>
+      get<GitStatusSummary>(`/api/projects/${projectId}/git/status`),
+    diff: (projectId: string, opts?: { staged?: boolean }) =>
+      get<{ diff: string }>(
+        `/api/projects/${projectId}/git/diff${opts?.staged ? '?staged=1' : ''}`
+      ),
+    fileDiff: (projectId: string, filePath: string, opts?: { staged?: boolean }) =>
+      get<{ diff: string }>(
+        `/api/projects/${projectId}/git/diff/file?path=${encodeURIComponent(filePath)}${
+          opts?.staged ? '&staged=1' : ''
+        }`
+      ),
+    log: (projectId: string, limit?: number) =>
+      get<{ commits: GitLogEntry[] }>(
+        `/api/projects/${projectId}/git/log${limit ? `?limit=${limit}` : ''}`
+      ),
+    branches: (projectId: string) =>
+      get<GitBranchList>(`/api/projects/${projectId}/git/branches`),
+    stage: (projectId: string, files: string[]) =>
+      post<{ ok: true }>(`/api/projects/${projectId}/git/stage`, { files }),
+    unstage: (projectId: string, files: string[]) =>
+      post<{ ok: true }>(`/api/projects/${projectId}/git/unstage`, { files }),
+    commit: (projectId: string, message: string) =>
+      post<{ sha: string; summary: { changes: number; insertions: number; deletions: number } }>(
+        `/api/projects/${projectId}/git/commit`,
+        { message }
+      ),
+    discard: (projectId: string, files: string[]) =>
+      post<{ ok: true }>(`/api/projects/${projectId}/git/discard`, { files }),
+    createBranch: (projectId: string, name: string, checkout = true) =>
+      post<{ ok: true; branch: string }>(`/api/projects/${projectId}/git/branches`, {
+        name,
+        checkout,
+      }),
+    checkout: (projectId: string, branch: string) =>
+      post<{ ok: true; branch: string }>(`/api/projects/${projectId}/git/checkout`, { branch }),
+    stash: (projectId: string, message?: string) =>
+      post<{ ok: true }>(`/api/projects/${projectId}/git/stash`, { message }),
+    stashPop: (projectId: string) =>
+      post<{ ok: true }>(`/api/projects/${projectId}/git/stash/pop`),
   },
   search: (q: string) =>
     get<Array<{ sessionId: string; name: string; snippet: string }>>(

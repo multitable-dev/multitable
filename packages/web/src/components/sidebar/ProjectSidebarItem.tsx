@@ -60,9 +60,6 @@ export function ProjectSidebarItem({ project }: Props) {
     });
   const projectCommands = Object.values(commands).filter((c) => c.projectId === project.id);
   const projectTerminals = Object.values(terminals).filter((t) => t.projectId === project.id);
-  const runningSessions = projectSessions.filter((s) => s.state === 'running').length;
-  const runningCommands = projectCommands.filter((c) => c.state === 'running').length;
-  const runningTerminals = projectTerminals.filter((t) => t.state === 'running').length;
 
   const handleSelectProject = () => {
     store.setFocusedProject(project.id);
@@ -336,8 +333,6 @@ export function ProjectSidebarItem({ project }: Props) {
         <>
           <SidebarSection
             title="AGENTS"
-            running={runningSessions}
-            total={projectSessions.length}
             onAdd={() => {
               store.setFocusedProject(project.id);
               store.setAddAgentModalOpen(true);
@@ -363,12 +358,7 @@ export function ProjectSidebarItem({ project }: Props) {
             )}
           </SidebarSection>
 
-          <SidebarSection
-            title="TERMINALS"
-            running={runningTerminals}
-            total={projectTerminals.length}
-            onAdd={handleAddTerminal}
-          >
+          <SidebarSection title="TERMINALS" onAdd={handleAddTerminal}>
             {projectTerminals.length > 0 ? (
               projectTerminals.map((term) => (
                 <SidebarItem
@@ -389,12 +379,7 @@ export function ProjectSidebarItem({ project }: Props) {
             )}
           </SidebarSection>
 
-          <SidebarSection
-            title="COMMANDS"
-            running={runningCommands}
-            total={projectCommands.length}
-            onAdd={() => setShowAddCommand(true)}
-          >
+          <SidebarSection title="COMMANDS" onAdd={() => setShowAddCommand(true)}>
             {projectCommands.length > 0 ? (
               projectCommands.map((cmd) => (
                 <SidebarItem
