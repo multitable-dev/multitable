@@ -171,7 +171,7 @@ html, body, #root {
 }
 
 body {
-  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', 'Berkeley Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   font-size: 12.5px;
@@ -388,7 +388,7 @@ select:focus-visible,
   width: 100%;
   max-height: 100%;
   background: transparent;
-  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace;
 }
 .mt-cm-composer .cm-scroller {
   overflow-y: auto;
@@ -410,7 +410,7 @@ select:focus-visible,
   border: 1px solid var(--border-strong) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
-  font-family: 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace !important;
+  font-family: 'JetBrains Mono Variable', 'JetBrains Mono', 'Berkeley Mono', ui-monospace, monospace !important;
 }
 .cm-tooltip-autocomplete {
   min-width: 280px;

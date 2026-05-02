@@ -5,45 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content" />
     <title>MultiTable</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <!-- No external font fetch. globals.css has a full system-font fallback
-         chain. JetBrains Mono is decorative; relying on the network for a
-         decorative font means a single bad route turns into a multi-second
-         blank page. -->
-    <style>
-      /* If the user has JetBrains Mono installed locally, browsers will
-         pick it up via the font-family chain without any network fetch. */
-    </style>
+    <!-- JetBrains Mono is self-hosted via @fontsource-variable/jetbrains-mono
+         (imported in main.tsx). No external font fetch — woff2 weights ship
+         with the bundle, so a slow/blocked Google Fonts route can't ever
+         turn this page blank. -->
   </head>
   <body>
-    <div
-      id="mt-bootstrap-marker"
-      style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;font:12px ui-monospace,monospace;color:#888;background:#0e0e12;z-index:0;"
-    >
-      <div id="mt-bs-stage">stage: html-loaded</div>
-      <div id="mt-bs-elapsed" style="margin-top:6px;opacity:0.6"></div>
-    </div>
-    <div id="root" style="position:relative;z-index:1;"></div>
-    <script>
-      window.__mtBootStart = performance.now();
-      var stageEl = document.getElementById('mt-bs-stage');
-      var elapsedEl = document.getElementById('mt-bs-elapsed');
-      window.__mtStage = function (s) {
-        if (stageEl) stageEl.textContent = 'stage: ' + s;
-        if (elapsedEl) elapsedEl.textContent = (performance.now() - window.__mtBootStart).toFixed(0) + ' ms';
-        try { console.log('[mt-boot]', s, (performance.now() - window.__mtBootStart).toFixed(0) + 'ms'); } catch (_) {}
-      };
-      window.__mtStage('html-parsed');
-      var t = setInterval(function () {
-        if (elapsedEl && document.getElementById('mt-bootstrap-marker')) {
-          elapsedEl.textContent = (performance.now() - window.__mtBootStart).toFixed(0) + ' ms';
-        } else {
-          clearInterval(t);
-        }
-      }, 100);
-      window.addEventListener('error', function (e) {
-        window.__mtStage('JS ERROR: ' + (e.message || e.error || 'unknown'));
-      });
-    </script>
+    <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

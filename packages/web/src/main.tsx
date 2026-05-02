@@ -1,27 +1,15 @@
-declare global {
-  interface Window {
-    __mtStage?: (s: string) => void;
-  }
-}
-window.__mtStage?.('main.tsx-imports-resolved');
-
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+// Self-hosted JetBrains Mono. Loads woff2 weights bundled into the dev/prod
+// build (no external network fetch). The package declares the font under the
+// family name `'JetBrains Mono Variable'`, which globals.css references in
+// every monospace font-family chain.
+import '@fontsource-variable/jetbrains-mono';
 import App from './App';
 import './styles/globals.css';
 
-window.__mtStage?.('main.tsx-rendering');
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
   </React.StrictMode>
 );
-window.__mtStage?.('main.tsx-render-called');
-queueMicrotask(() => {
-  window.__mtStage?.('after-render-microtask');
-  setTimeout(() => {
-    window.__mtStage?.('after-render-100ms');
-    const m = document.getElementById('mt-bootstrap-marker');
-    if (m) m.style.display = 'none';
-  }, 100);
-});
