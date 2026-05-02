@@ -48,6 +48,9 @@ export function initDb(): void {
   try {
     db.exec('ALTER TABLE sessions ADD COLUMN model TEXT');
   } catch {}
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN tags TEXT DEFAULT '[]'");
+  } catch {}
 
   // Sessions no longer use a PTY (they go through the Claude/Codex SDK). The
   // pre-SDK PTY scrollback column accumulated stale BLOBs that ballooned
@@ -237,6 +240,7 @@ export interface SessionRow {
   agent_session_id_history: string | null;
   claude_session_id: string | null;
   claude_session_id_history: string | null;
+  tags: string | null;
   scratchpad: string;
   created_at: number;
   last_active_at: number | null;
@@ -265,6 +269,7 @@ export interface SessionRecord {
   agentSessionIdHistory: string[];
   claudeSessionId: string | null;
   claudeSessionIdHistory: string[];
+  tags: string[];
   scratchpad: string;
   createdAt: number;
   lastActiveAt: number | null;
@@ -275,7 +280,7 @@ export interface SessionRecord {
 // Parse the JSON-encoded chain of prior claude_session_ids the SDK has assigned
 // to this session over its lifetime. Tolerates legacy NULL columns and any
 // shape that isn't a flat string array (returns []).
-function parseClaudeSessionIdHistory(raw: string | null): string[] {
+function parseStringArray(raw: string | null): string[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -284,6 +289,10 @@ function parseClaudeSessionIdHistory(raw: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function parseClaudeSessionIdHistory(raw: string | null): string[] {
+  return parseStringArray(raw);
 }
 
 function rowToSession(row: SessionRow): SessionRecord {
@@ -314,6 +323,7 @@ function rowToSession(row: SessionRow): SessionRecord {
     agentSessionIdHistory,
     claudeSessionId: row.claude_session_id,
     claudeSessionIdHistory: parseClaudeSessionIdHistory(row.claude_session_id_history),
+    tags: parseStringArray(row.tags),
     scratchpad: row.scratchpad || '',
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
@@ -438,6 +448,7 @@ export function updateSession(id: string, data: Partial<{
   agentSessionIdHistory: string[];
   claudeSessionId: string | null;
   claudeSessionIdHistory: string[];
+  tags: string[];
   scratchpad: string;
   lastActiveAt: number;
 }>): SessionRecord | null {
@@ -488,6 +499,11 @@ export function updateSession(id: string, data: Partial<{
   if (data.agentSessionIdHistory !== undefined) {
     fields.push('agent_session_id_history = ?');
     values.push(JSON.stringify(data.agentSessionIdHistory));
+  }
+
+  if (data.tags !== undefined) {
+    fields.push('tags = ?');
+    values.push(JSON.stringify(data.tags));
   }
 
   if (fields.length === 0) return getSessionById(id);

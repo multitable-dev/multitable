@@ -15,9 +15,10 @@ import type { ProviderAdapter, AdapterCallbacks } from './types.js';
 //   instance per multitable session id because Thread holds the codex
 //   thread_id used to resume on subsequent turns. The cache is rebuilt from
 //   the DB on daemon restart.
-// - Codex emits item-level events (item.started/updated/completed). There is
-//   no incremental text delta — we render whole agent_message items at
-//   item.completed time. This is the documented limitation.
+// - Codex emits item-level events (item.started/updated/completed). For
+//   agent_message updates, the item text is the current partial response; we
+//   forward that through the shared assistant-delta channel and keep
+//   item.completed as the canonical final message.
 export class CodexAdapter implements ProviderAdapter {
   readonly name = 'codex' as const;
 
@@ -104,6 +105,7 @@ export class CodexAdapter implements ProviderAdapter {
       }
       case 'item.started':
       case 'item.updated': {
+        this.updateAssistantDelta(event.item, cb);
         this.updateCurrentTool(event.item, cb);
         return;
       }
@@ -111,8 +113,12 @@ export class CodexAdapter implements ProviderAdapter {
         const messages = this.itemToMessages(event.item, now);
         if (messages.length > 0) {
           cb.pushMessages(messages);
-          if (messages.some((m) => m.kind === 'assistant')) cb.emitAssistantMessage(messages);
-          else cb.emitToolEvent(messages);
+          if (messages.some((m) => m.kind === 'assistant')) {
+            cb.emitAssistantMessage(messages);
+            cb.emitAssistantDelta('');
+          } else {
+            cb.emitToolEvent(messages);
+          }
         }
         cb.setCurrentTool(null);
         cb.bumpActivity();
@@ -154,6 +160,12 @@ export class CodexAdapter implements ProviderAdapter {
       default:
         return;
     }
+  }
+
+  private updateAssistantDelta(item: ThreadItem, cb: AdapterCallbacks): void {
+    if (item.type !== 'agent_message') return;
+    cb.emitAssistantDelta(item.text);
+    cb.bumpActivity();
   }
 
   private updateCurrentTool(item: ThreadItem, cb: AdapterCallbacks): void {

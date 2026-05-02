@@ -72,7 +72,7 @@ To add a new provider: drop a `<provider>.ts` adapter under `agent/providers/`, 
 ### Codex specifics
 
 - **Approval policy is hardcoded to `'never'`** in `CodexAdapter.getThread`. The Codex SDK closes child stdin after writing the prompt and exposes no host-side approval callback, so any other policy will hang or auto-fail. Tool gating happens via `sandboxMode: 'workspace-write'` + `additionalDirectories` + `networkAccessEnabled`. `PermissionManager` stays Claude-only by design.
-- **No streaming text deltas.** Codex emits whole `agent_message` items at `item.completed` time. Live UI shows messages all at once; deltas only fire for Claude.
+- **Streaming response previews.** Codex emits `agent_message` item updates through `runStreamed()`. The adapter forwards each updated item text over the shared `session:assistant-delta` WS path, then keeps `item.completed` as the canonical final message.
 - **No USD cost field on `Usage`.** Token counts populate; the dollar row is hidden in the cost UI for Codex sessions.
 - **Thread persistence** is owned by the codex CLI under `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-<ts>-<thread_id>.jsonl`. `transcripts/codexParser.ts` reads these into the same `Message[]` shape the Claude JSONL parser produces. `AgentSessionManager.register` hydrates `s.messages` from disk on startup; `/api/sessions/:id/messages` re-hydrates if the in-memory cache is empty.
 - **Past Codex threads** are listed via `GET /api/transcripts/codex` and resumed via `POST /api/transcripts/codex/:threadId/resume`. The AddAgentModal renders them as a separate section under "Or resume a Codex thread".

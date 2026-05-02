@@ -7,6 +7,8 @@ import type { Message } from '../../transcripts/parser.js';
 export interface AdapterCallbacks {
   // Final assistant or tool messages — drive the chat UI.
   emitAssistantMessage(messages: Message[]): void;
+  // In-flight assistant text — drives the live streaming preview.
+  emitAssistantDelta(text: string): void;
   emitToolEvent(messages: Message[]): void;
   emitUserMessage(messages: Message[]): void;
   // Provider learned (or re-learned) the canonical session id for this

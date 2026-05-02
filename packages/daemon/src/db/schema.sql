@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   agent_session_id_history TEXT DEFAULT '[]',
   claude_session_id TEXT,
   claude_session_id_history TEXT DEFAULT '[]',
+  tags TEXT DEFAULT '[]',
   scratchpad TEXT DEFAULT '',
   created_at INTEGER NOT NULL,
   last_active_at INTEGER,

@@ -342,6 +342,14 @@ export class AgentSessionManager extends EventEmitter {
   private makeAdapterCallbacks(sessionId: string): AdapterCallbacks {
     return {
       emitAssistantMessage: (messages) => this.emit('assistant-message', { sessionId, messages }),
+      emitAssistantDelta: (text) => {
+        const s = this.sessions.get(sessionId);
+        if (!s) return;
+        s.streamingText = text;
+        s.streamingBlockIndex = null;
+        s.lastActivity = Date.now();
+        this.emit('assistant-delta', { sessionId, text });
+      },
       emitToolEvent: (messages) => this.emit('tool-event', { sessionId, messages }),
       emitUserMessage: (messages) => this.emit('user-message', { sessionId, messages }),
       pushMessages: (messages) => {
