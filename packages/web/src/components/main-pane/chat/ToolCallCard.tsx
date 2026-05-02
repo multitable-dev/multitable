@@ -81,9 +81,12 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
     <div
       style={{
         margin: '6px 0',
-        border: `1px solid ${isError ? 'var(--status-error)' : 'var(--border-strong)'}`,
-        borderRadius: 'var(--radius-soft)',
-        backgroundColor: 'var(--bg-elevated)',
+        // Recessed treatment: dashed faint outline + transparent background so
+        // tool calls fall into the chat canvas. The user prompt is the only
+        // chat surface that elevates; everything else lives flush with prose.
+        border: `1px dashed ${isError ? 'var(--status-error)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius-snug)',
+        backgroundColor: 'transparent',
         overflow: 'hidden',
       }}
     >
@@ -125,7 +128,7 @@ export const ToolCallCard = memo(function ToolCallCard({ toolName, input, output
             fontWeight: 500,
             textTransform: 'uppercase',
             letterSpacing: '0.08em',
-            color: 'var(--text-primary)',
+            color: 'var(--text-secondary)',
           }}
         >
           {toolName}

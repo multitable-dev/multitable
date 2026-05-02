@@ -25,8 +25,7 @@ export const UserMessage = memo(function UserMessage({ text, projectId }: Props)
           color: 'var(--text-primary)',
           borderLeft: `3px solid ${projectColor.stripe}`,
           borderRadius: 'var(--radius-soft)',
-          boxShadow:
-            '0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 6px 16px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.25)',
+          boxShadow: 'var(--shadow-elevated-message)',
           fontSize: 12.5,
           lineHeight: 1.5,
           whiteSpace: 'pre-wrap',

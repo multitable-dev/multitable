@@ -68,6 +68,16 @@
   --shadow-xl: none;
   --shadow-inset: none;
 
+  /* Single deliberate exception: the user-prompt card uses elevation so it
+     stands apart from the recessed assistant prose / tool calls. Dark mode
+     stacks an inset top highlight + a faint outer ring + a strong drop
+     shadow because plain rgba shadows barely register on a near-black canvas. */
+  --shadow-elevated-message:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 10px 24px rgba(0, 0, 0, 0.65),
+    0 2px 6px rgba(0, 0, 0, 0.45);
+
   /* Motion */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
@@ -122,6 +132,12 @@
   --shadow-lg: none;
   --shadow-xl: none;
   --shadow-inset: none;
+
+  /* Light mode: a clean drop shadow against the cream canvas does the work
+     on its own — no inset highlight or outer ring needed. */
+  --shadow-elevated-message:
+    0 6px 16px rgba(40, 30, 18, 0.18),
+    0 1px 3px rgba(40, 30, 18, 0.12);
 
   color-scheme: light;
 }
